@@ -1,0 +1,27 @@
+# Segredos — nunca commitar
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Dados locais — arquivos da organização não entram no repositório sem decisão explícita
+*.db
+*.sqlite3
+dados/
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store

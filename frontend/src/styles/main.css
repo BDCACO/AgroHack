@@ -1,0 +1,22 @@
+@import 'tailwindcss';
+
+/* Tokens da marca. Tailwind v4 gera as utilitárias a partir daqui
+ * (bg-campo-600, text-terra-700...) — a cor mora num lugar só. */
+@theme {
+  --color-campo-50: #f2f8ef;
+  --color-campo-100: #e0efd9;
+  --color-campo-600: #3f7a2c;
+  --color-campo-700: #326223;
+  --color-campo-900: #1f3b17;
+
+  --color-terra-100: #f3ece2;
+  --color-terra-700: #7a5a32;
+
+  --font-sans: ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-stone-50 text-stone-800 antialiased;
+  }
+}

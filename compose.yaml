@@ -1,0 +1,64 @@
+# Stack de desenvolvimento do CampoCerto: banco, API e frontend.
+#
+# Um stack só (o ArkoHub usa dois, ligados por uma rede `edge`): aqui não há
+# MinIO, Redis nem worker para isolar, e um compose único é o que se sobe e
+# derruba com um comando.
+#
+# Portas publicadas só em 127.0.0.1 (exceto o front): banco e API não ficam
+# acessíveis a outras máquinas da rede por acidente.
+name: campocerto
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?defina POSTGRES_DB no .env}
+      POSTGRES_USER: ${POSTGRES_USER:?defina POSTGRES_USER no .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    volumes:
+      - db-data:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+      target: dev
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      # Código montado para o --reload do uvicorn. O venv mora em /opt/venv.
+      - ./backend:/app
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    image: node:24-alpine
+    working_dir: /app
+    environment:
+      API_PROXY_TARGET: http://api:8000
+    volumes:
+      - ./frontend:/app
+      # node_modules em volume: o do host (se existir) não é compatível com Alpine.
+      - web-node-modules:/app/node_modules
+    command: ["sh", "-c", "npm install --no-audit --no-fund && npm run dev"]
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+    depends_on:
+      - api
+
+volumes:
+  db-data:
+  web-node-modules:
