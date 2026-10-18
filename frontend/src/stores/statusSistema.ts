@@ -13,6 +13,15 @@ export const useStatusSistemaStore = defineStore('statusSistema', {
     verificando: false,
     verificadoEm: null as Date | null,
   }),
+  getters: {
+    /** Resumo de uma palavra para o menu lateral. */
+    situacao(): 'verificando' | 'operando' | 'problema' | 'nao-verificado' {
+      if (this.verificando) return 'verificando'
+      if (this.api === 'ok' && this.banco === 'ok') return 'operando'
+      if (this.api === 'erro' || this.banco === 'erro') return 'problema'
+      return 'nao-verificado'
+    },
+  },
   actions: {
     async verificar() {
       this.verificando = true

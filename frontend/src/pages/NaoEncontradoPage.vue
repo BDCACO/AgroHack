@@ -4,10 +4,10 @@
       Página não encontrada
     </h1>
     <RouterLink
-      :to="{ name: 'inicio' }"
+      :to="{ name: 'painel' }"
       class="text-campo-700 underline"
     >
-      Voltar ao início
+      Voltar ao painel
     </RouterLink>
   </section>
 </template>

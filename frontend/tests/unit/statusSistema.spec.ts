@@ -40,6 +40,21 @@ describe('useStatusSistemaStore', () => {
     expect(store.banco).toBe('erro')
   })
 
+  it('situacao resume o estado para o menu', () => {
+    const store = useStatusSistemaStore()
+    expect(store.situacao).toBe('nao-verificado')
+
+    store.api = 'ok'
+    store.banco = 'ok'
+    expect(store.situacao).toBe('operando')
+
+    store.banco = 'erro'
+    expect(store.situacao).toBe('problema')
+
+    store.verificando = true
+    expect(store.situacao).toBe('verificando')
+  })
+
   it('não afirma nada sobre o banco quando a API está fora do ar', async () => {
     vi.mocked(buscarHealth).mockRejectedValue(new ApiError(null))
     const store = useStatusSistemaStore()

@@ -26,7 +26,8 @@ Ambiente `jsdom`, configurado em `vite.config.ts`. Os serviços HTTP são substi
 
 | Arquivo | Cobre |
 |---|---|
-| `statusSistema.spec.ts` | Store: API e banco ok; banco indisponível; API fora do ar não afirma nada sobre o banco |
+| `navegacao.spec.ts` | Cada rota renderiza a sua página (inclusive 404); menu lista as telas na ordem; gaveta abre e fecha ao navegar; resumo de status no menu |
+| `statusSistema.spec.ts` | Store: API e banco ok; banco indisponível; API fora do ar não afirma nada sobre o banco; getter `situacao` |
 | `IndicadorDeStatus.spec.ts` | Componente mostra o texto de cada estado |
 
 ```bash

@@ -59,10 +59,10 @@ apontam para dentro: `domain` e `analysis` não importam FastAPI nem SQLAlchemy.
 | Caminho | Responsabilidade |
 |---|---|
 | `src/main.ts` | Instala Pinia e Router, importa o CSS |
-| `src/router/` | Rotas. Páginas além da inicial entram por `import()` dinâmico |
-| `src/layouts/` | Moldura das telas (cabeçalho responsivo, rodapé) |
-| `src/pages/` | Uma página por rota |
-| `src/components/` | Componentes reutilizáveis, sem chamada à API |
+| `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só |
+| `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, gaveta no celular, resumo de status |
+| `src/pages/` | Uma página por rota: Painel, Insumos, Movimentações, Importar dados, Sistema |
+| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `EstadoVazio`, `IconeSvg`, `IndicadorDeStatus` |
 | `src/stores/` | Pinia — estado compartilhado e as ações que chamam os serviços |
 | `src/services/http.ts` | **Cliente HTTP único** (Axios). Normaliza erro em `ApiError` |
 | `src/services/*.ts` | Uma função por endpoint |
