@@ -6,9 +6,10 @@ Transforma registros de compras, retiradas e estoque em informação para decis�
 do mínimo, risco de falta, vencimento próximo, excesso, baixa movimentação, consumo incomum e
 reposição estimada — sempre com justificativa e limitações explícitas.
 
-> **Estado atual:** cadastro de insumos e lançamento de entradas e saídas pela tela; o Painel
-> mostra os alertas do motor de análise com a justificativa de cada um, a reposição estimada e
-> as limitações. Importação de planilha ainda não existe.
+> **Estado atual:** cadastro de insumos e lançamento de entradas e saídas pela tela ou por
+> planilha CSV (com prévia antes de gravar); o Painel mostra os alertas do motor de análise com a
+> justificativa de cada um, a reposição estimada (com lista de compras para o WhatsApp) e as
+> limitações. Cada insumo tem uma página com o gráfico do estoque e a projeção de quando acaba.
 
 ## Stack
 
@@ -50,6 +51,9 @@ Sem dados reais à mão, `make demo` (com o stack no ar) cria uma fazenda **fict
 de movimentações, pensada para acender cada tipo de alerta, mais um insumo saudável para
 contraste. As datas são relativas ao dia da carga: rode no dia da apresentação. A tela avisa que
 são dados de demonstração, e `make demo-limpar` apaga só eles, preservando o que foi cadastrado.
+
+Para mostrar a importação, a tela **Importar dados** oferece uma planilha modelo
+(`frontend/public/modelo-movimentacoes.csv`) no formato que o Excel em português grava.
 
 ## Comandos
 

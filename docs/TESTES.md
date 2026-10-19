@@ -11,7 +11,8 @@ no lugar do `get_db`.
 |---|---|
 | `test_health.py` | `/health` responde; `/ready` dá 200 com banco e **503** quando o banco falha |
 | `test_config.py` | `ENVIRONMENT` obrigatório e restrito; `/docs` ligado fora de produção e desligado em produção |
-| `test_estoque.py` | Cadastro de insumo (nome repetido = `409`), estoque e análise calculados das movimentações, movimentação inválida (`422`), alteração, listagem e remoção |
+| `test_estoque.py` | Cadastro de insumo (nome repetido = `409`), estoque e análise calculados das movimentações, movimentação inválida (`422`), alteração, listagem e remoção; detalhe do insumo com o saldo dia a dia; remover insumo leva as movimentações |
+| `test_importacao.py` | Planilha do Excel em português (BOM, `;`, vírgula decimal, `1.000`, DD/MM/AAAA); prévia não grava; confirmar grava e cadastra insumos novos; reimportar avisa `ja_lancadas`; unidade diferente da cadastrada; com um erro, nada é gravado — e cada erro diz a linha; planilha vazia ou sem as colunas |
 | `test_demo.py` | A fazenda de demonstração acende os alertas do roteiro, insumo por insumo; recarregar substitui; limpar apaga só a demonstração |
 | `test_analises.py` | `POST /analises`: resposta com alertas, reposição e limitações; `422` para período invertido e retirada negativa |
 | `test_motor_de_analise.py` | Cada alerta do motor (mínimo, falta, vencimento, excesso, baixa movimentação, consumo incomum), a reposição estimada com as contas à mão, e as limitações quando falta histórico ou cadastro |
@@ -33,7 +34,9 @@ Ambiente `jsdom`, configurado em `vite.config.ts`. Os serviços HTTP são substi
 | Arquivo | Cobre |
 |---|---|
 | `navegacao.spec.ts` | Cada rota renderiza a sua página (inclusive 404); menu lista as telas na ordem; gaveta abre e fecha ao navegar; resumo de status no menu |
-| `estoque.spec.ts` | Store: alertas de todos os insumos, os mais graves primeiro; recarga após lançar movimentação; mensagem legível sem API. Painel: alertas com justificativa, reposição, estado vazio |
+| `estoque.spec.ts` | Store: alertas de todos os insumos, os mais graves primeiro; recarga após lançar movimentação; mensagem legível sem API. Painel: alertas com justificativa, reposição, lista de compras do WhatsApp, estado vazio |
+| `importacao.spec.ts` | Tela de importação: decodifica Windows-1252, mostra o resumo, só grava ao confirmar e recarrega o estoque; com erros, lista-os e não oferece importar |
+| `insumo.spec.ts` | Página do insumo: resumo, alertas sem repetir o nome, "Insumos" aceso no menu, remover e voltar à lista. Gráfico (ECharts substituído por um mock que guarda a configuração): saldo mantido até hoje, projeção até zerar, texto do usuário escapado no tooltip |
 | `statusSistema.spec.ts` | Store: API e banco ok; banco indisponível; API fora do ar não afirma nada sobre o banco; getter `situacao` |
 | `IndicadorDeStatus.spec.ts` | Componente mostra o texto de cada estado |
 
@@ -51,7 +54,7 @@ make check-db
 ```
 
 Confere `GET /api/v1/ready` → `{"status":"pronto","database":"ok"}` e lê a revisão aplicada na
-tabela `alembic_version` do PostgreSQL (deve ser `0001`).
+tabela `alembic_version` do PostgreSQL (deve ser a última migration de `backend/migrations/versions/`).
 
 ## Lint e tipos
 
