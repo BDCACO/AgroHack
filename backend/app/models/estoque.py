@@ -6,7 +6,7 @@ Guardar o saldo seria ter duas fontes da verdade, que um dia discordam.
 
 from datetime import date
 
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -28,6 +28,8 @@ class Insumo(Base):
     unidade: Mapped[str] = mapped_column(String(20))
     estoque_minimo: Mapped[float | None] = mapped_column(Quantidade)
     prazo_reposicao_dias: Mapped[int | None]
+    # Gerado por `python -m app.demo`: a tela avisa, e `limpar` apaga só estes.
+    demonstracao: Mapped[bool] = mapped_column(default=False, server_default=false())
 
     movimentacoes: Mapped[list[Movimentacao]] = relationship(
         cascade="all, delete-orphan", passive_deletes=True

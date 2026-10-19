@@ -15,7 +15,7 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -31,6 +31,8 @@ def db() -> Iterator[Session]:
     engine = create_engine(
         "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
     )
+    # O SQLite só cumpre FOREIGN KEY (e o ON DELETE CASCADE) se pedirem, como o Postgres.
+    event.listen(engine, "connect", lambda conexao, _: conexao.execute("PRAGMA foreign_keys=ON"))
     Base.metadata.create_all(engine)
     with Session(engine, autoflush=False, expire_on_commit=False) as sessao:
         yield sessao

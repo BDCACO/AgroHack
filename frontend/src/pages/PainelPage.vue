@@ -110,7 +110,10 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
           class="flex flex-col gap-2 rounded-lg border border-stone-200 bg-white p-4 sm:flex-row sm:items-start sm:gap-4"
           data-teste="alerta"
         >
-          <SeloDeGravidade :gravidade="alerta.gravidade" />
+          <!-- Largura fixa: alinha o texto dos cartões e não deixa o selo esticar no celular. -->
+          <div class="shrink-0 sm:w-20">
+            <SeloDeGravidade :gravidade="alerta.gravidade" />
+          </div>
           <div>
             <p class="font-medium text-stone-800">
               {{ rotulo[alerta.tipo] }} · {{ insumo.nome }}

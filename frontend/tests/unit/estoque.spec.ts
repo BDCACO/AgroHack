@@ -20,6 +20,7 @@ function insumo(id: number, nome: string, alertas: Alerta[] = []): Insumo {
   return {
     id,
     nome,
+    demonstracao: false,
     unidade: 'kg',
     estoque_minimo: null,
     prazo_reposicao_dias: null,

@@ -39,7 +39,7 @@ _ORDEM_GRAVIDADE = {"alta": 0, "media": 1, "baixa": 2}
 @dataclass(frozen=True)
 class Reposicao:
     pedir_em: date
-    quantidade: float
+    quantidade: int
     justificativa: str
 
 
@@ -214,7 +214,9 @@ def _reposicao(insumo: Insumo, consumo: float, prazo: int, referencia: date) -> 
     no_pedido = estoque - consumo * dias_ate_pedir
     # Se acabar antes da entrega, a falta não é recuperada: chega-se com zero, não negativo.
     na_chegada = max(0.0, no_pedido - consumo * prazo)
-    quantidade = minimo + consumo * HORIZONTE_COMPRA_DIAS - na_chegada
+    # Para cima e inteiro: não se compra 29,32 sacas. O round tira o resíduo do float,
+    # que faria um 60,0000001 virar 61.
+    quantidade = math.ceil(round(minimo + consumo * HORIZONTE_COMPRA_DIAS - na_chegada, 3))
     pedir_em = referencia + timedelta(days=dias_ate_pedir)
 
     unidade = insumo.unidade

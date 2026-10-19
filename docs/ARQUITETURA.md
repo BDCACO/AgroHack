@@ -52,6 +52,7 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 |---|---|
 | `app/models/estoque.py` | `insumos` e `movimentacoes` (entrada ou saída, data, quantidade, validade). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura — uma fonte da verdade só |
 | `app/services/estoque.py` | Casos de uso: cadastro, movimentações e a análise de cada insumo a partir do banco. Única camada que as rotas de estoque chamam |
+| `app/demo.py` | Fazenda fictícia para a apresentação (`make demo`): insumos marcados com `demonstracao`, que a tela sinaliza e `make demo-limpar` apaga sozinhos |
 | `app/core/relogio.py` | `hoje()` na data de Rondônia (UTC−4 fixo, sem horário de verão), não na do servidor |
 
 Lote = entrada com validade. Como a retirada não diz de qual lote saiu, o saldo de cada lote é

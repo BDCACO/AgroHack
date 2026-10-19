@@ -44,6 +44,13 @@ partes estão conectadas.
 
 Sem `make`? Os alvos são atalhos de `docker compose`: `docker compose up --build`.
 
+## Demonstração
+
+Sem dados reais à mão, `make demo` (com o stack no ar) cria uma fazenda **fictícia** com 6 meses
+de movimentações, pensada para acender cada tipo de alerta, mais um insumo saudável para
+contraste. As datas são relativas ao dia da carga: rode no dia da apresentação. A tela avisa que
+são dados de demonstração, e `make demo-limpar` apaga só eles, preservando o que foi cadastrado.
+
 ## Comandos
 
 ```bash
@@ -52,6 +59,8 @@ make up         # sobe os serviços
 make down       # derruba (os dados do banco ficam no volume)
 make logs       # logs
 make migrate    # alembic upgrade head
+make demo       # carrega a fazenda de demonstração (fictícia, datas relativas a hoje)
+make demo-limpar  # apaga só os dados de demonstração
 make test       # pytest + vitest
 make lint       # ruff + vue-tsc + eslint
 make check-db   # confere API ↔ PostgreSQL com o stack no ar

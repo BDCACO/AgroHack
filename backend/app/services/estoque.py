@@ -122,6 +122,7 @@ def _resposta(insumo: Insumo, referencia: date) -> InsumoResposta:
         analise = replace(analise, limitacoes=[*analise.limitacoes, limitacao])
     return InsumoResposta(
         id=insumo.id,
+        demonstracao=insumo.demonstracao,
         nome=insumo.nome,
         unidade=insumo.unidade,
         estoque_minimo=insumo.estoque_minimo,

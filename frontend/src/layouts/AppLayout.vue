@@ -4,9 +4,11 @@ import { useRoute } from 'vue-router'
 
 import IconeSvg from '@/components/IconeSvg.vue'
 import { itensDeMenu } from '@/router'
+import { useEstoqueStore } from '@/stores/estoque'
 import { useStatusSistemaStore } from '@/stores/statusSistema'
 
 const status = useStatusSistemaStore()
+const estoque = useEstoqueStore()
 const rota = useRoute()
 
 // Gaveta do celular. No desktop (lg+) o menu é fixo e isto não tem efeito.
@@ -121,6 +123,17 @@ onMounted(() => status.verificar())
 
     <div class="flex min-w-0 flex-1 flex-col">
       <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+        <!-- Dado fictício nunca aparece sem aviso: é o que separa demonstração de invenção. -->
+        <p
+          v-if="estoque.insumos.some((insumo) => insumo.demonstracao)"
+          role="note"
+          class="mb-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          data-teste="aviso-demonstracao"
+        >
+          <strong>Dados de demonstração.</strong> Parte dos insumos e movimentações foi gerada
+          para apresentar o sistema e não vem de uma fazenda real. Para apagar:
+          <code>make demo-limpar</code>.
+        </p>
         <RouterView />
       </main>
       <footer class="border-t border-stone-200 px-4 py-4 text-center text-xs text-stone-500">

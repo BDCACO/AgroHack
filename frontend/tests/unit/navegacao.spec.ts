@@ -5,6 +5,8 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 import App from '@/App.vue'
 import { itensDeMenu, routes } from '@/router'
+import { listarInsumos } from '@/services/estoque'
+import type { Insumo } from '@/types/api'
 
 // O layout verifica a API ao montar; aqui a API não existe.
 vi.mock('@/services/health', () => ({
@@ -75,5 +77,21 @@ describe('navegação', () => {
     const { wrapper } = await montarEm('/')
 
     expect(wrapper.find('[data-teste="resumo-status"]').text()).toBe('Sistema operando')
+  })
+
+  it('avisa quando há dados de demonstração, e só nesse caso', async () => {
+    const semDemo = await montarEm('/')
+    expect(semDemo.wrapper.find('[data-teste="aviso-demonstracao"]').exists()).toBe(false)
+
+    const insumoDeDemo = {
+      id: 1,
+      nome: 'Ureia agrícola',
+      demonstracao: true,
+      analise: { alertas: [], reposicao: null, limitacoes: [] },
+    } as unknown as Insumo
+    vi.mocked(listarInsumos).mockResolvedValueOnce([insumoDeDemo])
+    const comDemo = await montarEm('/insumos')
+
+    expect(comDemo.wrapper.find('[data-teste="aviso-demonstracao"]').exists()).toBe(true)
   })
 })

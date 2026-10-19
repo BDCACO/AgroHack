@@ -51,6 +51,7 @@ export interface InsumoCadastro {
 
 export interface Insumo extends InsumoCadastro {
   id: number
+  demonstracao: boolean // gerado por `make demo`: não é dado real
   estoque_atual: number
   analise: Analise
 }

@@ -21,6 +21,7 @@ class InsumoCadastro(BaseModel):
 
 class InsumoResposta(InsumoCadastro):
     id: int
+    demonstracao: bool
     estoque_atual: float
     analise: Analise
 
