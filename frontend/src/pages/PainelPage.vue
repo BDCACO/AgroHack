@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import CartaoDeAlerta from '@/components/CartaoDeAlerta.vue'
@@ -31,6 +31,27 @@ const reposicoes = computed(() =>
 
 const hoje = () => new Date().toLocaleDateString('sv-SE')
 const dataBr = (data: string) => data.split('-').reverse().join('/')
+const quando = (pedirEm: string) => (pedirEm <= hoje() ? 'pedir hoje' : `pedir até ${dataBr(pedirEm)}`)
+
+// O pedido à revenda costuma sair pelo WhatsApp: a lista vai pronta, em texto.
+const listaDeCompras = computed(() =>
+  [
+    `Lista de compras (CampoCerto, ${dataBr(hoje())}):`,
+    ...reposicoes.value.map(
+      (item) =>
+        `- ${item.insumo.nome}: ${item.quantidade.toLocaleString('pt-BR')} ${item.insumo.unidade} (${quando(item.pedir_em)})`,
+    ),
+  ].join('\n'),
+)
+const linkWhatsApp = computed(() => `https://wa.me/?text=${encodeURIComponent(listaDeCompras.value)}`)
+// A área de transferência só existe em HTTPS ou localhost; fora disso, fica o WhatsApp.
+const podeCopiar = typeof navigator !== 'undefined' && Boolean(navigator.clipboard)
+const copiada = ref(false)
+async function copiar() {
+  await navigator.clipboard.writeText(listaDeCompras.value)
+  copiada.value = true
+  setTimeout(() => (copiada.value = false), 2000)
+}
 </script>
 
 <template>
@@ -109,12 +130,33 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
       aria-labelledby="titulo-reposicao"
       class="mt-8"
     >
-      <h2
-        id="titulo-reposicao"
-        class="text-sm font-semibold uppercase tracking-wide text-stone-500"
-      >
-        Reposição estimada
-      </h2>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2
+          id="titulo-reposicao"
+          class="text-sm font-semibold uppercase tracking-wide text-stone-500"
+        >
+          Reposição estimada
+        </h2>
+        <div class="flex gap-2">
+          <button
+            v-if="podeCopiar"
+            type="button"
+            class="rounded-md px-3 py-1.5 text-sm font-medium text-campo-700 hover:bg-campo-50"
+            @click="copiar"
+          >
+            {{ copiada ? 'Lista copiada' : 'Copiar lista' }}
+          </button>
+          <a
+            :href="linkWhatsApp"
+            target="_blank"
+            rel="noopener"
+            class="rounded-md border border-campo-600 px-3 py-1.5 text-sm font-medium text-campo-700 hover:bg-campo-50"
+            data-teste="whatsapp"
+          >
+            Enviar pelo WhatsApp
+          </a>
+        </div>
+      </div>
       <ul class="mt-3 divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white">
         <li
           v-for="item in reposicoes"
@@ -133,7 +175,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
               class="ml-2 text-sm font-normal"
               :class="item.pedir_em <= hoje() ? 'text-red-700' : 'text-stone-500'"
             >
-              {{ item.pedir_em <= hoje() ? 'pedir hoje' : `pedir até ${dataBr(item.pedir_em)}` }}
+              {{ quando(item.pedir_em) }}
             </span>
           </p>
           <p class="mt-0.5 text-sm text-stone-600">
