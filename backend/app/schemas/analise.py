@@ -3,14 +3,12 @@ from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.schemas.estoque import InsumoCadastro
 
-class InsumoEntrada(BaseModel):
-    nome: str = Field(min_length=1, max_length=120)
-    unidade: str = Field(min_length=1, max_length=20)
+
+class InsumoEntrada(InsumoCadastro):
     # Negativo é aceito: o motor o aponta como inconsistência nos registros.
     estoque_atual: float
-    estoque_minimo: float | None = Field(default=None, ge=0)
-    prazo_reposicao_dias: int | None = Field(default=None, ge=0, le=365)
 
 
 class RetiradaEntrada(BaseModel):

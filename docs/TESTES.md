@@ -2,13 +2,15 @@
 
 ## Backend — Pytest (`backend/tests/`)
 
-A suíte unitária usa **SQLite em memória** (`DATABASE_URL=sqlite://`, definido em
-`tests/conftest.py`), então não precisa de Docker nem de PostgreSQL.
+A suíte usa **SQLite em memória** (`DATABASE_URL=sqlite://`, definido em `tests/conftest.py`),
+então não precisa de Docker nem de PostgreSQL. A fixture `db` cria as tabelas dos modelos num
+banco novo por teste, e `client` usa esse banco no lugar do `get_db`.
 
 | Arquivo | Cobre |
 |---|---|
 | `test_health.py` | `/health` responde; `/ready` dá 200 com banco e **503** quando o banco falha |
 | `test_config.py` | `ENVIRONMENT` obrigatório e restrito; `/docs` ligado fora de produção e desligado em produção |
+| `test_estoque.py` | Cadastro de insumo (nome repetido = `409`), estoque e análise calculados das movimentações, movimentação inválida (`422`), alteração, listagem e remoção |
 | `test_analises.py` | `POST /analises`: resposta com alertas, reposição e limitações; `422` para período invertido e retirada negativa |
 | `test_motor_de_analise.py` | Cada alerta do motor (mínimo, falta, vencimento, excesso, baixa movimentação, consumo incomum), a reposição estimada com as contas à mão, e as limitações quando falta histórico ou cadastro |
 

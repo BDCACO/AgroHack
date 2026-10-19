@@ -48,6 +48,13 @@ class Retirada:
 
 
 @dataclass(frozen=True)
+class Entrada:
+    data: date
+    quantidade: float
+    validade: date | None = None  # sem validade (calcário, por exemplo) não vira lote
+
+
+@dataclass(frozen=True)
 class Alerta:
     tipo: TipoAlerta
     gravidade: Gravidade
@@ -91,6 +98,37 @@ def alertas_de_validade(lotes: Iterable[Lote], referencia: date, unidade: str) -
                 )
             )
     return alertas
+
+
+def lotes_em_estoque(entradas: Iterable[Entrada], retiradas: Iterable[Retirada]) -> list[Lote]:
+    """O que resta de cada lote com validade.
+
+    A retirada não diz de qual lote saiu, então se supõe a boa prática: usa-se
+    primeiro o que vence primeiro, entre os lotes que já tinham chegado na data da
+    retirada. No mesmo dia, a entrada conta antes da retirada.
+    """
+    eventos = sorted(
+        [(e.data, 0, e) for e in entradas] + [(r.data, 1, r) for r in retiradas],
+        key=lambda evento: evento[:2],
+    )
+    # [validade, saldo]; sem validade vai para o fim da fila (date.max) e não vira lote.
+    disponiveis: list[list] = []
+    for _, _, evento in eventos:
+        if isinstance(evento, Entrada):
+            disponiveis.append([evento.validade or date.max, evento.quantidade])
+            continue
+        falta = evento.quantidade
+        for lote in sorted(disponiveis, key=lambda lote: lote[0]):
+            usado = min(lote[1], falta)
+            lote[1] -= usado
+            falta -= usado
+            if falta <= 0:
+                break
+    return [
+        Lote(round(saldo, 3), validade)
+        for validade, saldo in disponiveis
+        if validade != date.max and round(saldo, 3) > 0
+    ]
 
 
 _PADRAO_BR = str.maketrans(",.", ".,")
