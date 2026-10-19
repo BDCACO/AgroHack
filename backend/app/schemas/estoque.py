@@ -51,6 +51,17 @@ class MovimentacaoResposta(_Movimentacao):
     id: int
 
 
+class PontoDeEstoque(BaseModel):
+    data: date
+    saldo: float  # no fim do dia
+
+
+class InsumoDetalhe(InsumoResposta):
+    # Um ponto por dia com movimentação, do mais antigo ao mais recente.
+    historico: list[PontoDeEstoque]
+    movimentacoes: list[MovimentacaoResposta]  # as mais recentes primeiro
+
+
 class PedidoDeImportacao(BaseModel):
     # O texto do CSV, já decodificado pelo navegador. 5 MB passam de dezenas de
     # milhares de linhas: anos de registro de uma propriedade.

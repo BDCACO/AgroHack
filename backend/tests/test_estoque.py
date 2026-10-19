@@ -111,3 +111,32 @@ def test_listar_e_remover_movimentacoes(client: TestClient) -> None:
     assert client.delete(f"/api/v1/movimentacoes/{recente['id']}").status_code == 404
     estoques = {i["nome"]: i["estoque_atual"] for i in client.get("/api/v1/insumos").json()}
     assert estoques == {"Calcário": 4, "Ureia": 10}
+
+
+def test_detalhe_traz_o_historico_do_estoque(client: TestClient) -> None:
+    ureia = criar(client)
+    lancar(client, insumo_id=ureia["id"], tipo="entrada", data=dia(10), quantidade=100)
+    lancar(client, insumo_id=ureia["id"], tipo="saida", data=dia(10), quantidade=20)
+    lancar(client, insumo_id=ureia["id"], tipo="saida", data=dia(3), quantidade=30)
+
+    detalhe = client.get(f"/api/v1/insumos/{ureia['id']}").json()
+
+    assert detalhe["estoque_atual"] == 50
+    # Um ponto por dia com movimentação: o saldo no fim daquele dia.
+    assert detalhe["historico"] == [
+        {"data": dia(10), "saldo": 80},
+        {"data": dia(3), "saldo": 50},
+    ]
+    assert [m["quantidade"] for m in detalhe["movimentacoes"]] == [30, 20, 100]
+    assert client.get("/api/v1/insumos/999").status_code == 404
+
+
+def test_remover_insumo_leva_as_movimentacoes(client: TestClient) -> None:
+    ureia = criar(client)
+    lancar(client, insumo_id=ureia["id"], tipo="entrada", data=dia(1), quantidade=10)
+
+    assert client.delete(f"/api/v1/insumos/{ureia['id']}").status_code == 204
+
+    assert client.get("/api/v1/insumos").json() == []
+    assert client.get("/api/v1/movimentacoes").json() == []
+    assert client.delete(f"/api/v1/insumos/{ureia['id']}").status_code == 404

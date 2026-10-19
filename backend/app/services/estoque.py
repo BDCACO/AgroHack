@@ -12,7 +12,14 @@ from app.analysis.consumo import analisar
 from app.core.relogio import hoje
 from app.domain import estoque as dominio
 from app.models import Insumo, Movimentacao
-from app.schemas.estoque import InsumoCadastro, InsumoResposta, MovimentacaoEntrada
+from app.schemas.estoque import (
+    InsumoCadastro,
+    InsumoDetalhe,
+    InsumoResposta,
+    MovimentacaoEntrada,
+    MovimentacaoResposta,
+    PontoDeEstoque,
+)
 
 
 class NomeDuplicado(Exception):
@@ -44,6 +51,27 @@ def atualizar_insumo(db: Session, insumo_id: int, dados: InsumoCadastro) -> Insu
         setattr(insumo, campo, valor)
     _salvar(db)
     return _resposta(insumo, hoje())
+
+
+def detalhar_insumo(db: Session, insumo_id: int) -> InsumoDetalhe:
+    insumo = _buscar_insumo(db, insumo_id)
+    movimentacoes = sorted(insumo.movimentacoes, key=lambda m: (m.data, m.id))
+    saldo, por_dia = 0.0, {}
+    for m in movimentacoes:
+        saldo += m.quantidade if m.tipo == "entrada" else -m.quantidade
+        # Vários lançamentos no mesmo dia: vale o saldo depois do último.
+        por_dia[m.data] = round(saldo, 3)
+    return InsumoDetalhe(
+        **dict(_resposta(insumo, hoje())),
+        historico=[PontoDeEstoque(data=dia, saldo=valor) for dia, valor in por_dia.items()],
+        movimentacoes=[MovimentacaoResposta.model_validate(m) for m in reversed(movimentacoes)],
+    )
+
+
+def remover_insumo(db: Session, insumo_id: int) -> None:
+    # As movimentações vão junto pelo ON DELETE CASCADE.
+    db.delete(_buscar_insumo(db, insumo_id))
+    db.commit()
 
 
 def listar_movimentacoes(db: Session, insumo_id: int | None, limite: int) -> list[Movimentacao]:

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.schemas.estoque import (
     InsumoCadastro,
+    InsumoDetalhe,
     InsumoResposta,
     MovimentacaoEntrada,
     MovimentacaoResposta,
@@ -42,6 +43,25 @@ def atualizar_insumo(
         raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
     except servico.NomeDuplicado:
         raise _NOME_DUPLICADO from None
+
+
+@router.get("/insumos/{insumo_id}", response_model=InsumoDetalhe)
+def detalhar_insumo(insumo_id: int, db: Session = Depends(get_db)) -> InsumoDetalhe:
+    """O insumo com a análise de hoje, o saldo dia a dia e as movimentações."""
+    try:
+        return servico.detalhar_insumo(db, insumo_id)
+    except servico.InsumoInexistente:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
+
+
+@router.delete("/insumos/{insumo_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remover_insumo(insumo_id: int, db: Session = Depends(get_db)) -> Response:
+    """Remove o insumo e todas as movimentações dele."""
+    try:
+        servico.remover_insumo(db, insumo_id)
+    except servico.InsumoInexistente:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/movimentacoes", response_model=list[MovimentacaoResposta])
