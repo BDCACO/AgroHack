@@ -1,0 +1,3 @@
+# Script de shell roda dentro do container Linux: com CRLF (core.autocrlf=true no
+# Windows), o shebang vira "#!/bin/sh\r" e o container não sobe.
+*.sh text eol=lf
