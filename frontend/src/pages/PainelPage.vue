@@ -1,21 +1,45 @@
 <script setup lang="ts">
+import { computed, onMounted } from 'vue'
+
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
-import IconeSvg from '@/components/IconeSvg.vue'
+import SeloDeGravidade from '@/components/SeloDeGravidade.vue'
+import { useEstoqueStore } from '@/stores/estoque'
+import type { Gravidade, TipoAlerta } from '@/types/api'
 
-// As situações que o CampoCerto vai identificar (requisitos do desafio). Isto é
-// TEXTO DE TELA, não regra: quem decide se um insumo está em cada situação é a
-// análise do backend. Quando ela existir, esta lista passa a vir da API com a
-// contagem e a justificativa de cada alerta.
-const situacoes = [
-  { titulo: 'Estoque abaixo do mínimo', texto: 'Insumos com quantidade menor que o mínimo definido.' },
-  { titulo: 'Risco de falta', texto: 'Insumos que podem acabar antes da próxima reposição, pelo ritmo de consumo.' },
-  { titulo: 'Próximos do vencimento', texto: 'Lotes que vencem em breve.' },
-  { titulo: 'Excesso de estoque', texto: 'Quantidade acima do que o consumo justifica.' },
-  { titulo: 'Baixa movimentação', texto: 'Insumos parados há muito tempo.' },
-  { titulo: 'Consumo incomum', texto: 'Retiradas fora do padrão histórico.' },
-  { titulo: 'Reposição estimada', texto: 'Quanto e quando comprar, com as limitações da estimativa.' },
-]
+// Só exibe: quem decide alerta, justificativa, reposição e limitação é o backend.
+const estoque = useEstoqueStore()
+onMounted(() => estoque.carregar())
+
+const rotulo: Record<TipoAlerta, string> = {
+  abaixo_do_minimo: 'Abaixo do mínimo',
+  risco_de_falta: 'Risco de falta',
+  vencido: 'Lote vencido',
+  vencimento_proximo: 'Vencimento próximo',
+  excesso: 'Excesso de estoque',
+  baixa_movimentacao: 'Baixa movimentação',
+  consumo_incomum: 'Consumo incomum',
+}
+
+const resumo = computed(() => {
+  const contagem: Record<Gravidade, number> = { alta: 0, media: 0, baixa: 0 }
+  for (const { alerta } of estoque.alertas) contagem[alerta.gravidade]++
+  return [
+    { gravidade: 'alta', titulo: 'Urgentes', total: contagem.alta },
+    { gravidade: 'media', titulo: 'Atenção', total: contagem.media },
+    { gravidade: 'baixa', titulo: 'Observar', total: contagem.baixa },
+  ] as const
+})
+
+// Datas AAAA-MM-DD comparam certo como texto.
+const reposicoes = computed(() =>
+  estoque.insumos
+    .flatMap((insumo) => (insumo.analise.reposicao ? [{ insumo, ...insumo.analise.reposicao }] : []))
+    .sort((a, b) => a.pedir_em.localeCompare(b.pedir_em)),
+)
+
+const hoje = () => new Date().toLocaleDateString('sv-SE')
+const dataBr = (data: string) => data.split('-').reverse().join('/')
 </script>
 
 <template>
@@ -24,48 +48,148 @@ const situacoes = [
     descricao="Alertas sobre o estoque de insumos, com a justificativa de cada um."
   />
 
+  <p
+    v-if="estoque.erro"
+    role="alert"
+    class="mt-6 text-sm text-red-700"
+  >
+    {{ estoque.erro }}
+  </p>
+
   <EstadoVazio
-    icone="importar"
-    titulo="Nenhum dado de estoque ainda"
-    texto="Os alertas aparecem aqui depois que os registros de compras, retiradas e estoque forem importados."
+    v-else-if="estoque.carregado && !estoque.insumos.length"
+    icone="insumos"
+    titulo="Nenhum insumo cadastrado ainda"
+    texto="Cadastre os insumos e lance as compras e retiradas: os alertas aparecem aqui, cada um com a conta que o justifica."
   >
     <RouterLink
-      :to="{ name: 'importar' }"
-      class="inline-flex items-center gap-2 rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700"
+      :to="{ name: 'insumos' }"
+      class="inline-flex rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700"
     >
-      Importar dados
+      Cadastrar insumos
     </RouterLink>
   </EstadoVazio>
 
-  <section aria-labelledby="titulo-situacoes">
-    <h2
-      id="titulo-situacoes"
-      class="text-sm font-semibold uppercase tracking-wide text-stone-500"
-    >
-      O que será analisado
-    </h2>
-    <ul class="mt-3 grid overflow-hidden rounded-lg border border-stone-200 bg-white sm:grid-cols-2 lg:grid-cols-3">
-      <li
-        v-for="situacao in situacoes"
-        :key="situacao.titulo"
-        class="-mr-px -mb-px flex gap-3 border-r border-b border-stone-200 p-4"
+  <template v-else-if="estoque.insumos.length">
+    <dl class="mt-6 grid grid-cols-3 gap-3">
+      <div
+        v-for="item in resumo"
+        :key="item.gravidade"
+        class="rounded-lg border border-stone-200 bg-white p-4"
       >
-        <IconeSvg
-          nome="alerta"
-          class="mt-0.5 h-5 w-5 shrink-0 text-stone-300"
-        />
-        <div>
+        <dt><SeloDeGravidade :gravidade="item.gravidade" /></dt>
+        <dd class="mt-2 text-3xl font-semibold tabular-nums text-stone-800">
+          {{ item.total }}
+        </dd>
+      </div>
+    </dl>
+
+    <section
+      aria-labelledby="titulo-alertas"
+      class="mt-8"
+    >
+      <h2
+        id="titulo-alertas"
+        class="text-sm font-semibold uppercase tracking-wide text-stone-500"
+      >
+        Alertas
+      </h2>
+      <p
+        v-if="!estoque.alertas.length"
+        class="mt-3 text-sm text-stone-600"
+      >
+        Nenhum alerta hoje. Os insumos estão dentro do esperado para o consumo registrado.
+      </p>
+      <ul
+        v-else
+        class="mt-3 space-y-2"
+      >
+        <li
+          v-for="{ insumo, alerta } in estoque.alertas"
+          :key="`${insumo.id}-${alerta.tipo}-${alerta.justificativa}`"
+          class="flex flex-col gap-2 rounded-lg border border-stone-200 bg-white p-4 sm:flex-row sm:items-start sm:gap-4"
+          data-teste="alerta"
+        >
+          <SeloDeGravidade :gravidade="alerta.gravidade" />
+          <div>
+            <p class="font-medium text-stone-800">
+              {{ rotulo[alerta.tipo] }} · {{ insumo.nome }}
+            </p>
+            <p class="mt-0.5 text-sm text-stone-600">
+              {{ alerta.justificativa }}
+            </p>
+          </div>
+        </li>
+      </ul>
+    </section>
+
+    <section
+      v-if="reposicoes.length"
+      aria-labelledby="titulo-reposicao"
+      class="mt-8"
+    >
+      <h2
+        id="titulo-reposicao"
+        class="text-sm font-semibold uppercase tracking-wide text-stone-500"
+      >
+        Reposição estimada
+      </h2>
+      <ul class="mt-3 divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white">
+        <li
+          v-for="item in reposicoes"
+          :key="item.insumo.id"
+          class="p-4"
+          data-teste="reposicao"
+        >
           <p class="font-medium text-stone-800">
-            {{ situacao.titulo }}
+            {{ item.insumo.nome }}
+            <span
+              class="ml-2 text-sm font-normal"
+              :class="item.pedir_em <= hoje() ? 'text-red-700' : 'text-stone-500'"
+            >
+              {{ item.pedir_em <= hoje() ? 'pedir hoje' : `pedir até ${dataBr(item.pedir_em)}` }}
+            </span>
           </p>
-          <p class="mt-0.5 text-sm text-stone-500">
-            {{ situacao.texto }}
+          <p class="mt-0.5 text-sm text-stone-600">
+            {{ item.justificativa }}
           </p>
-          <p class="mt-2 text-xs font-medium text-stone-400">
-            Aguardando dados
-          </p>
-        </div>
-      </li>
-    </ul>
-  </section>
+        </li>
+      </ul>
+    </section>
+
+    <section
+      aria-labelledby="titulo-limitacoes"
+      class="mt-8"
+    >
+      <h2
+        id="titulo-limitacoes"
+        class="text-sm font-semibold uppercase tracking-wide text-stone-500"
+      >
+        Limitações da análise
+      </h2>
+      <p class="mt-1 text-sm text-stone-500">
+        O que a conta não sabe, por insumo. Leia antes de decidir uma compra.
+      </p>
+      <div class="mt-3 divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white">
+        <details
+          v-for="insumo in estoque.insumos"
+          :key="insumo.id"
+          class="px-4 py-3"
+        >
+          <summary class="cursor-pointer text-sm font-medium text-stone-800">
+            {{ insumo.nome }}
+            <span class="font-normal text-stone-500">({{ insumo.analise.limitacoes.length }})</span>
+          </summary>
+          <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-stone-600">
+            <li
+              v-for="limitacao in insumo.analise.limitacoes"
+              :key="limitacao"
+            >
+              {{ limitacao }}
+            </li>
+          </ul>
+        </details>
+      </div>
+    </section>
+  </template>
 </template>

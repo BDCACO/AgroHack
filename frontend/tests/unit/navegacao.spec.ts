@@ -11,6 +11,10 @@ vi.mock('@/services/health', () => ({
   buscarHealth: vi.fn().mockResolvedValue({ status: 'ok' }),
   buscarReadiness: vi.fn().mockResolvedValue({ status: 'pronto', database: 'ok' }),
 }))
+vi.mock('@/services/estoque', () => ({
+  listarInsumos: vi.fn().mockResolvedValue([]),
+  listarMovimentacoes: vi.fn().mockResolvedValue([]),
+}))
 
 async function montarEm(caminho: string) {
   const router = createRouter({ history: createMemoryHistory(), routes })

@@ -84,9 +84,9 @@ tem banco a orquestrar e chama o motor direto.
 | `src/main.ts` | Instala Pinia e Router, importa o CSS |
 | `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só |
 | `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, gaveta no celular, resumo de status |
-| `src/pages/` | Uma página por rota: Painel, Insumos, Movimentações, Importar dados, Sistema |
-| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `EstadoVazio`, `IconeSvg`, `IndicadorDeStatus` |
-| `src/stores/` | Pinia — estado compartilhado e as ações que chamam os serviços |
+| `src/pages/` | Uma página por rota: Painel (alertas, reposição, limitações), Insumos (cadastro), Movimentações (entradas e saídas), Importar dados, Sistema |
+| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `EstadoVazio`, `IconeSvg`, `IndicadorDeStatus`, `SeloDeGravidade` |
+| `src/stores/` | Pinia — estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração |
 | `src/services/http.ts` | **Cliente HTTP único** (Axios). Normaliza erro em `ApiError` |
 | `src/services/*.ts` | Uma função por endpoint |
 | `src/types/` | Tipos TypeScript dos contratos da API |

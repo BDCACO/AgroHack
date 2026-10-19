@@ -6,10 +6,9 @@ Transforma registros de compras, retiradas e estoque em informação para decis�
 do mínimo, risco de falta, vencimento próximo, excesso, baixa movimentação, consumo incomum e
 reposição estimada — sempre com justificativa e limitações explícitas.
 
-> **Estado atual:** frontend, API e banco sobem e conversam entre si. O motor de análise
-> (`backend/app/domain` + `backend/app/analysis`) está pronto, testado e exposto em
-> `POST /api/v1/analises` (dados no corpo, sem banco). A modelagem e a importação esperam o
-> formato dos dados da organização.
+> **Estado atual:** cadastro de insumos e lançamento de entradas e saídas pela tela; o Painel
+> mostra os alertas do motor de análise com a justificativa de cada um, a reposição estimada e
+> as limitações. Importação de planilha ainda não existe.
 
 ## Stack
 
