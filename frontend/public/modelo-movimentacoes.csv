@@ -1,4 +1,4 @@
 ﻿data;insumo;unidade;tipo;quantidade;validade
-02/03/2026;Ureia agrícola;kg;entrada;1.000;
-09/03/2026;Ureia agrícola;kg;saída;25,5;
-16/03/2026;Ivermectina 1%;L;entrada;5;30/06/2027
+02/03/2026;Adubo NPK 20-05-20;kg;entrada;1.000;
+09/03/2026;Adubo NPK 20-05-20;kg;saída;25,5;
+16/03/2026;Vacina contra aftosa;dose;entrada;50;30/06/2027

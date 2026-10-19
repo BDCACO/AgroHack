@@ -104,6 +104,7 @@ Todas em `.env` na raiz — modelo comentado em [`.env.example`](.env.example).
 - [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) — estrutura, camadas, decisões e o que foi
   herdado do ArkoHub.
 - [`docs/TESTES.md`](docs/TESTES.md) — o que cada suíte cobre e como rodar.
+- [`docs/APRESENTACAO.md`](docs/APRESENTACAO.md) — roteiro da demonstração com a fazenda fictícia.
 
 ## Estrutura
 
