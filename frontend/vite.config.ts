@@ -19,6 +19,10 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // No Docker Desktop do Windows, o container não recebe aviso de arquivo alterado
+    // no código montado do host: sem polling, o Vite serve a versão antiga até
+    // reiniciar. O compose liga; rodando no host não precisa.
+    watch: process.env.VITE_POLLING ? { usePolling: true, interval: 300 } : undefined,
     // Front e API na MESMA origem (padrão do ArkoHub): o navegador fala só com o
     // Vite, que repassa /api. Sem CORS para configurar, e em produção basta um
     // reverse proxy fazer o mesmo papel.
