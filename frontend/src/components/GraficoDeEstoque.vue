@@ -71,7 +71,8 @@ function opcoes(): EChartsCoreOption {
 
   return {
     animationDuration: 300,
-    grid: { left: 8, right: 24, top: 24, bottom: 8, containLabel: true },
+    // O rótulo "zera em ~N dias" fica além do fim da linha: o grid reserva o espaço.
+    grid: { left: 8, right: p?.zera ? 120 : 24, top: 24, bottom: 8, containLabel: true },
     xAxis: {
       type: 'time',
       axisLine: { lineStyle: { color: GRADE } },
