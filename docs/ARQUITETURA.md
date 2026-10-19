@@ -31,16 +31,28 @@ navegador ──► Vite (:5173) ──/api──► FastAPI (:8000) ──► P
 | `migrations/` | Alembic. Linhagem única, toda migration com `downgrade` |
 | `tests/` | Pytest |
 
-### Camadas previstas (criadas quando houver código para elas)
-
-Para não manter diretórios vazios, estas pastas **ainda não existem**. Entram junto com a
-primeira funcionalidade que as usar:
+### Domínio e análise (motor de análise)
 
 | Caminho | Responsabilidade | Regra |
 |---|---|---|
-| `app/services/` | Casos de uso: orquestram repositório, regra e análise | Única camada que a rota chama |
-| `app/domain/` | Regras de negócio puras (limiar de estoque mínimo, vencimento...) | **Sem I/O, sem banco, sem `datetime.now()`** — a data de referência entra como parâmetro |
-| `app/analysis/` | Análises com Pandas (consumo, tendência, estimativa de reposição) | Recebe DataFrame/listas, devolve resultado + **justificativa e limitações** |
+| `app/domain/estoque.py` | Tipos de entrada (`Insumo`, `Lote`, `Retirada`), `Alerta` e as regras que não dependem de histórico: estoque abaixo do mínimo, lote vencido ou a vencer | **Sem I/O, sem banco, sem `datetime.now()`** — a data de referência entra como parâmetro |
+| `app/analysis/consumo.py` | `analisar(...)`: consumo médio, cobertura em dias, risco de falta, excesso, baixa movimentação, consumo incomum e reposição estimada | Recebe listas, devolve `Analise` com **justificativa** em cada alerta e as **limitações** dos dados |
+
+Os limiares (janela de 90 dias, 30 dias para vencimento, 180 de cobertura para excesso, prazo
+padrão de 15 dias...) são constantes no topo de cada módulo, com o porquê ao lado. A análise usa
+`statistics` da biblioteca padrão, não Pandas: média e desvio de uma lista de retiradas não
+pedem DataFrame, e a conta fica legível para quem vai justificá-la ao produtor. Pandas entra se
+a importação de planilhas pedir.
+
+O motor está exposto por `POST /api/v1/analises`, que recebe os dados no corpo e não toca o
+banco: a modelagem depende do formato dos dados (seção 6). A resposta é o próprio `Analise` do
+motor; a entrada é validada por `app/schemas/analise.py`.
+
+### Camada prevista
+
+| Caminho | Responsabilidade | Regra |
+|---|---|---|
+| `app/services/` | Casos de uso: orquestram repositório, regra e análise | Entra com o primeiro repositório; até lá, a rota de análise chama o motor direto |
 
 O fluxo esperado é `rota → serviço → (domínio | análise) → repositório/ORM`. As setas só
 apontam para dentro: `domain` e `analysis` não importam FastAPI nem SQLAlchemy.
@@ -51,6 +63,7 @@ apontam para dentro: `domain` e `analysis` não importam FastAPI nem SQLAlchemy.
 |---|---|
 | `GET /api/v1/health` | Liveness — o processo está no ar. Não toca o banco |
 | `GET /api/v1/ready` | Readiness — `200` com o banco respondendo, `503` sem ele |
+| `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período) e devolve alertas, reposição e limitações. `422` para entrada inválida |
 | `GET /api/v1/docs` | Swagger UI (desligado em `production`) |
 | `GET /api/v1/openapi.json` | Schema OpenAPI (desligado em `production`) |
 
@@ -126,5 +139,5 @@ tecnologias que não se aplicam.
 2. **Autenticação** — o desafio não exige; decidir se a demonstração é monousuário.
 3. **Geração de tipos TS a partir do OpenAPI** (`openapi-typescript`) quando houver mais de um
    recurso.
-4. **Pandas e Apache ECharts** entram com a primeira análise e o primeiro gráfico — não foram
-   instalados antes de ter uso.
+4. **Apache ECharts** entra com o primeiro gráfico; **Pandas**, se a importação de planilhas
+   pedir — o motor de análise não precisou.
