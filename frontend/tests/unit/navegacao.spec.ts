@@ -83,12 +83,22 @@ describe('navegação', () => {
     const semDemo = await montarEm('/')
     expect(semDemo.wrapper.find('[data-teste="aviso-demonstracao"]').exists()).toBe(false)
 
-    const insumoDeDemo = {
+    const insumoDeDemo: Insumo = {
       id: 1,
       nome: 'Ureia agrícola',
+      unidade: 'kg',
+      estoque_minimo: null,
+      prazo_reposicao_dias: null,
       demonstracao: true,
-      analise: { alertas: [], reposicao: null, limitacoes: [] },
-    } as unknown as Insumo
+      estoque_atual: 0,
+      analise: {
+        consumo_diario: null,
+        cobertura_dias: null,
+        alertas: [],
+        reposicao: null,
+        limitacoes: [],
+      },
+    }
     vi.mocked(listarInsumos).mockResolvedValueOnce([insumoDeDemo])
     const comDemo = await montarEm('/insumos')
 
