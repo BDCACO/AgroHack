@@ -134,6 +134,9 @@ def analisar(
                 f" — mais de {COBERTURA_EXCESSO_DIAS} dias de capital parado.",
             )
         )
+        # Com excesso não há compra a sugerir — e isso limita a data do pedido a
+        # COBERTURA_EXCESSO_DIAS, em vez de séculos à frente com consumo ínfimo.
+        return resultado(consumo=consumo, cobertura=cobertura)
 
     limitacoes.append(
         "A quantidade sugerida não considera embalagem, pedido mínimo do fornecedor nem preço."

@@ -69,9 +69,21 @@ def test_excesso_e_limitacoes_de_cadastro_incompleto() -> None:
     analise = analisar(insumo, diarias(1, 120), registros_desde=DESDE_120_DIAS, referencia=REF)
 
     assert [(a.tipo, a.gravidade) for a in analise.alertas] == [("excesso", "baixa")]
+    assert analise.reposicao is None
     limitacoes = " ".join(analise.limitacoes)
     assert "Estoque mínimo não cadastrado" in limitacoes
     assert "assumidos 15 dias" in limitacoes
+
+
+def test_consumo_infimo_nao_estoura_a_data_da_reposicao() -> None:
+    insumo = Insumo("Calcário", "t", estoque_atual=1_000_000)
+
+    analise = analisar(
+        insumo, [Retirada(antes(10), 0.5)], registros_desde=DESDE_120_DIAS, referencia=REF
+    )
+
+    assert [a.tipo for a in analise.alertas] == ["excesso"]
+    assert analise.reposicao is None
 
 
 def test_historico_curto_nao_estima_consumo() -> None:
