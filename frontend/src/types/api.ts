@@ -67,3 +67,15 @@ export interface MovimentacaoEntrada {
 export interface Movimentacao extends MovimentacaoEntrada {
   id: number
 }
+
+export interface ResultadoImportacao {
+  linhas: number
+  entradas: number
+  saidas: number
+  insumos_novos: string[]
+  primeira_data: string | null // AAAA-MM-DD
+  ultima_data: string | null
+  ja_lancadas: number // linhas iguais a movimentações já no banco: planilha repetida?
+  erros: string[] // "Linha 7: ..." — com um erro sequer, nada é gravado
+  importado: boolean
+}

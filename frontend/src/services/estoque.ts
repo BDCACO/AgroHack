@@ -3,6 +3,7 @@ import type {
   InsumoCadastro,
   Movimentacao,
   MovimentacaoEntrada,
+  ResultadoImportacao,
 } from '@/types/api'
 
 import { http } from './http'
@@ -34,4 +35,13 @@ export async function registrarMovimentacao(dados: MovimentacaoEntrada): Promise
 
 export async function removerMovimentacao(id: number): Promise<void> {
   await http.delete(`/movimentacoes/${id}`)
+}
+
+/** Sem `confirmar`, a API só confere a planilha e devolve o resumo. */
+export async function importarPlanilha(
+  conteudo: string,
+  confirmar: boolean,
+): Promise<ResultadoImportacao> {
+  const { data } = await http.post<ResultadoImportacao>('/importacoes', { conteudo, confirmar })
+  return data
 }

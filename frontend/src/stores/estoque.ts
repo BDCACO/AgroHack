@@ -71,5 +71,11 @@ export const useEstoqueStore = defineStore('estoque', {
       await api.removerMovimentacao(id)
       await this.carregar()
     },
+    /** Sem `confirmar`, só confere. Quando grava, recarrega: muda estoque e alertas. */
+    async importarPlanilha(conteudo: string, confirmar: boolean) {
+      const resultado = await api.importarPlanilha(conteudo, confirmar)
+      if (resultado.importado) await this.carregar()
+      return resultado
+    },
   },
 })
