@@ -1,0 +1,39 @@
+from datetime import date
+from typing import Self
+
+from pydantic import BaseModel, Field, model_validator
+
+
+class InsumoEntrada(BaseModel):
+    nome: str = Field(min_length=1, max_length=120)
+    unidade: str = Field(min_length=1, max_length=20)
+    # Negativo é aceito: o motor o aponta como inconsistência nos registros.
+    estoque_atual: float
+    estoque_minimo: float | None = Field(default=None, ge=0)
+    prazo_reposicao_dias: int | None = Field(default=None, ge=0, le=365)
+
+
+class RetiradaEntrada(BaseModel):
+    data: date
+    quantidade: float = Field(gt=0)
+
+
+class LoteEntrada(BaseModel):
+    quantidade: float = Field(ge=0)
+    validade: date
+
+
+class PedidoDeAnalise(BaseModel):
+    insumo: InsumoEntrada
+    retiradas: list[RetiradaEntrada] = Field(default=[], max_length=100_000)
+    lotes: list[LoteEntrada] = Field(default=[], max_length=1_000)
+    # Desde quando as retiradas estão completas: separa "não houve consumo" de
+    # "não havia registro".
+    registros_desde: date
+    referencia: date
+
+    @model_validator(mode="after")
+    def _periodo_valido(self) -> Self:
+        if self.registros_desde > self.referencia:
+            raise ValueError("registros_desde não pode ser depois de referencia")
+        return self

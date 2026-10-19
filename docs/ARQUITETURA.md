@@ -44,14 +44,15 @@ padrão de 15 dias...) são constantes no topo de cada módulo, com o porquê ao
 pedem DataFrame, e a conta fica legível para quem vai justificá-la ao produtor. Pandas entra se
 a importação de planilhas pedir.
 
-O motor ainda não está exposto pela API: falta a modelagem, que depende do formato dos dados
-(seção 6).
+O motor está exposto por `POST /api/v1/analises`, que recebe os dados no corpo e não toca o
+banco: a modelagem depende do formato dos dados (seção 6). A resposta é o próprio `Analise` do
+motor; a entrada é validada por `app/schemas/analise.py`.
 
 ### Camada prevista
 
 | Caminho | Responsabilidade | Regra |
 |---|---|---|
-| `app/services/` | Casos de uso: orquestram repositório, regra e análise | Única camada que a rota chama |
+| `app/services/` | Casos de uso: orquestram repositório, regra e análise | Entra com o primeiro repositório; até lá, a rota de análise chama o motor direto |
 
 O fluxo esperado é `rota → serviço → (domínio | análise) → repositório/ORM`. As setas só
 apontam para dentro: `domain` e `analysis` não importam FastAPI nem SQLAlchemy.
@@ -62,6 +63,7 @@ apontam para dentro: `domain` e `analysis` não importam FastAPI nem SQLAlchemy.
 |---|---|
 | `GET /api/v1/health` | Liveness — o processo está no ar. Não toca o banco |
 | `GET /api/v1/ready` | Readiness — `200` com o banco respondendo, `503` sem ele |
+| `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período) e devolve alertas, reposição e limitações. `422` para entrada inválida |
 | `GET /api/v1/docs` | Swagger UI (desligado em `production`) |
 | `GET /api/v1/openapi.json` | Schema OpenAPI (desligado em `production`) |
 

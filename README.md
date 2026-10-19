@@ -7,8 +7,9 @@ do mínimo, risco de falta, vencimento próximo, excesso, baixa movimentação, 
 reposição estimada — sempre com justificativa e limitações explícitas.
 
 > **Estado atual:** frontend, API e banco sobem e conversam entre si. O motor de análise
-> (`backend/app/domain` + `backend/app/analysis`) está pronto e testado, mas ainda não é exposto
-> pela API: a modelagem e a importação esperam o formato dos dados da organização.
+> (`backend/app/domain` + `backend/app/analysis`) está pronto, testado e exposto em
+> `POST /api/v1/analises` (dados no corpo, sem banco). A modelagem e a importação esperam o
+> formato dos dados da organização.
 
 ## Stack
 
