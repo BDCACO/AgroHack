@@ -6,8 +6,9 @@ Transforma registros de compras, retiradas e estoque em informação para decis�
 do mínimo, risco de falta, vencimento próximo, excesso, baixa movimentação, consumo incomum e
 reposição estimada — sempre com justificativa e limitações explícitas.
 
-> **Estado atual:** base do projeto. Frontend, API e banco sobem e conversam entre si; as
-> funcionalidades de estoque e análise ainda não foram implementadas.
+> **Estado atual:** frontend, API e banco sobem e conversam entre si. O motor de análise
+> (`backend/app/domain` + `backend/app/analysis`) está pronto e testado, mas ainda não é exposto
+> pela API: a modelagem e a importação esperam o formato dos dados da organização.
 
 ## Stack
 
@@ -101,6 +102,8 @@ CampoCerto/
 │   │   ├── main.py              # create_app()
 │   │   ├── core/                # config, database
 │   │   ├── api/                 # router + routes/
+│   │   ├── domain/              # regras de estoque puras (sem I/O)
+│   │   ├── analysis/            # motor de análise: consumo, alertas, reposição
 │   │   ├── schemas/             # Pydantic
 │   │   └── models/              # SQLAlchemy
 │   ├── migrations/              # Alembic

@@ -9,6 +9,7 @@ A suíte unitária usa **SQLite em memória** (`DATABASE_URL=sqlite://`, definid
 |---|---|
 | `test_health.py` | `/health` responde; `/ready` dá 200 com banco e **503** quando o banco falha |
 | `test_config.py` | `ENVIRONMENT` obrigatório e restrito; `/docs` ligado fora de produção e desligado em produção |
+| `test_motor_de_analise.py` | Cada alerta do motor (mínimo, falta, vencimento, excesso, baixa movimentação, consumo incomum), a reposição estimada com as contas à mão, e as limitações quando falta histórico ou cadastro |
 
 ```bash
 make test-backend                 # no container
