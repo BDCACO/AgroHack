@@ -9,12 +9,15 @@ declare module 'vue-router' {
     titulo?: string
     /** Presente = a rota aparece no menu lateral, com este ícone. */
     menu?: { icone: NomeIcone }
+    /** Tela fora do menu que acende um item dele (o detalhe acende "Insumos"). */
+    secao?: string
   }
 }
 
 // Páginas além do Painel entram como import dinâmico (chunk próprio), como no
 // ArkoHub: cada tela só é baixada quando alguém navega até ela.
 const InsumosPage = () => import('@/pages/InsumosPage.vue')
+const InsumoPage = () => import('@/pages/InsumoPage.vue')
 const MovimentacoesPage = () => import('@/pages/MovimentacoesPage.vue')
 const ImportarPage = () => import('@/pages/ImportarPage.vue')
 const SistemaPage = () => import('@/pages/SistemaPage.vue')
@@ -73,6 +76,13 @@ export const routes: RouteRecordRaw[] = [
     component: AppLayout,
     children: [
       ...telas,
+      {
+        path: 'insumos/:id(\\d+)',
+        name: 'insumo',
+        component: InsumoPage,
+        props: (rota) => ({ id: Number(rota.params.id) }),
+        meta: { titulo: 'Insumo', secao: 'insumos' },
+      },
       {
         path: ':caminho(.*)*',
         name: 'nao-encontrado',

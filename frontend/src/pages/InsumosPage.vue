@@ -219,7 +219,12 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
           :key="insumo.id"
         >
           <td class="px-4 py-3 font-medium text-stone-800">
-            {{ insumo.nome }}
+            <RouterLink
+              :to="{ name: 'insumo', params: { id: insumo.id } }"
+              class="hover:text-campo-700 hover:underline"
+            >
+              {{ insumo.nome }}
+            </RouterLink>
           </td>
           <td
             class="px-4 py-3 text-right tabular-nums"

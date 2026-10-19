@@ -1,6 +1,7 @@
 import type {
   Insumo,
   InsumoCadastro,
+  InsumoDetalhe,
   Movimentacao,
   MovimentacaoEntrada,
   ResultadoImportacao,
@@ -21,6 +22,15 @@ export async function criarInsumo(dados: InsumoCadastro): Promise<Insumo> {
 export async function atualizarInsumo(id: number, dados: InsumoCadastro): Promise<Insumo> {
   const { data } = await http.put<Insumo>(`/insumos/${id}`, dados)
   return data
+}
+
+export async function buscarInsumo(id: number): Promise<InsumoDetalhe> {
+  const { data } = await http.get<InsumoDetalhe>(`/insumos/${id}`)
+  return data
+}
+
+export async function removerInsumo(id: number): Promise<void> {
+  await http.delete(`/insumos/${id}`)
 }
 
 export async function listarMovimentacoes(): Promise<Movimentacao[]> {

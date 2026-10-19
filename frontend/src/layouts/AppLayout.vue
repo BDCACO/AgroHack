@@ -97,7 +97,7 @@ onMounted(() => status.verificar())
           :key="item.nome"
           :to="{ name: item.nome }"
           class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-campo-100 hover:bg-white/10 hover:text-white"
-          exact-active-class="bg-white/15 text-white"
+          :class="item.nome === (rota.meta.secao ?? rota.name) ? 'bg-white/15 text-white' : ''"
         >
           <IconeSvg
             :nome="item.icone"

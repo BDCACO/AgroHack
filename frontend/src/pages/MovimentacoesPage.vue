@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
@@ -12,9 +13,11 @@ onMounted(() => estoque.carregar())
 // AAAA-MM-DD no fuso do navegador (o do produtor); 'sv-SE' formata exatamente assim.
 const hoje = () => new Date().toLocaleDateString('sv-SE')
 
+// Vindo da página de um insumo (?insumo=ID), o formulário já abre nele.
+const insumoDaUrl = Number(useRoute().query.insumo) || ''
 const form = reactive({
   tipo: 'saida' as MovimentacaoEntrada['tipo'],
-  insumoId: '' as number | '',
+  insumoId: insumoDaUrl as number | '',
   data: hoje(),
   quantidade: '' as number | '',
   validade: '',

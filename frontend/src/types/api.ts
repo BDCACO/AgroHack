@@ -68,6 +68,16 @@ export interface Movimentacao extends MovimentacaoEntrada {
   id: number
 }
 
+export interface PontoDeEstoque {
+  data: string // AAAA-MM-DD
+  saldo: number // no fim do dia
+}
+
+export interface InsumoDetalhe extends Insumo {
+  historico: PontoDeEstoque[] // um ponto por dia com movimentação, do mais antigo
+  movimentacoes: Movimentacao[] // as mais recentes primeiro
+}
+
 export interface ResultadoImportacao {
   linhas: number
   entradas: number

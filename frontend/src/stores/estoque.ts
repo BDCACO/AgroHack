@@ -63,6 +63,12 @@ export const useEstoqueStore = defineStore('estoque', {
         a.nome.localeCompare(b.nome, 'pt-BR'),
       )
     },
+    /** Leva junto as movimentações do insumo. */
+    async removerInsumo(id: number) {
+      await api.removerInsumo(id)
+      this.insumos = this.insumos.filter((insumo) => insumo.id !== id)
+      this.movimentacoes = this.movimentacoes.filter((mov) => mov.insumo_id !== id)
+    },
     async registrarMovimentacao(dados: MovimentacaoEntrada) {
       await api.registrarMovimentacao(dados)
       await this.carregar()

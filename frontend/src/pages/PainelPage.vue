@@ -2,24 +2,15 @@
 import { computed, onMounted } from 'vue'
 
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
+import CartaoDeAlerta from '@/components/CartaoDeAlerta.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import SeloDeGravidade from '@/components/SeloDeGravidade.vue'
 import { useEstoqueStore } from '@/stores/estoque'
-import type { Gravidade, TipoAlerta } from '@/types/api'
+import type { Gravidade } from '@/types/api'
 
 // Só exibe: quem decide alerta, justificativa, reposição e limitação é o backend.
 const estoque = useEstoqueStore()
 onMounted(() => estoque.carregar())
-
-const rotulo: Record<TipoAlerta, string> = {
-  abaixo_do_minimo: 'Abaixo do mínimo',
-  risco_de_falta: 'Risco de falta',
-  vencido: 'Lote vencido',
-  vencimento_proximo: 'Vencimento próximo',
-  excesso: 'Excesso de estoque',
-  baixa_movimentacao: 'Baixa movimentação',
-  consumo_incomum: 'Consumo incomum',
-}
 
 const resumo = computed(() => {
   const contagem: Record<Gravidade, number> = { alta: 0, media: 0, baixa: 0 }
@@ -104,25 +95,12 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
         v-else
         class="mt-3 space-y-2"
       >
-        <li
+        <CartaoDeAlerta
           v-for="{ insumo, alerta } in estoque.alertas"
           :key="`${insumo.id}-${alerta.tipo}-${alerta.justificativa}`"
-          class="flex flex-col gap-2 rounded-lg border border-stone-200 bg-white p-4 sm:flex-row sm:items-start sm:gap-4"
-          data-teste="alerta"
-        >
-          <!-- Largura fixa: alinha o texto dos cartões e não deixa o selo esticar no celular. -->
-          <div class="shrink-0 sm:w-20">
-            <SeloDeGravidade :gravidade="alerta.gravidade" />
-          </div>
-          <div>
-            <p class="font-medium text-stone-800">
-              {{ rotulo[alerta.tipo] }} · {{ insumo.nome }}
-            </p>
-            <p class="mt-0.5 text-sm text-stone-600">
-              {{ alerta.justificativa }}
-            </p>
-          </div>
-        </li>
+          :alerta="alerta"
+          :insumo="insumo"
+        />
       </ul>
     </section>
 
@@ -145,7 +123,12 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
           data-teste="reposicao"
         >
           <p class="font-medium text-stone-800">
-            {{ item.insumo.nome }}
+            <RouterLink
+              :to="{ name: 'insumo', params: { id: item.insumo.id } }"
+              class="hover:text-campo-700 hover:underline"
+            >
+              {{ item.insumo.nome }}
+            </RouterLink>
             <span
               class="ml-2 text-sm font-normal"
               :class="item.pedir_em <= hoje() ? 'text-red-700' : 'text-stone-500'"
