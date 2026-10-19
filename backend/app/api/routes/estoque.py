@@ -7,8 +7,10 @@ from app.schemas.estoque import (
     InsumoResposta,
     MovimentacaoEntrada,
     MovimentacaoResposta,
+    PedidoDeImportacao,
 )
 from app.services import estoque as servico
+from app.services.importacao import ResultadoImportacao, importar
 
 router = APIRouter(tags=["estoque"])
 
@@ -71,3 +73,13 @@ def remover_movimentacao(movimentacao_id: int, db: Session = Depends(get_db)) ->
     if not servico.remover_movimentacao(db, movimentacao_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Movimentação não encontrada.")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/importacoes", response_model=ResultadoImportacao)
+def importar_planilha(
+    pedido: PedidoDeImportacao, db: Session = Depends(get_db)
+) -> ResultadoImportacao:
+    """Movimentações de uma planilha CSV (data, insumo, unidade, tipo, quantidade,
+    validade). Sem `confirmar`, só confere e resume. Com um erro sequer, nada é
+    gravado: a resposta lista os erros por linha e `importado` vem falso."""
+    return importar(db, pedido.conteudo, confirmar=pedido.confirmar)

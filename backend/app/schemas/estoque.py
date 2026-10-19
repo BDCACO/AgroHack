@@ -49,3 +49,11 @@ class MovimentacaoResposta(_Movimentacao):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+
+
+class PedidoDeImportacao(BaseModel):
+    # O texto do CSV, já decodificado pelo navegador. 5 MB passam de dezenas de
+    # milhares de linhas: anos de registro de uma propriedade.
+    conteudo: str = Field(max_length=5_000_000)
+    # Falso = só confere e resume, para o produtor ver antes de gravar.
+    confirmar: bool = False
