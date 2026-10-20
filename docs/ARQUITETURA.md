@@ -65,15 +65,25 @@ isso nas limitações. Quantidades são `NUMERIC(12, 3)` no banco e `float` no P
 `POST /importacoes` recebe o texto do CSV (o navegador decodifica: UTF-8 ou, se falhar, o
 Windows-1252 do Excel antigo) e devolve um resumo. Decisões:
 
-- **Prévia antes de gravar.** Sem `confirmar`, só confere e resume; a tela mostra o resumo e só
-  então oferece importar.
+- **Prévia antes de gravar.** Sem `confirmar`, só confere e resume — inclusive quanto entra e
+  sai de cada insumo, que é onde um número lido errado salta aos olhos. A tela só então oferece
+  importar. Se o confirmar falha sem resposta, a tela não oferece o mesmo botão (o servidor pode
+  ter gravado): confere de novo, e `ja_lancadas` mostra se as linhas já estão lá.
 - **Tudo ou nada.** Com um erro sequer, nada entra, e a resposta lista os erros por linha. Meia
   planilha importada deixaria o estoque errado sem ninguém perceber.
-- **Formato do Excel em português e o internacional.** Separador `;` ou `,` (decidido pela
-  linha do cabeçalho), vírgula decimal, `1.000` como mil, datas DD/MM/AAAA (e AAAA-MM-DD), BOM.
+- **Formato do Excel em português e o internacional.** Separador de colunas `;` ou `,`
+  (decidido pelo cabeçalho), datas DD/MM/AAAA (e AAAA-MM-DD), BOM.
+- **O separador decimal é decidido pela planilha inteira**, não célula a célula: sozinho,
+  `25.500` pode ser vinte e cinco e meio ou vinte e cinco mil. Células como `25,5`, `0.250` ou
+  `1.234,5` revelam o formato; se nenhuma revela, vale o costume do arquivo (`;` → vírgula
+  decimal, como o Excel em português; `,` → ponto decimal). Planilha que mistura os dois é erro.
+- **Linha malformada é erro, não descarte.** Células a mais que o cabeçalho (a vírgula decimal
+  num arquivo separado por vírgulas), aspa sem fechar (que junta o resto do arquivo numa célula)
+  e caractere NUL viram erro com o número da linha.
 - **Insumo pelo nome, sem diferenciar maiúsculas.** Nome novo vira insumo novo com a unidade da
   planilha (obrigatória nesse caso); unidade diferente da cadastrada é erro — somar kg com saca
-  daria um estoque sem sentido.
+  daria um estoque sem sentido. Se o cadastro tem dois nomes que só diferem em maiúsculas, a
+  linha é erro: escolher um seria chute.
 - **Planilha importada duas vezes vira aviso, não erro** (`ja_lancadas`): duas retiradas iguais
   no mesmo dia existem de verdade.
 - Sem Excel (`.xlsx`): exigiria dependência nova; o "Salvar como CSV" resolve.
@@ -126,6 +136,8 @@ então o Painel não paga o peso. O gráfico do estoque mostra o saldo em degrau
 a próxima movimentação), a projeção tracejada no ritmo de consumo que a API calculou (até zerar,
 no máximo 90 dias à frente) e a linha do mínimo. Texto digitado pelo usuário que vai para o
 tooltip (HTML) é escapado; a tabela de movimentações ao lado é a versão acessível do gráfico.
+A projeção usa a `cobertura_dias` da API com o mesmo arredondamento do cartão "Dura cerca de":
+a página não pode dizer 8 dias num lugar e 9 no outro.
 
 ## 4. Infraestrutura
 
