@@ -12,17 +12,20 @@ formato dos números é deduzido da planilha inteira.
 import _csv
 import csv
 import io
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from zipfile import ZipFile
 
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
 from app.models import Insumo, Movimentacao
-from app.schemas.estoque import QUANTIDADE_MAXIMA
+from app.schemas.estoque import QUANTIDADE_MAXIMA, SEM_CARACTERE_DE_CONTROLE
 
 COLUNAS_OBRIGATORIAS = ("data", "insumo", "tipo", "quantidade")
 TIPOS = {
@@ -37,10 +40,20 @@ FORMATOS_DE_DATA = ("%d/%m/%Y", "%Y-%m-%d", "%d/%m/%y")
 # Anos de registro de uma propriedade cabem com folga. O teto protege a API de um
 # arquivo que, compactado, parece pequeno e se abre em milhões de linhas.
 LINHAS_MAXIMAS = 50_000
+# Tetos contra .xlsx montado para travar a API: pequeno compactado, enorme aberto.
+# Uma planilha real de 50 mil linhas descompacta em uns 20 MB e tem centenas de
+# milhares de células.
+DESCOMPACTADO_MAXIMO = 50_000_000
+CELULAS_MAXIMAS = 5_000_000
+LINHA_MAXIMA_DO_EXCEL = 1_048_576
 
 _XLSX_ILEGIVEL = (
     "Não deu para abrir a planilha do Excel. Abra o arquivo no Excel, salve de novo como "
     "Pasta de Trabalho do Excel (.xlsx) e tente outra vez."
+)
+_GRANDE_DEMAIS = (
+    "A planilha é grande demais para importar de uma vez, ou tem linhas e colunas muito além "
+    "dos dados. Apague as linhas e colunas vazias depois dos dados, ou divida em partes."
 )
 _MUITAS_LINHAS = (
     f"A planilha tem mais de {LINHAS_MAXIMAS:_} movimentações. Divida em partes (um ano por "
@@ -181,7 +194,9 @@ def _linhas_do_csv(leitor: _csv.Reader, cabecalho: list[str], erros: list[str]) 
                 )
             elif any("\x00" in celula for celula in celulas):
                 lidas.append((numero, "caractere inválido; salve a planilha de novo como CSV."))
-            elif _sem_titulo(cabecalho, celulas):
+            elif letra := _coluna_sem_titulo(cabecalho, celulas[: len(cabecalho)]):
+                lidas.append((numero, _sem_titulo(letra)))
+            elif any(celula.strip() for celula in celulas[len(cabecalho) :]):
                 # Excel deixa ";;" no fim das linhas: célula vazia a mais não é erro.
                 lidas.append(
                     (
@@ -208,13 +223,23 @@ def _ler_xlsx(dados: bytes, erros: list[str]) -> tuple[list[str], _Lidas, str] |
     """Lê a primeira aba. O número de cada linha é o da linha no Excel."""
     lidas: _Lidas = []
     try:
+        with ZipFile(io.BytesIO(dados)) as compactado:
+            # O tamanho declarado é obedecido: o zipfile para de descompactar nele.
+            descompactado = sum(item.file_size for item in compactado.infolist())
+        if descompactado > DESCOMPACTADO_MAXIMO:
+            erros.append(_GRANDE_DEMAIS)
+            return None
         # read_only: lê linha a linha, sem montar a planilha inteira na memória.
         livro = load_workbook(io.BytesIO(dados), read_only=True, data_only=True)
     except Exception:  # zip quebrado, .xls renomeado, XML malicioso barrado pelo defusedxml
         erros.append(_XLSX_ILEGIVEL)
         return None
     try:
-        valores = livro.worksheets[0].iter_rows(values_only=True)
+        aba = livro.worksheets[0]
+        # A dimensão gravada no arquivo pode mentir: menor, cortaria linhas sem aviso;
+        # enorme, faria o leitor preencher milhões de células vazias.
+        aba.reset_dimensions()
+        valores = aba.iter_rows(values_only=True)
         primeira = next(valores, None)
         if primeira is None:
             erros.append("A planilha está vazia.")
@@ -222,17 +247,20 @@ def _ler_xlsx(dados: bytes, erros: list[str]) -> tuple[list[str], _Lidas, str] |
         cabecalho = _cabecalho([_texto(_celula(valor)) for valor in primeira], erros)
         if cabecalho is None:
             return None
+        celulas_lidas = 0
         for numero, linha in enumerate(valores, start=2):
+            celulas_lidas += len(linha)
+            if numero > LINHA_MAXIMA_DO_EXCEL or celulas_lidas > CELULAS_MAXIMAS:
+                erros.append(_GRANDE_DEMAIS)
+                return None
+            # Contar no próprio C, antes de converter: as linhas vazias são a maioria.
+            if linha.count(None) + linha.count("") == len(linha):
+                continue
             celulas = [_celula(valor) for valor in linha]
             if not any(_texto(celula) for celula in celulas):
                 continue
-            if _sem_titulo(cabecalho, celulas):
-                lidas.append(
-                    (
-                        numero,
-                        "há valores em colunas sem título; apague-os ou dê um título à coluna.",
-                    )
-                )
+            if letra := _coluna_sem_titulo(cabecalho, celulas):
+                lidas.append((numero, _sem_titulo(letra)))
             else:
                 lidas.append((numero, celulas))
             if len(lidas) > LINHAS_MAXIMAS:
@@ -268,12 +296,19 @@ def _texto(celula: Celula) -> str:
     return celula
 
 
-def _sem_titulo(cabecalho: list[str], celulas: list[Celula]) -> bool:
-    """Há valor numa coluna sem título? Seria descartado sem ninguém ver."""
-    return any(
-        _texto(celula)
-        for i, celula in enumerate(celulas)
-        if i >= len(cabecalho) or not cabecalho[i]
+def _coluna_sem_titulo(cabecalho: list[str], celulas: list[Celula]) -> str | None:
+    """A letra da primeira coluna com valor e sem título: o valor seria descartado sem
+    ninguém ver."""
+    for indice, celula in enumerate(celulas):
+        if (indice >= len(cabecalho) or not cabecalho[indice]) and _texto(celula):
+            return get_column_letter(indice + 1)
+    return None
+
+
+def _sem_titulo(letra: str) -> str:
+    return (
+        f"há valores na coluna {letra}, que não tem título na linha 1; apague-os ou dê um "
+        "título à coluna."
     )
 
 
@@ -340,9 +375,13 @@ def _ler(
         raise ValueError("falta o nome do insumo.")
     if len(nome) > 120:
         raise ValueError("nome do insumo com mais de 120 caracteres.")
+    if not re.fullmatch(SEM_CARACTERE_DE_CONTROLE, nome):
+        raise ValueError("o nome do insumo tem um caractere inválido.")
     unidade = _texto(campos.get("unidade", ""))
     if len(unidade) > 20:
         raise ValueError("unidade com mais de 20 caracteres.")
+    if not re.fullmatch(SEM_CARACTERE_DE_CONTROLE, unidade):
+        raise ValueError("a unidade tem um caractere inválido.")
 
     tipo_escrito = _texto(campos.get("tipo", ""))
     tipo = TIPOS.get(tipo_escrito.casefold())

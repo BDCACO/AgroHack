@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from io import BytesIO
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
 from app.models import Insumo
+from app.services.importacao import LINHAS_MAXIMAS
 
 # Cores da marca, as mesmas de frontend/src/styles/main.css.
 VERDE = "3F7A2C"  # campo-600
@@ -30,8 +32,6 @@ CINZA = "57534E"  # stone-600
 CINZA_CLARO = "E7E5E4"  # stone-200
 FORMATO_DATA = "DD/MM/YYYY"  # o Excel em português mostra como DD/MM/AAAA
 UNIDADES = ("kg", "L", "t", "sc", "dose", "un")
-# Linhas da aba Movimentações que já saem com formato de data e validação.
-LINHAS_PRONTAS = 1000
 
 
 @dataclass(frozen=True)
@@ -113,18 +113,26 @@ def _aba_de_movimentacoes(
     aba.freeze_panes = "A2"
     _para_imprimir(aba)
 
+    # Formato na coluna inteira, para valer em qualquer linha que o produtor preencher;
+    # célula já escrita (o exemplo) precisa do seu.
+    for letra in ("A", "F"):
+        aba.column_dimensions[letra].number_format = FORMATO_DATA
+        aba.column_dimensions[letra].alignment = Alignment(horizontal="center")
     for linha in linhas or []:
         aba.append(linha)
-    ultima = 1 + (LINHAS_PRONTAS if linhas is None else len(linhas))
-    for data, *_, validade in aba.iter_rows(min_row=2, max_row=ultima, max_col=len(COLUNAS)):
+    for data, *_, validade in aba.iter_rows(min_row=2, max_col=len(COLUNAS)):
         data.number_format = validade.number_format = FORMATO_DATA
         data.alignment = validade.alignment = Alignment(horizontal="center")
     if linhas is not None:
         return  # o exemplo é para ler, não para preencher
+    # Até a última linha que a importação aceita: a faixa é só texto no arquivo.
+    ultima = LINHAS_MAXIMAS + 1
 
     def validar(coluna: str, **regra: object) -> None:
         letra = get_column_letter([c.titulo for c in COLUNAS].index(coluna) + 1)
-        validacao = DataValidation(allow_blank=True, **regra)
+        # Sem showErrorMessage, o Excel aceita qualquer valor calado: é ele que faz a
+        # validação barrar. Insumo e unidade o desligam: a lista ali só sugere.
+        validacao = DataValidation(**{"allow_blank": True, "showErrorMessage": True, **regra})
         validacao.add(f"{letra}2:{letra}{ultima}")
         aba.add_data_validation(validacao)
 
@@ -259,8 +267,13 @@ def _aba_de_insumos(aba: Worksheet, insumos: list[Insumo]) -> None:
     aba.column_dimensions["A"].width = 34
     aba.column_dimensions["B"].width = 11
     aba.freeze_panes = "A2"
-    for insumo in insumos:
-        aba.append([insumo.nome, insumo.unidade])
+    for numero, insumo in enumerate(insumos, start=2):
+        for coluna, texto in enumerate((insumo.nome, insumo.unidade), start=1):
+            celula = aba.cell(numero, coluna)
+            # Caractere que o Excel não aceita (o arquivo nem seria gerado) sai; e um
+            # nome começando com "=" é texto, não fórmula.
+            celula.value = ILLEGAL_CHARACTERS_RE.sub("", texto)
+            celula.data_type = "s"
     if not insumos:
         aba["A2"] = "Nenhum insumo cadastrado ainda: os da planilha serão cadastrados."
         aba["A2"].font = _fonte(italic=True, color=CINZA)

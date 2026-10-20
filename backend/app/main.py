@@ -1,9 +1,14 @@
 import logging
+from collections.abc import Awaitable, Callable
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
+
+# Folga sobre o maior pedido legítimo: a planilha de 5 MB vira uns 6,7 MB em base64.
+CORPO_MAXIMO = 8_000_000
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -22,6 +27,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=f"{prefixo}/openapi.json" if docs else None,
     )
     app.include_router(api_router, prefix=prefixo)
+
+    @app.middleware("http")
+    async def limitar_o_corpo(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        # Sem isto, o corpo inteiro iria para a memória antes de qualquer validação.
+        # ponytail: confia no Content-Length; pedido "chunked" sem ele passa — limitar
+        # no proxy reverso se a API sair da rede da fazenda.
+        tamanho = request.headers.get("content-length", "")
+        if tamanho.isdigit() and int(tamanho) > CORPO_MAXIMO:
+            return JSONResponse(
+                {"detail": "Arquivo grande demais: o máximo é 5 MB."}, status_code=413
+            )
+        return await call_next(request)
+
     return app
 
 

@@ -8,13 +8,16 @@ from app.core.relogio import hoje
 
 # Teto da coluna NUMERIC(12, 3).
 QUANTIDADE_MAXIMA = 999_999_999
+# Caractere de controle num nome não aparece na tela, separa nomes que parecem iguais e
+# não pode ser gravado numa planilha do Excel.
+SEM_CARACTERE_DE_CONTROLE = r"^[^\x00-\x1f\x7f]*$"
 
 
 class InsumoCadastro(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    nome: str = Field(min_length=1, max_length=120)
-    unidade: str = Field(min_length=1, max_length=20)
+    nome: str = Field(min_length=1, max_length=120, pattern=SEM_CARACTERE_DE_CONTROLE)
+    unidade: str = Field(min_length=1, max_length=20, pattern=SEM_CARACTERE_DE_CONTROLE)
     estoque_minimo: float | None = Field(default=None, ge=0, le=QUANTIDADE_MAXIMA)
     prazo_reposicao_dias: int | None = Field(default=None, ge=0, le=365)
 

@@ -1,14 +1,22 @@
 """Importação de movimentações por planilha CSV (POST /importacoes)."""
 
 import base64
+import re
+import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Any
+from zipfile import ZIP_DEFLATED, ZipFile
 
+import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
+from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
+from app.models import Insumo
+from app.services import importacao
 
 HOJE = hoje()
 
@@ -250,11 +258,42 @@ def test_planilha_modelo_vem_formatada_e_com_os_insumos(client: TestClient) -> N
     assert aba["A1"].font.bold
     assert aba["A1"].comment.text.startswith("Dia em que a compra chegou")
     assert aba.freeze_panes == "A2"
-    assert aba["A2"].number_format == aba["F1001"].number_format == "DD/MM/YYYY"
-    listas = {str(v.sqref): v.formula1 for v in aba.data_validations.dataValidation}
-    assert listas["B2:B1001"] == "'Insumos cadastrados'!$A$2:$A$2"
-    assert listas["D2:D1001"] == '"entrada,saída"'
+    # Formato da coluna inteira: vale também para a linha 30.000.
+    assert aba.column_dimensions["A"].number_format == "DD/MM/YYYY"
+    assert aba.column_dimensions["F"].number_format == "DD/MM/YYYY"
+    # Validação até a última linha que a importação aceita. Data, tipo e quantidade
+    # barram valor errado na hora; insumo e unidade só sugerem (insumo novo vale).
+    validacoes = {str(v.sqref): v for v in aba.data_validations.dataValidation}
+    assert validacoes["B2:B50001"].formula1 == "'Insumos cadastrados'!$A$2:$A$2"
+    assert validacoes["D2:D50001"].formula1 == '"entrada,saída"'
+    barram = {faixa[0] for faixa, v in validacoes.items() if v.showErrorMessage}
+    assert barram == {"A", "D", "E", "F"}
     assert livro["Insumos cadastrados"]["A2"].value == "Ureia"
+
+
+def test_modelo_nao_vira_formula_nem_quebra_com_nome_estranho(
+    client: TestClient, db: Session
+) -> None:
+    # Gravado direto no banco: a API já não aceita caractere de controle no nome.
+    db.add_all([Insumo(nome="=1+1", unidade="kg"), Insumo(nome="Sal\x0bmineral", unidade="kg")])
+    db.commit()
+
+    insumos = baixar_modelo(client)["Insumos cadastrados"]
+
+    assert [(c.value, c.data_type) for c in insumos["A"][1:]] == [
+        ("=1+1", "s"),
+        ("Salmineral", "s"),
+    ]
+
+
+def test_nome_com_caractere_de_controle_e_recusado(client: TestClient) -> None:
+    resposta = client.post("/api/v1/insumos", json={"nome": "Sal\x0bmineral", "unidade": "kg"})
+    assert resposta.status_code == 422
+
+    planilha = f"data;insumo;unidade;tipo;quantidade\n{br(1)};Sal\x0bmineral;kg;entrada;5\n"
+    assert importar(client, planilha)["erros"] == [
+        "Linha 2: o nome do insumo tem um caractere inválido."
+    ]
 
 
 def test_modelo_preenchido_volta_pela_importacao(client: TestClient) -> None:
@@ -321,7 +360,8 @@ def test_erros_do_xlsx_apontam_a_linha_do_excel(client: TestClient) -> None:
     assert importar_xlsx(client, livro)["erros"] == [
         'Linha 4: tipo "devolução" desconhecido; use entrada ou saída.',
         'Linha 5: data "46000" inválida; use DD/MM/AAAA.',
-        "Linha 6: há valores em colunas sem título; apague-os ou dê um título à coluna.",
+        "Linha 6: há valores na coluna H, que não tem título na linha 1; apague-os ou dê um "
+        "título à coluna.",
     ]
 
 
@@ -338,3 +378,92 @@ def test_pedido_com_os_dois_formatos_ou_nenhum(client: TestClient) -> None:
     xlsx = base64.b64encode(b"x").decode()
     for corpo in ({}, {"conteudo": "a", "xlsx": xlsx}):
         assert client.post("/api/v1/importacoes", json=corpo).status_code == 422
+
+
+# --- Planilhas adulteradas ou fora do padrão -------------------------------------------
+
+
+def com_xml_trocado(livro: Workbook, trocar: Callable[[str], str]) -> bytes:
+    """O .xlsx com o XML da primeira aba reescrito: é como se monta um arquivo que o
+    Excel não gera, mas que pode chegar num upload."""
+    original = BytesIO()
+    livro.save(original)
+    adulterado = BytesIO()
+    with ZipFile(original) as entrada, ZipFile(adulterado, "w", ZIP_DEFLATED) as saida:
+        for item in entrada.infolist():
+            dados = entrada.read(item.filename)
+            if item.filename == "xl/worksheets/sheet1.xml":
+                dados = trocar(dados.decode()).encode()
+            saida.writestr(item.filename, dados)
+    return adulterado.getvalue()
+
+
+def importar_bytes(client: TestClient, dados: bytes) -> Any:
+    resposta = client.post("/api/v1/importacoes", json={"xlsx": base64.b64encode(dados).decode()})
+    assert resposta.status_code == 200, resposta.json()
+    return resposta.json()
+
+
+def planilha_com(linhas: int) -> Workbook:
+    livro = Workbook()
+    livro.active.append(["data", "insumo", "unidade", "tipo", "quantidade"])
+    for dias_atras in range(1, linhas + 1):
+        livro.active.append([em_datetime(dias_atras), "Ureia", "kg", "entrada", 1])
+    return livro
+
+
+def test_dimensao_errada_gravada_no_arquivo_nao_corta_a_importacao(client: TestClient) -> None:
+    # Alguns exportadores gravam a dimensão errada; lida ao pé da letra, sumiam linhas.
+    dados = com_xml_trocado(
+        planilha_com(10),
+        lambda xml: re.sub(r'<dimension ref="[^"]*"', '<dimension ref="A1:C3"', xml),
+    )
+
+    assert importar_bytes(client, dados)["linhas"] == 10
+
+
+def test_planilha_inflada_e_recusada_rapido(client: TestClient) -> None:
+    # Dimensão do tamanho máximo do Excel e uma linha além do limite dele: o leitor
+    # preencheria milhões de linhas e colunas vazias.
+    def inflar(xml: str) -> str:
+        xml = re.sub(r'<dimension ref="[^"]*"', '<dimension ref="A1:XFD1048576"', xml)
+        xml = xml.replace('<row r="2"', '<row r="2000000"')
+        return re.sub(r'r="([A-Z]+)2"', r'r="\g<1>2000000"', xml)
+
+    inicio = time.perf_counter()
+    [erro] = importar_bytes(client, com_xml_trocado(planilha_com(1), inflar))["erros"]
+
+    assert erro.startswith("A planilha é grande demais")
+    assert time.perf_counter() - inicio < 5
+
+
+def test_planilha_que_descompacta_demais_e_recusada(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # O teto real é de dezenas de MB; aqui baixa para não gerar um arquivo enorme.
+    monkeypatch.setattr(importacao, "DESCOMPACTADO_MAXIMO", 1_000)
+    arquivo = BytesIO()
+    planilha_com(1).save(arquivo)
+
+    [erro] = importar_bytes(client, arquivo.getvalue())["erros"]
+
+    assert erro.startswith("A planilha é grande demais")
+
+
+def test_valor_em_coluna_sem_titulo_diz_a_coluna(client: TestClient) -> None:
+    planilha = f"data;insumo;;tipo;quantidade\n{br(1)};Ureia;kg;entrada;5\n"
+
+    assert importar(client, planilha)["erros"] == [
+        "Linha 2: há valores na coluna C, que não tem título na linha 1; apague-os ou dê um "
+        "título à coluna."
+    ]
+
+
+def test_pedido_grande_demais_e_recusado_antes_de_ler(client: TestClient) -> None:
+    resposta = client.post(
+        "/api/v1/importacoes",
+        content=b"{}",
+        headers={"content-type": "application/json", "content-length": "50000000"},
+    )
+
+    assert resposta.status_code == 413
