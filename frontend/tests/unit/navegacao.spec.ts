@@ -58,47 +58,74 @@ describe('navegação', () => {
   it('o menu lateral tem um link para cada tela', async () => {
     const { wrapper } = await montarEm('/')
 
-    const links = wrapper.findAll('nav[aria-label="Principal"] a')
+    const links = wrapper.findAll('aside nav a')
     expect(links.map((link) => link.text())).toEqual(itensDeMenu.map((item) => item.rotulo))
   })
 
-  it('a gaveta abre pelo botão e fecha ao navegar', async () => {
-    const { wrapper, router } = await montarEm('/')
-    const gaveta = wrapper.find('#menu-lateral')
+  it('no celular, a barra de baixo tem as mesmas telas, com rótulos que cabem nela', async () => {
+    const { wrapper } = await montarEm('/movimentacoes')
 
-    expect(gaveta.classes()).toContain('-translate-x-full')
-    await wrapper.find('button[aria-label="Abrir menu"]').trigger('click')
-    expect(gaveta.classes()).toContain('translate-x-0')
-
-    await router.push('/insumos')
-    await flushPromises()
-    expect(gaveta.classes()).toContain('-translate-x-full')
+    const abas = wrapper.findAll('[data-teste="aba"]')
+    expect(abas.map((aba) => aba.text())).toEqual([
+      'Painel',
+      'Insumos',
+      'Movimentos',
+      'Importar',
+      'Sistema',
+    ])
+    expect(abas.map((aba) => aba.attributes('aria-current'))).toEqual([
+      undefined,
+      undefined,
+      'page',
+      undefined,
+      undefined,
+    ])
   })
 
-  it('fechada no celular, a gaveta sai do Tab; aberta, o resto da tela fica inerte', async () => {
-    const { wrapper } = await montarEm('/')
-    const gaveta = wrapper.find('#menu-lateral')
-    const conteudo = wrapper.find('main').element.parentElement!
+  it('a aba do Painel mostra quantos alertas urgentes há', async () => {
+    const urgente: Insumo = {
+      id: 1,
+      nome: 'Ureia agrícola',
+      unidade: 'kg',
+      estoque_minimo: 300,
+      prazo_reposicao_dias: 10,
+      demonstracao: false,
+      estoque_atual: 100,
+      analise: {
+        consumo_diario: null,
+        cobertura_dias: null,
+        alertas: [{ tipo: 'abaixo_do_minimo', gravidade: 'alta', justificativa: 'Abaixo do mínimo.' }],
+        reposicao: null,
+        limitacoes: [],
+      },
+    }
+    vi.mocked(listarInsumos).mockResolvedValueOnce([urgente])
+    const { wrapper } = await montarEm('/insumos')
 
-    expect(gaveta.classes()).toContain('max-lg:invisible')
-    await wrapper.find('button[aria-label="Abrir menu"]').trigger('click')
-
-    expect(gaveta.classes()).not.toContain('max-lg:invisible')
-    expect(conteudo.hasAttribute('inert')).toBe(true)
+    expect(wrapper.find('[data-teste="urgentes-aba"]').text()).toBe('1 urgente')
   })
 
-  it('Esc fecha a gaveta e devolve o foco ao botão que a abriu', async () => {
-    const { wrapper } = await montarEm('/', { attachTo: document.body })
-    const abrir = wrapper.find('button[aria-label="Abrir menu"]')
-    await abrir.trigger('click')
+  it('tocar de novo na aba da tela atual sobe para o topo, sem navegar', async () => {
+    const { wrapper, router } = await montarEm('/insumos')
+    const subir = vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    const empurrar = vi.spyOn(router, 'push')
+
+    await wrapper.findAll('[data-teste="aba"]')[1]!.trigger('click')
+
+    expect(subir).toHaveBeenCalledWith(expect.objectContaining({ top: 0 }))
+    expect(empurrar).not.toHaveBeenCalled()
+    subir.mockRestore()
+  })
+
+  it('na página de um insumo, a aba Insumos acende e leva de volta à lista', async () => {
+    const { wrapper, router } = await montarEm('/insumos/7')
+    const insumos = wrapper.findAll('[data-teste="aba"]')[1]!
+    expect(insumos.attributes('aria-current')).toBe('page')
+
+    await insumos.trigger('click')
     await flushPromises()
-    expect(document.activeElement?.getAttribute('aria-label')).toBe('Fechar menu')
 
-    await wrapper.find('#menu-lateral').trigger('keydown', { key: 'Escape' })
-
-    expect(wrapper.find('#menu-lateral').classes()).toContain('-translate-x-full')
-    expect(document.activeElement).toBe(abrir.element)
-    wrapper.unmount()
+    expect(router.currentRoute.value.name).toBe('insumos')
   })
 
   it('ao trocar de página, o foco vai para o conteúdo novo', async () => {

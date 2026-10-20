@@ -7,8 +7,9 @@ import PainelPage from '@/pages/PainelPage.vue'
 declare module 'vue-router' {
   interface RouteMeta {
     titulo?: string
-    /** Presente = a rota aparece no menu lateral, com este ícone. */
-    menu?: { icone: NomeIcone }
+    /** Presente = a rota aparece no menu lateral e na barra de baixo do celular, com este
+     * ícone. `curto` é o rótulo da barra de baixo, onde cabem uns 10 caracteres. */
+    menu?: { icone: NomeIcone; curto?: string }
     /** Tela fora do menu que acende um item dele (o detalhe acende "Insumos"). */
     secao?: string
   }
@@ -42,13 +43,13 @@ const telas: RouteRecordRaw[] = [
     path: 'movimentacoes',
     name: 'movimentacoes',
     component: MovimentacoesPage,
-    meta: { titulo: 'Movimentações', menu: { icone: 'movimentacoes' } },
+    meta: { titulo: 'Movimentações', menu: { icone: 'movimentacoes', curto: 'Movimentos' } },
   },
   {
     path: 'importar',
     name: 'importar',
     component: ImportarPage,
-    meta: { titulo: 'Importar dados', menu: { icone: 'importar' } },
+    meta: { titulo: 'Importar dados', menu: { icone: 'importar', curto: 'Importar' } },
   },
   {
     path: 'sistema',
@@ -61,12 +62,20 @@ const telas: RouteRecordRaw[] = [
 export interface ItemDeMenu {
   nome: string
   rotulo: string
+  rotuloCurto: string
   icone: NomeIcone
 }
 
 export const itensDeMenu: ItemDeMenu[] = telas.flatMap((tela) =>
   tela.meta?.menu && typeof tela.name === 'string'
-    ? [{ nome: tela.name, rotulo: tela.meta.titulo ?? tela.name, icone: tela.meta.menu.icone }]
+    ? [
+        {
+          nome: tela.name,
+          rotulo: tela.meta.titulo ?? tela.name,
+          rotuloCurto: tela.meta.menu.curto ?? tela.meta.titulo ?? tela.name,
+          icone: tela.meta.menu.icone,
+        },
+      ]
     : [],
 )
 
@@ -96,6 +105,8 @@ export const routes: RouteRecordRaw[] = [
 export const router = createRouter({
   history: createWebHistory(),
   routes,
+  // Tela nova começa do topo; voltar (botão do celular) devolve a rolagem de onde se estava.
+  scrollBehavior: (_para, _de, salva) => salva ?? { top: 0 },
 })
 
 router.afterEach((rota) => {

@@ -211,9 +211,11 @@ const quantidade = (valor: number, unidade: string) =>
       </p>
     </section>
 
+    <!-- No celular, escolher o arquivo vem antes da explicação: quem já tem a planilha não
+         precisa rolar até o fim. -->
     <section
       aria-labelledby="titulo-arquivo"
-      class="lg:col-span-3"
+      class="max-lg:order-first lg:col-span-3"
     >
       <h2
         id="titulo-arquivo"
@@ -255,7 +257,10 @@ const quantidade = (valor: number, unidade: string) =>
           />
         </span>
         <span class="mt-3 font-semibold text-campo-800">
-          {{ ocupado ? 'Conferindo…' : arrastando ? 'Solte para conferir' : 'Escolha ou arraste a planilha' }}
+          <template v-if="ocupado">Conferindo…</template>
+          <template v-else-if="arrastando">Solte para conferir</template>
+          <!-- Em tela de toque não há o que arrastar. -->
+          <template v-else>Escolha <span class="pointer-coarse:hidden">ou arraste </span>a planilha</template>
         </span>
         <span class="mt-1 text-sm text-stone-500">
           {{ nomeDoArquivo || '.xlsx ou .csv · nada é gravado antes de você conferir o resumo' }}

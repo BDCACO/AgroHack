@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import IconeSvg from '@/components/IconeSvg.vue'
@@ -28,6 +28,9 @@ const salvando = ref(false)
 // A linha recém-lançada acende na tabela e volta ao normal: mostra onde ela entrou.
 const destacada = ref<number | null>(null)
 const erroDoForm = ref<string | null>(null)
+// O que acabou de ser lançado, em palavras, ao lado do botão: no celular a lista fica lá
+// embaixo, fora da tela, e é aqui que se vê que deu certo.
+const confirmacao = ref<string | null>(null)
 
 // Validade é de lote, e lote só chega numa entrada.
 watch(
@@ -41,6 +44,7 @@ async function lancar() {
   if (form.insumoId === '' || form.quantidade === '') return
   salvando.value = true
   erroDoForm.value = null
+  confirmacao.value = null
   try {
     const criada = await estoque.registrarMovimentacao({
       insumo_id: form.insumoId,
@@ -50,6 +54,10 @@ async function lancar() {
       validade: form.validade || null,
     })
     destacada.value = criada.id
+    const insumo = estoque.insumoPorId.get(criada.insumo_id)
+    confirmacao.value = `${rotulo[criada.tipo]} de ${numero(criada.quantidade)} ${insumo?.unidade ?? ''} de ${insumo?.nome ?? 'insumo'} lançada.`
+    // No celular Android, uma vibração curta confirma sem precisar olhar.
+    navigator.vibrate?.(20)
     // Mantém tipo, insumo e data: lançamentos em sequência costumam repetir os três.
     form.quantidade = ''
     form.validade = ''
@@ -74,6 +82,29 @@ async function remover(movimentacao: Movimentacao) {
 const rotulo = { entrada: 'Entrada', saida: 'Saída' } as const
 const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
 const dataBr = (data: string) => data.split('-').reverse().join('/')
+
+// No celular, a lista vem agrupada por dia, como um extrato: "Hoje", "Ontem", e depois o
+// dia da semana com a data. A API já manda da mais recente para a mais antiga.
+function rotuloDoDia(data: string) {
+  const ontem = new Date(`${hoje()}T12:00:00`)
+  ontem.setDate(ontem.getDate() - 1)
+  if (data === hoje()) return 'Hoje'
+  if (data === ontem.toLocaleDateString('sv-SE')) return 'Ontem'
+  return new Date(`${data}T12:00:00`).toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+  })
+}
+const porDia = computed(() => {
+  const dias: { data: string; rotulo: string; movimentacoes: Movimentacao[] }[] = []
+  for (const mov of estoque.movimentacoes) {
+    const dia = dias.at(-1)
+    if (dia?.data === mov.data) dia.movimentacoes.push(mov)
+    else dias.push({ data: mov.data, rotulo: rotuloDoDia(mov.data), movimentacoes: [mov] })
+  }
+  return dias
+})
 </script>
 
 <template>
@@ -123,7 +154,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
           <label
             v-for="tipo in (['saida', 'entrada'] as const)"
             :key="tipo"
-            class="relative z-10 cursor-pointer rounded-md px-4 py-1.5 text-center text-sm font-semibold transition-colors duration-250 ease-movimento has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600 has-[:focus-visible]:ring-offset-1"
+            class="relative z-10 cursor-pointer rounded-md px-2 py-1.5 text-center text-sm font-semibold sm:px-4 pointer-coarse:py-2.5 transition-colors duration-250 ease-movimento has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600 has-[:focus-visible]:ring-offset-1"
             :class="form.tipo === tipo ? 'text-white' : 'text-stone-600 hover:text-stone-900'"
           >
             <input
@@ -198,14 +229,27 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
       >
         {{ erroDoForm }}
       </p>
-      <div class="sm:col-span-2 lg:col-span-6">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-3 sm:col-span-2 lg:col-span-6">
         <button
           type="submit"
-          class="botao-primario"
+          class="botao-primario max-sm:w-full"
           :disabled="salvando"
         >
           {{ salvando ? 'Lançando…' : 'Lançar' }}
         </button>
+        <p
+          class="flex items-center gap-1.5 text-sm text-campo-700"
+          role="status"
+          data-teste="confirmacao"
+        >
+          <template v-if="confirmacao">
+            <IconeSvg
+              nome="confirmado"
+              class="h-4 w-4 shrink-0"
+            />
+            {{ confirmacao }}
+          </template>
+        </p>
       </div>
     </form>
 
@@ -216,86 +260,155 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
       Nenhuma movimentação lançada ainda. Comece pelo estoque que já está no galpão: lance como
       entrada, com a data de hoje.
     </p>
-    <div
-      v-else
-      class="cartao mt-6 animate-surgir overflow-x-auto [animation-delay:80ms]"
-    >
-      <table class="w-full text-left text-sm">
-        <caption class="sr-only">
-          Últimas movimentações
-        </caption>
-        <thead class="bg-stone-50/80 text-xs tracking-wide text-stone-500 uppercase">
-          <tr>
-            <th class="px-4 py-3 font-semibold">
-              Data
-            </th>
-            <th class="px-4 py-3 font-semibold">
-              Insumo
-            </th>
-            <th class="px-4 py-3 font-semibold">
-              Tipo
-            </th>
-            <th class="px-4 py-3 text-right font-semibold">
-              Quantidade
-            </th>
-            <th class="px-4 py-3 font-semibold">
-              Validade
-            </th>
-            <th class="px-4 py-3">
-              <span class="sr-only">Ações</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-stone-100">
-          <tr
-            v-for="mov in estoque.movimentacoes"
-            :key="mov.id"
-            class="transition-colors hover:bg-stone-50/70"
-            :class="mov.id === destacada ? 'animate-destaque' : ''"
+    <template v-else>
+      <!-- No celular, um extrato por dia no lugar da tabela, que não cabe sem rolar para o
+           lado. O dia fica preso no alto enquanto se rola por ele. -->
+      <div class="mt-6 animate-surgir space-y-5 [animation-delay:80ms] md:hidden">
+        <section
+          v-for="dia in porDia"
+          :key="dia.data"
+          :aria-label="dia.rotulo"
+        >
+          <h2
+            class="sticky top-0 z-10 -mx-4 bg-stone-50/95 px-4 py-2 sm:-mx-6 sm:px-6 text-xs font-semibold tracking-wide text-stone-500 uppercase backdrop-blur-sm"
+            data-teste="dia"
           >
-            <td class="px-4 py-3 tabular-nums">
-              {{ dataBr(mov.data) }}
-            </td>
-            <td class="px-4 py-3 font-medium text-stone-800">
-              <RouterLink
-                :to="{ name: 'insumo', params: { id: mov.insumo_id } }"
-                class="hover:text-campo-700 hover:underline"
-              >
-                {{ estoque.insumoPorId.get(mov.insumo_id)?.nome }}
-              </RouterLink>
-            </td>
-            <td class="px-4 py-3">
+            {{ dia.rotulo }}
+          </h2>
+          <ul class="cartao mt-1 divide-y divide-stone-100">
+            <li
+              v-for="mov in dia.movimentacoes"
+              :key="mov.id"
+              class="flex items-center gap-3 py-2.5 pr-1 pl-3"
+              :class="mov.id === destacada ? 'animate-destaque' : ''"
+              data-teste="movimentacao-celular"
+            >
               <!-- Entrada aponta para o galpão (desce), saída para fora (sobe). -->
               <span
-                class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset"
-                :class="mov.tipo === 'entrada' ? 'bg-campo-50 text-campo-700 ring-campo-600/20' : 'bg-terra-50 text-terra-700 ring-terra-500/25'"
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                :class="mov.tipo === 'entrada' ? 'bg-campo-50 text-campo-700' : 'bg-terra-50 text-terra-700'"
+                aria-hidden="true"
               >
                 <IconeSvg
                   nome="seta"
-                  class="h-3.5 w-3.5"
+                  class="h-5 w-5"
                   :class="mov.tipo === 'entrada' ? 'rotate-90' : '-rotate-90'"
                 />
-                {{ rotulo[mov.tipo] }}
               </span>
-            </td>
-            <td class="px-4 py-3 text-right tabular-nums">
-              {{ numero(mov.quantidade) }} {{ estoque.insumoPorId.get(mov.insumo_id)?.unidade }}
-            </td>
-            <td class="px-4 py-3 tabular-nums text-stone-600">
-              {{ mov.validade ? dataBr(mov.validade) : '—' }}
-            </td>
-            <td class="px-4 py-3 text-right">
+              <div class="min-w-0 flex-1">
+                <RouterLink
+                  :to="{ name: 'insumo', params: { id: mov.insumo_id } }"
+                  class="block text-sm leading-snug font-semibold text-stone-800"
+                >
+                  {{ estoque.insumoPorId.get(mov.insumo_id)?.nome }}
+                </RouterLink>
+                <p class="text-xs text-stone-500">
+                  {{ rotulo[mov.tipo] }}<template v-if="mov.validade">
+                    · validade {{ dataBr(mov.validade) }}
+                  </template>
+                </p>
+              </div>
+              <p
+                class="text-right text-sm font-semibold whitespace-nowrap tabular-nums"
+                :class="mov.tipo === 'entrada' ? 'text-campo-700' : 'text-stone-800'"
+              >
+                {{ mov.tipo === 'entrada' ? '+' : '−' }}{{ numero(mov.quantidade) }}
+                {{ estoque.insumoPorId.get(mov.insumo_id)?.unidade }}
+              </p>
               <button
                 type="button"
-                class="rounded-md px-2 py-1 text-sm font-medium text-red-700 transition-colors hover:bg-red-50"
+                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-stone-400 transition-colors active:bg-red-50 active:text-red-700"
+                :aria-label="`Remover ${rotulo[mov.tipo].toLowerCase()} de ${estoque.insumoPorId.get(mov.insumo_id)?.nome ?? 'insumo'}, ${dia.rotulo.toLowerCase()}`"
                 @click="remover(mov)"
               >
-                Remover
+                <IconeSvg
+                  nome="lixeira"
+                  class="h-5 w-5"
+                />
               </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <div class="cartao mt-6 hidden animate-surgir overflow-x-auto [animation-delay:80ms] md:block">
+        <table class="w-full text-left text-sm">
+          <caption class="sr-only">
+            Últimas movimentações
+          </caption>
+          <thead class="bg-stone-50/80 text-xs tracking-wide text-stone-500 uppercase">
+            <tr>
+              <th class="px-4 py-3 font-semibold">
+                Data
+              </th>
+              <th class="px-4 py-3 font-semibold">
+                Insumo
+              </th>
+              <th class="px-4 py-3 font-semibold">
+                Tipo
+              </th>
+              <th class="px-4 py-3 text-right font-semibold">
+                Quantidade
+              </th>
+              <th class="px-4 py-3 font-semibold">
+                Validade
+              </th>
+              <th class="px-4 py-3">
+                <span class="sr-only">Ações</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            <tr
+              v-for="mov in estoque.movimentacoes"
+              :key="mov.id"
+              class="transition-colors hover:bg-stone-50/70"
+              :class="mov.id === destacada ? 'animate-destaque' : ''"
+            >
+              <td class="px-4 py-3 tabular-nums">
+                {{ dataBr(mov.data) }}
+              </td>
+              <td class="px-4 py-3 font-medium text-stone-800">
+                <RouterLink
+                  :to="{ name: 'insumo', params: { id: mov.insumo_id } }"
+                  class="hover:text-campo-700 hover:underline"
+                >
+                  {{ estoque.insumoPorId.get(mov.insumo_id)?.nome }}
+                </RouterLink>
+              </td>
+              <td class="px-4 py-3">
+                <!-- Entrada aponta para o galpão (desce), saída para fora (sobe). -->
+                <span
+                  class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset"
+                  :class="mov.tipo === 'entrada' ? 'bg-campo-50 text-campo-700 ring-campo-600/20' : 'bg-terra-50 text-terra-700 ring-terra-500/25'"
+                >
+                  <IconeSvg
+                    nome="seta"
+                    class="h-3.5 w-3.5"
+                    :class="mov.tipo === 'entrada' ? 'rotate-90' : '-rotate-90'"
+                  />
+                  {{ rotulo[mov.tipo] }}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-right tabular-nums">
+                {{ numero(mov.quantidade) }} {{ estoque.insumoPorId.get(mov.insumo_id)?.unidade }}
+              </td>
+              <td class="px-4 py-3 tabular-nums text-stone-600">
+                {{ mov.validade ? dataBr(mov.validade) : '—' }}
+              </td>
+              <td class="px-4 py-3 text-right">
+                <button
+                  type="button"
+                  class="rounded-md px-2 py-1 text-sm font-medium text-red-700 transition-colors hover:bg-red-50"
+                  @click="remover(mov)"
+                >
+                  Remover
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
   </template>
 </template>

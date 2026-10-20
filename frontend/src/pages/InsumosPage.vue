@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref, useTemplateRef } from 'vue'
 
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
+import IconeSvg from '@/components/IconeSvg.vue'
 import SeloDeGravidade from '@/components/SeloDeGravidade.vue'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import type { Insumo } from '@/types/api'
@@ -17,6 +18,7 @@ const aberto = ref(false)
 const editandoId = ref<number>()
 const salvando = ref(false)
 const erroDoForm = ref<string | null>(null)
+const tituloDoForm = useTemplateRef<HTMLElement>('tituloDoForm')
 
 function abrir(insumo?: Insumo) {
   Object.assign(
@@ -33,6 +35,9 @@ function abrir(insumo?: Insumo) {
   editandoId.value = insumo?.id
   erroDoForm.value = null
   aberto.value = true
+  // O formulário abre no alto da página. Quem tocou em "Alterar" lá embaixo da lista (no
+  // celular, quase sempre) é levado até ele, e o leitor de tela anuncia o título.
+  nextTick(() => tituloDoForm.value?.focus())
 }
 
 async function salvar() {
@@ -81,7 +86,11 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
     class="cartao mt-2 mb-6 grid animate-surgir gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4"
     @submit.prevent="salvar"
   >
-    <h2 class="text-base font-semibold text-stone-900 sm:col-span-2 lg:col-span-4">
+    <h2
+      ref="tituloDoForm"
+      tabindex="-1"
+      class="scroll-mt-4 text-base font-semibold text-stone-900 focus:outline-none sm:col-span-2 lg:col-span-4"
+    >
       {{ editandoId === undefined ? 'Novo insumo' : 'Alterar insumo' }}
     </h2>
     <label class="text-sm font-medium text-stone-700">
@@ -186,74 +195,119 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
     </button>
   </EstadoVazio>
 
-  <div
-    v-else-if="estoque.insumos.length"
-    class="cartao animate-surgir overflow-x-auto"
-  >
-    <table class="w-full text-left text-sm">
-      <thead class="bg-stone-50/80 text-xs tracking-wide text-stone-500 uppercase">
-        <tr>
-          <th class="px-4 py-3 font-semibold">
-            Insumo
-          </th>
-          <th class="px-4 py-3 text-right font-semibold">
-            Estoque atual
-          </th>
-          <th class="px-4 py-3 text-right font-semibold">
-            Mínimo
-          </th>
-          <th class="px-4 py-3 text-right font-semibold">
-            Prazo
-          </th>
-          <th class="px-4 py-3 font-semibold">
-            Situação
-          </th>
-          <th class="px-4 py-3">
-            <span class="sr-only">Ações</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-stone-100">
-        <tr
-          v-for="insumo in estoque.insumos"
-          :key="insumo.id"
-          class="transition-colors hover:bg-stone-50/70"
-        >
-          <td class="px-4 py-3 font-medium text-stone-800">
-            <RouterLink
-              :to="{ name: 'insumo', params: { id: insumo.id } }"
-              class="hover:text-campo-700 hover:underline"
-            >
-              {{ insumo.nome }}
-            </RouterLink>
-          </td>
-          <td
-            class="px-4 py-3 text-right tabular-nums"
-            :class="insumo.estoque_atual < 0 ? 'text-red-700' : ''"
+  <template v-else-if="estoque.insumos.length">
+    <!-- No celular, um cartão por insumo no lugar da tabela, que não cabe sem rolar para o
+     lado. Tocar no insumo abre a página dele; "Alterar" fica à mão do polegar. -->
+    <ul class="cartao animate-surgir divide-y divide-stone-100 md:hidden">
+      <li
+        v-for="insumo in estoque.insumos"
+        :key="insumo.id"
+        class="relative flex items-center gap-2 py-3 pr-2 pl-4 transition-colors active:bg-stone-50"
+        data-teste="insumo-celular"
+      >
+        <div class="min-w-0 flex-1">
+          <RouterLink
+            :to="{ name: 'insumo', params: { id: insumo.id } }"
+            class="block font-semibold text-stone-900 after:absolute after:inset-0 after:content-[''] focus-visible:outline-none [&:focus-visible]:after:ring-2 [&:focus-visible]:after:ring-campo-600 [&:focus-visible]:after:ring-inset"
           >
-            {{ numero(insumo.estoque_atual) }} {{ insumo.unidade }}
-          </td>
-          <td class="px-4 py-3 text-right tabular-nums text-stone-600">
-            {{ insumo.estoque_minimo === null ? '—' : `${numero(insumo.estoque_minimo)} ${insumo.unidade}` }}
-          </td>
-          <td class="px-4 py-3 text-right tabular-nums text-stone-600">
-            {{ insumo.prazo_reposicao_dias === null ? '—' : `${insumo.prazo_reposicao_dias} dias` }}
-          </td>
-          <td class="px-4 py-3">
-            <!-- A API já ordena os alertas do mais grave para o mais leve. -->
+            {{ insumo.nome }}
+          </RouterLink>
+          <p class="mt-0.5 text-sm text-stone-600">
+            <span
+              class="font-semibold tabular-nums"
+              :class="insumo.estoque_atual < 0 ? 'text-red-700' : 'text-stone-800'"
+            >{{ numero(insumo.estoque_atual) }} {{ insumo.unidade }}</span>
+            em estoque
+          </p>
+          <p class="mt-0.5 text-xs text-stone-500 tabular-nums">
+            Mínimo {{ insumo.estoque_minimo === null ? 'não definido' : `${numero(insumo.estoque_minimo)} ${insumo.unidade}` }}
+            · entrega {{ insumo.prazo_reposicao_dias === null ? 'sem prazo' : `em ${insumo.prazo_reposicao_dias} dias` }}
+          </p>
+          <div class="mt-2">
             <SeloDeGravidade :gravidade="insumo.analise.alertas[0]?.gravidade ?? null" />
-          </td>
-          <td class="px-4 py-3 text-right">
-            <button
-              type="button"
-              class="rounded-md px-2 py-1 text-sm font-medium text-campo-700 transition-colors hover:bg-campo-50"
-              @click="abrir(insumo)"
+          </div>
+        </div>
+        <button
+          type="button"
+          class="relative z-10 min-h-11 rounded-lg px-3 text-sm font-medium text-campo-700 transition-colors active:bg-campo-50"
+          :aria-label="`Alterar ${insumo.nome}`"
+          @click="abrir(insumo)"
+        >
+          Alterar
+        </button>
+        <IconeSvg
+          nome="seta"
+          class="h-5 w-5 shrink-0 text-stone-300"
+        />
+      </li>
+    </ul>
+
+    <div class="cartao hidden animate-surgir overflow-x-auto md:block">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-stone-50/80 text-xs tracking-wide text-stone-500 uppercase">
+          <tr>
+            <th class="px-4 py-3 font-semibold">
+              Insumo
+            </th>
+            <th class="px-4 py-3 text-right font-semibold">
+              Estoque atual
+            </th>
+            <th class="px-4 py-3 text-right font-semibold">
+              Mínimo
+            </th>
+            <th class="px-4 py-3 text-right font-semibold">
+              Prazo
+            </th>
+            <th class="px-4 py-3 font-semibold">
+              Situação
+            </th>
+            <th class="px-4 py-3">
+              <span class="sr-only">Ações</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-stone-100">
+          <tr
+            v-for="insumo in estoque.insumos"
+            :key="insumo.id"
+            class="transition-colors hover:bg-stone-50/70"
+          >
+            <td class="px-4 py-3 font-medium text-stone-800">
+              <RouterLink
+                :to="{ name: 'insumo', params: { id: insumo.id } }"
+                class="hover:text-campo-700 hover:underline"
+              >
+                {{ insumo.nome }}
+              </RouterLink>
+            </td>
+            <td
+              class="px-4 py-3 text-right tabular-nums"
+              :class="insumo.estoque_atual < 0 ? 'text-red-700' : ''"
             >
-              Alterar
-            </button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+              {{ numero(insumo.estoque_atual) }} {{ insumo.unidade }}
+            </td>
+            <td class="px-4 py-3 text-right tabular-nums text-stone-600">
+              {{ insumo.estoque_minimo === null ? '—' : `${numero(insumo.estoque_minimo)} ${insumo.unidade}` }}
+            </td>
+            <td class="px-4 py-3 text-right tabular-nums text-stone-600">
+              {{ insumo.prazo_reposicao_dias === null ? '—' : `${insumo.prazo_reposicao_dias} dias` }}
+            </td>
+            <td class="px-4 py-3">
+              <!-- A API já ordena os alertas do mais grave para o mais leve. -->
+              <SeloDeGravidade :gravidade="insumo.analise.alertas[0]?.gravidade ?? null" />
+            </td>
+            <td class="px-4 py-3 text-right">
+              <button
+                type="button"
+                class="rounded-md px-2 py-1 text-sm font-medium text-campo-700 transition-colors hover:bg-campo-50"
+                @click="abrir(insumo)"
+              >
+                Alterar
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </template>
 </template>
