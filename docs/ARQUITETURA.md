@@ -78,8 +78,7 @@ resumo. Os dois formatos viram cabeçalho + linhas de células e passam pelas me
   planilha importada deixaria o estoque errado sem ninguém perceber.
 - **`.xlsx` é o formato principal.** Data e número chegam com tipo, sem a dúvida de vírgula ou
   ponto, e o produtor não precisa converter nada. Lê a aba **Movimentações** (a do modelo e a
-  do relatório) ou, se não houver, a primeira; o número da
-  linha nos erros é o do Excel.
+  do relatório) ou, se não houver, a primeira; o número da linha nos erros é o do Excel.
 - **Upload é entrada hostil.** Um `.xlsx` é um zip de XML: pequeno compactado, pode ser enorme
   aberto. Por isso, em camadas: pedido acima de 8 MB recusado com `413` antes de ler o corpo
   (`app/main.py`; pelo proxy do Vite essa recusa antecipada chega como `502`, porque o proxy
