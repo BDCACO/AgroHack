@@ -138,130 +138,132 @@ const descricao = computed(() => {
       texto="Lance o estoque que já está no galpão como entrada, com a data de hoje, e as retiradas conforme acontecem."
     />
 
-    <template v-else>
-      <section
-        aria-labelledby="titulo-grafico"
-        class="mt-6 rounded-lg border border-stone-200 bg-white p-4"
+    <section
+      v-else
+      aria-labelledby="titulo-grafico"
+      class="mt-6 rounded-lg border border-stone-200 bg-white p-4"
+    >
+      <h2
+        id="titulo-grafico"
+        class="font-semibold text-stone-800"
       >
-        <h2
-          id="titulo-grafico"
-          class="font-semibold text-stone-800"
-        >
-          Estoque ao longo do tempo
-        </h2>
-        <p class="text-sm text-stone-500">
-          Tracejado: para onde o estoque vai no ritmo de consumo atual.
-        </p>
-        <GraficoDeEstoque
-          :insumo="insumo"
-          :hoje="hoje"
-          class="mt-2"
+        Estoque ao longo do tempo
+      </h2>
+      <p class="text-sm text-stone-500">
+        Tracejado: para onde o estoque vai no ritmo de consumo atual.
+      </p>
+      <GraficoDeEstoque
+        :insumo="insumo"
+        :hoje="hoje"
+        class="mt-2"
+      />
+    </section>
+
+    <section
+      aria-labelledby="titulo-alertas"
+      class="mt-8"
+    >
+      <h2
+        id="titulo-alertas"
+        class="text-sm font-semibold uppercase tracking-wide text-stone-500"
+      >
+        Alertas
+      </h2>
+      <p
+        v-if="!insumo.analise.alertas.length"
+        class="mt-3 text-sm text-stone-600"
+      >
+        Nenhum alerta hoje.
+      </p>
+      <ul
+        v-else
+        class="mt-3 space-y-2"
+      >
+        <CartaoDeAlerta
+          v-for="alerta in insumo.analise.alertas"
+          :key="`${alerta.tipo}-${alerta.justificativa}`"
+          :alerta="alerta"
         />
-      </section>
-
-      <section
-        aria-labelledby="titulo-alertas"
-        class="mt-8"
+      </ul>
+      <p
+        v-if="insumo.analise.reposicao"
+        class="mt-3 rounded-lg border border-stone-200 bg-white p-4 text-sm text-stone-700"
+        data-teste="reposicao"
       >
-        <h2
-          id="titulo-alertas"
-          class="text-sm font-semibold uppercase tracking-wide text-stone-500"
-        >
-          Alertas
-        </h2>
-        <p
-          v-if="!insumo.analise.alertas.length"
-          class="mt-3 text-sm text-stone-600"
-        >
-          Nenhum alerta hoje.
-        </p>
-        <ul
-          v-else
-          class="mt-3 space-y-2"
-        >
-          <CartaoDeAlerta
-            v-for="alerta in insumo.analise.alertas"
-            :key="`${alerta.tipo}-${alerta.justificativa}`"
-            :alerta="alerta"
-          />
-        </ul>
-        <p
-          v-if="insumo.analise.reposicao"
-          class="mt-3 rounded-lg border border-stone-200 bg-white p-4 text-sm text-stone-700"
-          data-teste="reposicao"
-        >
-          {{ insumo.analise.reposicao.justificativa }}
-        </p>
-      </section>
+        {{ insumo.analise.reposicao.justificativa }}
+      </p>
+    </section>
 
-      <section
-        aria-labelledby="titulo-limitacoes"
-        class="mt-8"
+    <section
+      aria-labelledby="titulo-limitacoes"
+      class="mt-8"
+    >
+      <h2
+        id="titulo-limitacoes"
+        class="text-sm font-semibold uppercase tracking-wide text-stone-500"
       >
-        <h2
-          id="titulo-limitacoes"
-          class="text-sm font-semibold uppercase tracking-wide text-stone-500"
+        Limitações da análise
+      </h2>
+      <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-stone-600">
+        <li
+          v-for="limitacao in insumo.analise.limitacoes"
+          :key="limitacao"
         >
-          Limitações da análise
-        </h2>
-        <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-stone-600">
-          <li
-            v-for="limitacao in insumo.analise.limitacoes"
-            :key="limitacao"
-          >
-            {{ limitacao }}
-          </li>
-        </ul>
-      </section>
+          {{ limitacao }}
+        </li>
+      </ul>
+    </section>
 
-      <!-- A tabela é a versão do gráfico para quem não o enxerga ou quer o número exato. -->
-      <details class="mt-8 rounded-lg border border-stone-200 bg-white">
-        <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-stone-800">
-          Movimentações ({{ insumo.movimentacoes.length }})
-        </summary>
-        <div class="overflow-x-auto border-t border-stone-100">
-          <table class="w-full text-left text-sm">
-            <thead class="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
-              <tr>
-                <th class="px-4 py-2 font-semibold">
-                  Data
-                </th>
-                <th class="px-4 py-2 font-semibold">
-                  Tipo
-                </th>
-                <th class="px-4 py-2 text-right font-semibold">
-                  Quantidade
-                </th>
-                <th class="px-4 py-2 font-semibold">
-                  Validade
-                </th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-stone-100">
-              <tr
-                v-for="mov in insumo.movimentacoes"
-                :key="mov.id"
+    <!-- A tabela é a versão do gráfico para quem não o enxerga ou quer o número exato. -->
+    <details
+      v-if="insumo.movimentacoes.length"
+      class="mt-8 rounded-lg border border-stone-200 bg-white"
+    >
+      <summary class="cursor-pointer px-4 py-3 text-sm font-medium text-stone-800">
+        Movimentações ({{ insumo.movimentacoes.length }})
+      </summary>
+      <div class="overflow-x-auto border-t border-stone-100">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
+            <tr>
+              <th class="px-4 py-2 font-semibold">
+                Data
+              </th>
+              <th class="px-4 py-2 font-semibold">
+                Tipo
+              </th>
+              <th class="px-4 py-2 text-right font-semibold">
+                Quantidade
+              </th>
+              <th class="px-4 py-2 font-semibold">
+                Validade
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-stone-100">
+            <tr
+              v-for="mov in insumo.movimentacoes"
+              :key="mov.id"
+            >
+              <td class="px-4 py-2 tabular-nums">
+                {{ dataBr(mov.data) }}
+              </td>
+              <td
+                class="px-4 py-2"
+                :class="mov.tipo === 'entrada' ? 'text-campo-700' : 'text-terra-700'"
               >
-                <td class="px-4 py-2 tabular-nums">
-                  {{ dataBr(mov.data) }}
-                </td>
-                <td
-                  class="px-4 py-2"
-                  :class="mov.tipo === 'entrada' ? 'text-campo-700' : 'text-terra-700'"
-                >
-                  {{ mov.tipo === 'entrada' ? 'Entrada' : 'Saída' }}
-                </td>
-                <td class="px-4 py-2 text-right tabular-nums">
-                  {{ numero(mov.quantidade) }} {{ insumo.unidade }}
-                </td>
-                <td class="px-4 py-2 tabular-nums text-stone-600">
-                  {{ mov.validade ? dataBr(mov.validade) : '—' }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </details>
-    </template>
+                {{ mov.tipo === 'entrada' ? 'Entrada' : 'Saída' }}
+              </td>
+              <td class="px-4 py-2 text-right tabular-nums">
+                {{ numero(mov.quantidade) }} {{ insumo.unidade }}
+              </td>
+              <td class="px-4 py-2 tabular-nums text-stone-600">
+                {{ mov.validade ? dataBr(mov.validade) : '—' }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
   </template>
 </template>

@@ -32,18 +32,25 @@ function somarDias(data: string, dias: number): string {
   return dia.toLocaleDateString('sv-SE')
 }
 
-/** Até onde a linha tracejada vai: o dia em que zera no ritmo atual, ou o horizonte. */
+/** Até onde a linha tracejada vai: o dia em que zera no ritmo atual, ou o horizonte.
+ * A cobertura vem da API, com o mesmo arredondamento do cartão "Dura cerca de" e do
+ * alerta: a página não pode dizer 8 dias num lugar e 9 no outro. */
 const projecao = computed(() => {
   const { estoque_atual: estoque, analise } = props.insumo
-  const consumo = analise.consumo_diario
-  if (!consumo || estoque <= 0) return null
-  const dias = Math.min(Math.ceil(estoque / consumo), HORIZONTE_DIAS)
-  return { dias, zera: estoque / consumo <= HORIZONTE_DIAS, saldo: Math.max(0, estoque - consumo * dias) }
+  const { consumo_diario: consumo, cobertura_dias: cobertura } = analise
+  if (!consumo || cobertura === null || estoque <= 0) return null
+  const dias = Math.round(cobertura)
+  if (dias > HORIZONTE_DIAS) {
+    return { dias: HORIZONTE_DIAS, zera: false, saldo: estoque - consumo * HORIZONTE_DIAS }
+  }
+  return { dias, zera: true, saldo: 0 }
 })
+const quandoZera = (dias: number) =>
+  dias === 0 ? 'zera hoje' : `zera em ~${dias} ${dias === 1 ? 'dia' : 'dias'}`
 
 const descricao = computed(() => {
   const { nome, unidade, estoque_atual } = props.insumo
-  const fim = projecao.value?.zera ? `; no ritmo atual, zera em cerca de ${projecao.value.dias} dias` : ''
+  const fim = projecao.value?.zera ? `; no ritmo atual, ${quandoZera(projecao.value.dias)}` : ''
   return `Estoque de ${nome} ao longo do tempo: ${quantidade(estoque_atual, unidade)} hoje${fim}.`
 })
 
@@ -71,8 +78,7 @@ function opcoes(): EChartsCoreOption {
 
   return {
     animationDuration: 300,
-    // O rótulo "zera em ~N dias" fica além do fim da linha: o grid reserva o espaço.
-    grid: { left: 8, right: p?.zera ? 120 : 24, top: 24, bottom: 8, containLabel: true },
+    grid: { left: 8, right: 24, top: 24, bottom: 8, containLabel: true },
     xAxis: {
       type: 'time',
       axisLine: { lineStyle: { color: GRADE } },
@@ -82,7 +88,8 @@ function opcoes(): EChartsCoreOption {
     },
     yAxis: {
       type: 'value',
-      min: 0,
+      // Saldo negativo (lançamento faltando) aparece, em vez de ser cortado no zero.
+      min: (extremos: { min: number }) => Math.min(0, extremos.min),
       axisLabel: { color: TINTA_SUAVE, formatter: (valor: number) => valor.toLocaleString('pt-BR') },
       splitLine: { lineStyle: { color: GRADE } },
     },
@@ -105,7 +112,8 @@ function opcoes(): EChartsCoreOption {
         // O saldo vale do dia da movimentação até a próxima: degrau, não rampa.
         step: 'end',
         data: real,
-        showSymbol: false,
+        // Com um ponto só (insumo recém-cadastrado), sem o marcador não aparece nada.
+        showSymbol: real.length === 1,
         color: COR,
         lineStyle: { width: 2 },
         areaStyle: { opacity: 0.1 },
@@ -124,11 +132,6 @@ function opcoes(): EChartsCoreOption {
         showSymbol: false,
         color: COR,
         lineStyle: { width: 2, type: 'dashed', opacity: 0.7 },
-        endLabel: {
-          show: Boolean(p?.zera),
-          formatter: `zera em ~${p?.dias} dias`,
-          color: TINTA,
-        },
       },
     ],
   }

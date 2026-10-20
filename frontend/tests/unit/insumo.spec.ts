@@ -91,6 +91,17 @@ describe('InsumoPage', () => {
     expect(ativo.text()).toBe('Insumos')
   })
 
+  it('sem movimentação, ainda mostra os alertas (o Painel leva até aqui)', async () => {
+    const novo = ureia()
+    novo.historico = []
+    vi.mocked(api.buscarInsumo).mockResolvedValue(novo)
+
+    const { wrapper } = await montarEm('/insumos/7')
+
+    expect(wrapper.text()).toContain('Nenhuma movimentação ainda')
+    expect(wrapper.find('[data-teste="alerta"]').exists()).toBe(true)
+  })
+
   it('remove depois de confirmar e volta para a lista', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { wrapper, router } = await montarEm('/insumos/7')
@@ -108,16 +119,17 @@ describe('GraficoDeEstoque', () => {
   it('projeta até o estoque zerar, e escapa o texto do usuário no tooltip', () => {
     const insumo = { ...ureia(), unidade: '<b>kg' }
 
-    mount(GraficoDeEstoque, { props: { insumo, hoje: '2026-10-19' } })
+    const grafico = mount(GraficoDeEstoque, { props: { insumo, hoje: '2026-10-19' } })
 
     const opcoes = setOption.mock.lastCall![0]
-    // Saldo mantido até hoje, e 21 kg a 2,5 kg/dia zeram em 9 dias (arredondado para cima).
+    // Saldo mantido até hoje; a projeção usa a cobertura da API (8,4 dias), arredondada como
+    // no cartão "Dura cerca de 8 dias".
     expect(opcoes.series[0].data.at(-1)).toEqual(['2026-10-19', 21])
     expect(opcoes.series[1].data).toEqual([
       ['2026-10-19', 21],
-      ['2026-10-28', 0],
+      ['2026-10-27', 0],
     ])
-    expect(opcoes.series[1].endLabel.formatter).toBe('zera em ~9 dias')
+    expect(grafico.attributes('aria-label')).toContain('no ritmo atual, zera em ~8 dias.')
     const tooltip = opcoes.tooltip.formatter([{ seriesName: 'Estoque', value: ['2026-10-19', 21] }])
     expect(tooltip).toBe('19/10/2026<br>Estoque: 21 &lt;b>kg')
   })
