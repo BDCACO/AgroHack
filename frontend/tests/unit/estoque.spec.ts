@@ -121,7 +121,8 @@ describe('PainelPage', () => {
     expect(reposicao).toContain('pedir hoje')
     expect(reposicao).toContain('Pedir hoje 70 kg')
     const whatsapp = wrapper.find('[data-teste="whatsapp"]').attributes('href')!
-    expect(decodeURIComponent(whatsapp)).toContain('\n- Ureia: 70 kg (pedir hoje)')
+    expect(decodeURIComponent(whatsapp)).toContain('\nPedir agora:\n- Ureia: 70 kg')
+    expect(decodeURIComponent(whatsapp)).not.toContain('Próximos pedidos')
   })
 
   it('sem insumos, convida a cadastrar', async () => {

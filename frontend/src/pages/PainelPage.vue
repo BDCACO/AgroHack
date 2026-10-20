@@ -33,24 +33,36 @@ const hoje = () => new Date().toLocaleDateString('sv-SE')
 const dataBr = (data: string) => data.split('-').reverse().join('/')
 const quando = (pedirEm: string) => (pedirEm <= hoje() ? 'pedir hoje' : `pedir até ${dataBr(pedirEm)}`)
 
-// O pedido à revenda costuma sair pelo WhatsApp: a lista vai pronta, em texto.
-const listaDeCompras = computed(() =>
-  [
-    `Lista de compras (CampoCerto, ${dataBr(hoje())}):`,
-    ...reposicoes.value.map(
-      (item) =>
-        `- ${item.insumo.nome}: ${item.quantidade.toLocaleString('pt-BR')} ${item.insumo.unidade} (${quando(item.pedir_em)})`,
-    ),
-  ].join('\n'),
-)
+// O pedido à revenda costuma sair pelo WhatsApp: a lista vai pronta, em texto. O que é
+// para pedir já vem separado do que ainda dá para esperar — a quantidade destes vale
+// para a data indicada, não para hoje.
+const listaDeCompras = computed(() => {
+  const item = (r: (typeof reposicoes.value)[number]) =>
+    `- ${r.insumo.nome}: ${r.quantidade.toLocaleString('pt-BR')} ${r.insumo.unidade}`
+  const agora = reposicoes.value.filter((r) => r.pedir_em <= hoje())
+  const depois = reposicoes.value.filter((r) => r.pedir_em > hoje())
+  return [
+    `Lista de compras (CampoCerto, ${dataBr(hoje())})`,
+    ...(agora.length ? ['', 'Pedir agora:', ...agora.map(item)] : []),
+    ...(depois.length
+      ? ['', 'Próximos pedidos:', ...depois.map((r) => `${item(r)} até ${dataBr(r.pedir_em)}`)]
+      : []),
+  ].join('\n')
+})
 const linkWhatsApp = computed(() => `https://wa.me/?text=${encodeURIComponent(listaDeCompras.value)}`)
 // A área de transferência só existe em HTTPS ou localhost; fora disso, fica o WhatsApp.
 const podeCopiar = typeof navigator !== 'undefined' && Boolean(navigator.clipboard)
-const copiada = ref(false)
+const rotuloDaCopia = { copiada: 'Lista copiada', falhou: 'Não deu para copiar' } as const
+const copia = ref<keyof typeof rotuloDaCopia | null>(null)
 async function copiar() {
-  await navigator.clipboard.writeText(listaDeCompras.value)
-  copiada.value = true
-  setTimeout(() => (copiada.value = false), 2000)
+  try {
+    await navigator.clipboard.writeText(listaDeCompras.value)
+    copia.value = 'copiada'
+  } catch {
+    // Permissão negada pelo navegador: o link do WhatsApp continua ao lado.
+    copia.value = 'falhou'
+  }
+  setTimeout(() => (copia.value = null), 2500)
 }
 </script>
 
@@ -144,7 +156,7 @@ async function copiar() {
             class="rounded-md px-3 py-1.5 text-sm font-medium text-campo-700 hover:bg-campo-50"
             @click="copiar"
           >
-            {{ copiada ? 'Lista copiada' : 'Copiar lista' }}
+            {{ copia ? rotuloDaCopia[copia] : 'Copiar lista' }}
           </button>
           <a
             :href="linkWhatsApp"
