@@ -11,12 +11,14 @@ from app.schemas.estoque import (
     PedidoDeImportacao,
 )
 from app.services import estoque as servico
+from app.services import planilha_modelo
 from app.services.importacao import ResultadoImportacao, importar
 
 router = APIRouter(tags=["estoque"])
 
 _NOME_DUPLICADO = HTTPException(status.HTTP_409_CONFLICT, "Já existe um insumo com esse nome.")
 _INSUMO_INEXISTENTE = "Insumo não encontrado."
+_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @router.get("/insumos", response_model=list[InsumoResposta])
@@ -99,7 +101,23 @@ def remover_movimentacao(movimentacao_id: int, db: Session = Depends(get_db)) ->
 def importar_planilha(
     pedido: PedidoDeImportacao, db: Session = Depends(get_db)
 ) -> ResultadoImportacao:
-    """Movimentações de uma planilha CSV (data, insumo, unidade, tipo, quantidade,
-    validade). Sem `confirmar`, só confere e resume. Com um erro sequer, nada é
-    gravado: a resposta lista os erros por linha e `importado` vem falso."""
-    return importar(db, pedido.conteudo, confirmar=pedido.confirmar)
+    """Movimentações de uma planilha — `xlsx` (base64) ou `conteudo` (texto do CSV) — com
+    as colunas data, insumo, unidade, tipo, quantidade e validade. Sem `confirmar`, só
+    confere e resume. Com um erro sequer, nada é gravado: a resposta lista os erros por
+    linha e `importado` vem falso."""
+    arquivo = pedido.xlsx if pedido.xlsx is not None else pedido.conteudo
+    return importar(db, arquivo, confirmar=pedido.confirmar)
+
+
+@router.get(
+    "/importacoes/modelo.xlsx",
+    response_class=Response,
+    responses={200: {"content": {_XLSX: {}}, "description": "Planilha modelo"}},
+)
+def baixar_planilha_modelo(db: Session = Depends(get_db)) -> Response:
+    """Planilha modelo formatada, com os insumos cadastrados para escolher da lista."""
+    return Response(
+        planilha_modelo.gerar(db),
+        media_type=_XLSX,
+        headers={"Content-Disposition": 'attachment; filename="modelo-campocerto.xlsx"'},
+    )

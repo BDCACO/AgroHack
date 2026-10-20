@@ -1,9 +1,12 @@
 """Importação de movimentações por planilha CSV (POST /importacoes)."""
 
-from datetime import timedelta
+import base64
+from datetime import datetime, timedelta
+from io import BytesIO
 from typing import Any
 
 from fastapi.testclient import TestClient
+from openpyxl import Workbook, load_workbook
 
 from app.core.relogio import hoje
 
@@ -122,7 +125,10 @@ def test_com_um_erro_nada_e_gravado(client: TestClient) -> None:
 def test_planilha_sem_as_colunas_do_modelo(client: TestClient) -> None:
     previa = importar(client, "produto;qtd\nUreia;10\n")
 
-    assert previa["erros"] == ["Faltam as colunas: data, insumo, tipo, quantidade."]
+    assert previa["erros"] == [
+        "Faltam as colunas: data, insumo, tipo, quantidade. A primeira linha precisa ter os "
+        "títulos — use a planilha modelo."
+    ]
     assert importar(client, "")["erros"] == ["O arquivo está vazio."]
     so_cabecalho = importar(client, "data;insumo;tipo;quantidade\n")
     assert so_cabecalho["erros"] == ["Nenhuma movimentação na planilha."]
@@ -192,3 +198,143 @@ def test_nomes_que_so_diferem_em_maiusculas_no_cadastro(client: TestClient) -> N
         'Linha 2: há mais de um insumo cadastrado como "ureia" (UREIA, Ureia); '
         "renomeie um deles na tela de Insumos."
     ]
+
+
+# --- Planilha do Excel (.xlsx) ---------------------------------------------------------
+
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def baixar_modelo(client: TestClient) -> Workbook:
+    resposta = client.get("/api/v1/importacoes/modelo.xlsx")
+    assert resposta.status_code == 200
+    assert resposta.headers["content-type"] == XLSX
+    assert 'filename="modelo-campocerto.xlsx"' in resposta.headers["content-disposition"]
+    return load_workbook(BytesIO(resposta.content))
+
+
+def importar_xlsx(client: TestClient, livro: Workbook, *, confirmar: bool = False) -> Any:
+    arquivo = BytesIO()
+    livro.save(arquivo)
+    xlsx = base64.b64encode(arquivo.getvalue()).decode()
+    resposta = client.post("/api/v1/importacoes", json={"xlsx": xlsx, "confirmar": confirmar})
+    assert resposta.status_code == 200, resposta.json()
+    return resposta.json()
+
+
+def preencher(aba: Any, linhas: list[tuple]) -> None:
+    for numero, linha in enumerate(linhas, start=2):
+        for coluna, valor in enumerate(linha, start=1):
+            aba.cell(numero, coluna, valor)
+
+
+def em_datetime(dias_atras: int) -> datetime:
+    return datetime.combine(HOJE - timedelta(days=dias_atras), datetime.min.time())
+
+
+def test_planilha_modelo_vem_formatada_e_com_os_insumos(client: TestClient) -> None:
+    client.post("/api/v1/insumos", json={"nome": "Ureia", "unidade": "kg"})
+
+    livro = baixar_modelo(client)
+
+    assert livro.sheetnames == ["Movimentações", "Como preencher", "Exemplo", "Insumos cadastrados"]
+    aba = livro["Movimentações"]
+    assert [c.value for c in aba[1]] == [
+        "data",
+        "insumo",
+        "unidade",
+        "tipo",
+        "quantidade",
+        "validade",
+    ]
+    assert aba["A1"].font.bold
+    assert aba["A1"].comment.text.startswith("Dia em que a compra chegou")
+    assert aba.freeze_panes == "A2"
+    assert aba["A2"].number_format == aba["F1001"].number_format == "DD/MM/YYYY"
+    listas = {str(v.sqref): v.formula1 for v in aba.data_validations.dataValidation}
+    assert listas["B2:B1001"] == "'Insumos cadastrados'!$A$2:$A$2"
+    assert listas["D2:D1001"] == '"entrada,saída"'
+    assert livro["Insumos cadastrados"]["A2"].value == "Ureia"
+
+
+def test_modelo_preenchido_volta_pela_importacao(client: TestClient) -> None:
+    client.post("/api/v1/insumos", json={"nome": "Ureia", "unidade": "kg"})
+    livro = baixar_modelo(client)
+    preencher(
+        livro["Movimentações"],
+        [
+            # Data e número com tipo, como o Excel grava a célula formatada...
+            (em_datetime(10), "Ureia", None, "entrada", 1000, None),
+            (em_datetime(5), "ureia", "kg", "saída", 25.5, None),
+            # ...e digitados como texto, que também valem.
+            (br(3), "Vacina contra aftosa", "dose", "entrada", "12,5", br(-100)),
+        ],
+    )
+
+    previa = importar_xlsx(client, livro)
+
+    assert previa["erros"] == []
+    assert previa["insumos"] == [
+        {"nome": "Ureia", "unidade": "kg", "novo": False, "entradas": 1000, "saidas": 25.5},
+        {
+            "nome": "Vacina contra aftosa",
+            "unidade": "dose",
+            "novo": True,
+            "entradas": 12.5,
+            "saidas": 0,
+        },
+    ]
+    assert importar_xlsx(client, livro, confirmar=True)["importado"] is True
+
+
+def test_o_exemplo_do_modelo_importa_sem_erro(client: TestClient) -> None:
+    exemplo = Workbook()
+    for linha in baixar_modelo(client)["Exemplo"].iter_rows(values_only=True):
+        exemplo.active.append(linha)
+
+    previa = importar_xlsx(client, exemplo)
+
+    assert (previa["erros"], previa["linhas"]) == ([], 3)
+
+
+def test_modelo_vazio_nao_tem_o_que_importar(client: TestClient) -> None:
+    assert importar_xlsx(client, baixar_modelo(client))["erros"] == [
+        "Nenhuma movimentação na planilha."
+    ]
+
+
+def test_erros_do_xlsx_apontam_a_linha_do_excel(client: TestClient) -> None:
+    livro = Workbook()
+    aba = livro.active
+    aba.append(["Data", "Insumo", "Unidade", "Tipo", "Quantidade"])
+    preencher(
+        aba,
+        [
+            (em_datetime(5), "Ureia", "kg", "entrada", 10),
+            (),  # linha 3 em branco: pulada, mas a numeração segue a do Excel
+            (em_datetime(4), "Ureia", "kg", "devolução", 5),
+            (46000, "Ureia", "kg", "entrada", 5),  # número de série numa célula sem formato
+            (em_datetime(2), "Ureia", "kg", "entrada", 1, None, None, "anotação"),
+        ],
+    )
+
+    assert importar_xlsx(client, livro)["erros"] == [
+        'Linha 4: tipo "devolução" desconhecido; use entrada ou saída.',
+        'Linha 5: data "46000" inválida; use DD/MM/AAAA.',
+        "Linha 6: há valores em colunas sem título; apague-os ou dê um título à coluna.",
+    ]
+
+
+def test_arquivo_que_nao_e_xlsx(client: TestClient) -> None:
+    resposta = client.post(
+        "/api/v1/importacoes", json={"xlsx": base64.b64encode(b"isto nao e uma planilha").decode()}
+    )
+
+    [erro] = resposta.json()["erros"]
+    assert erro.startswith("Não deu para abrir a planilha do Excel.")
+
+
+def test_pedido_com_os_dois_formatos_ou_nenhum(client: TestClient) -> None:
+    xlsx = base64.b64encode(b"x").decode()
+    for corpo in ({}, {"conteudo": "a", "xlsx": xlsx}):
+        assert client.post("/api/v1/importacoes", json=corpo).status_code == 422

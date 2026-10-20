@@ -14,6 +14,11 @@ dependencies = [
     # Driver síncrono do PostgreSQL. A API é síncrona de propósito: as análises
     # vão rodar sobre Pandas, que é CPU-bound e síncrono — ver docs/ARQUITETURA.md.
     "psycopg[binary]>=3.3.6,<4.0.0",
+    # Planilha do Excel (.xlsx): ler a importação e gerar o modelo formatado.
+    "openpyxl>=3.1.5,<4.0.0",
+    # O openpyxl o usa sozinho, quando instalado, contra XML malicioso (bomba de
+    # entidades) num .xlsx enviado por upload.
+    "defusedxml>=0.7.1,<0.8.0",
 ]
 
 [dependency-groups]

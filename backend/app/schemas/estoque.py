@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Base64Bytes, BaseModel, ConfigDict, Field, model_validator
 
 from app.analysis.consumo import Analise
 from app.core.relogio import hoje
@@ -63,8 +63,16 @@ class InsumoDetalhe(InsumoResposta):
 
 
 class PedidoDeImportacao(BaseModel):
-    # O texto do CSV, já decodificado pelo navegador. 5 MB passam de dezenas de
-    # milhares de linhas: anos de registro de uma propriedade.
-    conteudo: str = Field(max_length=5_000_000)
+    """Um dos dois: a planilha do Excel ou o texto do CSV (que o navegador decodifica). 5 MB
+    passam de dezenas de milhares de linhas: anos de registro de uma propriedade."""
+
+    xlsx: Base64Bytes | None = Field(default=None, max_length=5_000_000)
+    conteudo: str | None = Field(default=None, max_length=5_000_000)
     # Falso = só confere e resume, para o produtor ver antes de gravar.
     confirmar: bool = False
+
+    @model_validator(mode="after")
+    def _um_arquivo(self) -> Self:
+        if (self.xlsx is None) == (self.conteudo is None):
+            raise ValueError("envie a planilha em `xlsx` (base64) ou o CSV em `conteudo`")
+        return self

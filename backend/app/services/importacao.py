@@ -1,8 +1,12 @@
-"""Importação de movimentações a partir de uma planilha CSV.
+"""Importação de movimentações a partir de uma planilha: do Excel (.xlsx) ou CSV.
 
-Para o produtor que já anota compras e retiradas no Excel não relançar tudo pela tela.
-Tudo ou nada: com um erro sequer, nada entra. Meia planilha importada é pior que
+Para o produtor que já anota compras e retiradas numa planilha não relançar tudo pela
+tela. Tudo ou nada: com um erro sequer, nada entra. Meia planilha importada é pior que
 nenhuma, porque o estoque fica errado sem que ninguém perceba.
+
+Os dois formatos viram a mesma coisa — cabeçalho e linhas de células — e passam pelas
+mesmas regras. No .xlsx, data e número já chegam com tipo; no CSV, tudo é texto, e o
+formato dos números é deduzido da planilha inteira.
 """
 
 import _csv
@@ -12,6 +16,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
+from openpyxl import load_workbook
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -29,6 +34,21 @@ TIPOS = {
 }
 # O Excel em português grava DD/MM/AAAA (ou DD/MM/AA, se a célula estiver assim).
 FORMATOS_DE_DATA = ("%d/%m/%Y", "%Y-%m-%d", "%d/%m/%y")
+# Anos de registro de uma propriedade cabem com folga. O teto protege a API de um
+# arquivo que, compactado, parece pequeno e se abre em milhões de linhas.
+LINHAS_MAXIMAS = 50_000
+
+_XLSX_ILEGIVEL = (
+    "Não deu para abrir a planilha do Excel. Abra o arquivo no Excel, salve de novo como "
+    "Pasta de Trabalho do Excel (.xlsx) e tente outra vez."
+)
+_MUITAS_LINHAS = (
+    f"A planilha tem mais de {LINHAS_MAXIMAS:_} movimentações. Divida em partes (um ano por "
+    "arquivo, por exemplo) e importe uma de cada vez."
+).replace("_", ".")
+
+# O CSV só dá texto; o .xlsx dá também número e data, já com tipo.
+type Celula = str | float | date
 
 
 @dataclass
@@ -66,27 +86,24 @@ class _Linha:
     validade: date | None
 
 
-def importar(db: Session, conteudo: str, *, confirmar: bool) -> ResultadoImportacao:
-    """Confere a planilha e devolve o resumo. Com `confirmar` e sem erros, grava."""
+# (número da linha no arquivo, células) — ou, no lugar das células, o erro de forma da
+# linha, que segue junto para a lista de erros sair na ordem do arquivo.
+type _Lidas = list[tuple[int, list[Celula] | str]]
+
+
+def importar(db: Session, arquivo: str | bytes, *, confirmar: bool) -> ResultadoImportacao:
+    """Confere a planilha — texto = CSV, bytes = .xlsx — e devolve o resumo. Com
+    `confirmar` e sem erros, grava."""
     resultado = ResultadoImportacao()
-    conteudo = conteudo.lstrip("\ufeff")
-    if not conteudo.strip():
-        resultado.erros.append("O arquivo está vazio.")
+    if isinstance(arquivo, bytes):
+        lido = _ler_xlsx(arquivo, resultado.erros)
+    else:
+        lido = _ler_csv(arquivo, resultado.erros)
+    if lido is None:
         return resultado
-
-    # O Excel em português separa por ponto e vírgula; o resto do mundo, por vírgula.
-    delimitador = ";" if ";" in conteudo.split("\n", 1)[0] else ","
-    leitor = csv.reader(io.StringIO(conteudo, newline=""), delimiter=delimitador)
-    cabecalho = [coluna.strip().lower() for coluna in next(leitor)]
-    if faltando := [c for c in COLUNAS_OBRIGATORIAS if c not in cabecalho]:
-        resultado.erros.append(f"Faltam as colunas: {', '.join(faltando)}.")
-        return resultado
-
-    lidas = _ler_celulas(leitor, len(cabecalho), resultado.erros)
-    if lidas is None:
-        return resultado
+    cabecalho, lidas, decimal_padrao = lido
     try:
-        decimal = _separador_decimal(lidas, cabecalho, delimitador)
+        decimal = _separador_decimal(lidas, cabecalho, decimal_padrao)
     except ValueError as erro:
         resultado.erros.append(str(erro))
         return resultado
@@ -97,6 +114,9 @@ def importar(db: Session, conteudo: str, *, confirmar: bool) -> ResultadoImporta
     novos: dict[str, Insumo] = {}
     linhas: list[_Linha] = []
     for numero, celulas in lidas:
+        if isinstance(celulas, str):
+            resultado.erros.append(f"Linha {numero}: {celulas}")
+            continue
         campos = dict(zip(cabecalho, celulas, strict=False))
         try:
             linhas.append(_ler(campos, decimal, cadastrados, novos))
@@ -125,12 +145,29 @@ def importar(db: Session, conteudo: str, *, confirmar: bool) -> ResultadoImporta
     return resultado
 
 
-def _ler_celulas(
-    leitor: _csv.Reader, colunas: int, erros: list[str]
-) -> list[tuple[int, list[str]]] | None:
-    """As linhas com conteúdo, com o número da linha onde cada uma começa no arquivo.
-    None se o arquivo nem pôde ser lido."""
-    lidas = []
+def _ler_csv(conteudo: str, erros: list[str]) -> tuple[list[str], _Lidas, str] | None:
+    """Cabeçalho, linhas e o separador decimal costumeiro do arquivo. None se não deu
+    para ler (o motivo vai para `erros`)."""
+    conteudo = conteudo.removeprefix("\N{BYTE ORDER MARK}")
+    if not conteudo.strip():
+        erros.append("O arquivo está vazio.")
+        return None
+    # O Excel em português separa por ponto e vírgula; o resto do mundo, por vírgula.
+    delimitador = ";" if ";" in conteudo.split("\n", 1)[0] else ","
+    leitor = csv.reader(io.StringIO(conteudo, newline=""), delimiter=delimitador)
+    cabecalho = _cabecalho(next(leitor), erros)
+    if cabecalho is None:
+        return None
+    lidas = _linhas_do_csv(leitor, cabecalho, erros)
+    if lidas is None:
+        return None
+    # Sem pista nas células, vale o costume: quem separa colunas por ponto e vírgula (o
+    # Excel em português) usa vírgula decimal.
+    return cabecalho, lidas, "," if delimitador == ";" else "."
+
+
+def _linhas_do_csv(leitor: _csv.Reader, cabecalho: list[str], erros: list[str]) -> _Lidas | None:
+    lidas: _Lidas = []
     inicio = 2  # a linha 1 é o cabeçalho
     try:
         for celulas in leitor:
@@ -139,22 +176,26 @@ def _ler_celulas(
                 continue
             if any("\n" in celula or "\r" in celula for celula in celulas):
                 # Uma aspa aberta faz o csv juntar o que vem depois numa célula só.
-                erros.append(
-                    f'Linha {numero}: aspa (") sem fechar; o resto do arquivo virou uma célula só.'
+                lidas.append(
+                    (numero, 'aspa (") sem fechar; o resto do arquivo virou uma célula só.')
                 )
             elif any("\x00" in celula for celula in celulas):
-                erros.append(
-                    f"Linha {numero}: caractere inválido; salve a planilha de novo como CSV."
-                )
-            elif any(celula.strip() for celula in celulas[colunas:]):
+                lidas.append((numero, "caractere inválido; salve a planilha de novo como CSV."))
+            elif _sem_titulo(cabecalho, celulas):
                 # Excel deixa ";;" no fim das linhas: célula vazia a mais não é erro.
-                erros.append(
-                    f"Linha {numero}: {len(celulas)} colunas, mas o cabeçalho tem {colunas}. "
-                    "Se a quantidade tem vírgula decimal, separe as colunas por ponto e vírgula "
-                    "ou ponha o número entre aspas."
+                lidas.append(
+                    (
+                        numero,
+                        f"{len(celulas)} colunas, mas o cabeçalho tem {len(cabecalho)}. Se a "
+                        "quantidade tem vírgula decimal, separe as colunas por ponto e vírgula "
+                        "ou ponha o número entre aspas.",
+                    )
                 )
             else:
                 lidas.append((numero, [celula.strip() for celula in celulas]))
+            if len(lidas) > LINHAS_MAXIMAS:
+                erros.append(_MUITAS_LINHAS)
+                return None
     except csv.Error as erro:
         erros.append(
             f'Linha {inicio}: não deu para ler o arquivo ({erro}). Há uma aspa (") sem fechar?'
@@ -163,15 +204,102 @@ def _ler_celulas(
     return lidas
 
 
-def _separador_decimal(
-    lidas: list[tuple[int, list[str]]], cabecalho: list[str], delimitador: str
-) -> str:
+def _ler_xlsx(dados: bytes, erros: list[str]) -> tuple[list[str], _Lidas, str] | None:
+    """Lê a primeira aba. O número de cada linha é o da linha no Excel."""
+    lidas: _Lidas = []
+    try:
+        # read_only: lê linha a linha, sem montar a planilha inteira na memória.
+        livro = load_workbook(io.BytesIO(dados), read_only=True, data_only=True)
+    except Exception:  # zip quebrado, .xls renomeado, XML malicioso barrado pelo defusedxml
+        erros.append(_XLSX_ILEGIVEL)
+        return None
+    try:
+        valores = livro.worksheets[0].iter_rows(values_only=True)
+        primeira = next(valores, None)
+        if primeira is None:
+            erros.append("A planilha está vazia.")
+            return None
+        cabecalho = _cabecalho([_texto(_celula(valor)) for valor in primeira], erros)
+        if cabecalho is None:
+            return None
+        for numero, linha in enumerate(valores, start=2):
+            celulas = [_celula(valor) for valor in linha]
+            if not any(_texto(celula) for celula in celulas):
+                continue
+            if _sem_titulo(cabecalho, celulas):
+                lidas.append(
+                    (
+                        numero,
+                        "há valores em colunas sem título; apague-os ou dê um título à coluna.",
+                    )
+                )
+            else:
+                lidas.append((numero, celulas))
+            if len(lidas) > LINHAS_MAXIMAS:
+                erros.append(_MUITAS_LINHAS)
+                return None
+    except Exception:
+        erros.append(_XLSX_ILEGIVEL)
+        return None
+    finally:
+        livro.close()
+    # Número digitado como texto numa planilha do Excel em português usa vírgula decimal.
+    return cabecalho, lidas, ","
+
+
+def _celula(valor: object) -> Celula:
+    """Valor do openpyxl → célula: datetime vira data (a hora não interessa), número
+    vira float, o resto vira texto."""
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    if isinstance(valor, int | float) and not isinstance(valor, bool):
+        return float(valor)
+    return "" if valor is None else str(valor).strip()
+
+
+def _texto(celula: Celula) -> str:
+    if isinstance(celula, float):
+        # 1020.0 → "1020": um código numérico no nome não ganha ".0".
+        return str(int(celula)) if celula.is_integer() else str(celula)
+    if isinstance(celula, date):
+        return f"{celula:%d/%m/%Y}"
+    return celula
+
+
+def _sem_titulo(cabecalho: list[str], celulas: list[Celula]) -> bool:
+    """Há valor numa coluna sem título? Seria descartado sem ninguém ver."""
+    return any(
+        _texto(celula)
+        for i, celula in enumerate(celulas)
+        if i >= len(cabecalho) or not cabecalho[i]
+    )
+
+
+def _cabecalho(valores: list[str], erros: list[str]) -> list[str] | None:
+    cabecalho = [valor.strip().lower() for valor in valores]
+    if faltando := [c for c in COLUNAS_OBRIGATORIAS if c not in cabecalho]:
+        erros.append(
+            f"Faltam as colunas: {', '.join(faltando)}. A primeira linha precisa ter os "
+            "títulos — use a planilha modelo."
+        )
+        return None
+    return cabecalho
+
+
+def _separador_decimal(lidas: _Lidas, cabecalho: list[str], padrao: str) -> str:
     """Vírgula ou ponto, decidido pela planilha inteira: sozinha, a célula "25.500" não diz
-    se é vinte e cinco e meio ou vinte e cinco mil."""
+    se é vinte e cinco e meio ou vinte e cinco mil. Só olha número escrito como texto."""
     coluna = cabecalho.index("quantidade")
     pistas: dict[str, tuple[int, str]] = {}
     for numero, celulas in lidas:
-        texto = celulas[coluna].replace(" ", "") if coluna < len(celulas) else ""
+        if isinstance(celulas, str):
+            continue  # linha com erro de forma
+        valor = celulas[coluna] if coluna < len(celulas) else ""
+        if not isinstance(valor, str):
+            continue
+        texto = valor.replace(" ", "")
         if (separador := _pista(texto)) is not None:
             pistas.setdefault(separador, (numero, texto))
     if len(pistas) > 1:
@@ -180,11 +308,7 @@ def _separador_decimal(
             f"Quantidades com vírgula decimal (linha {linha_v}: {virgula}) e com ponto decimal "
             f"(linha {linha_p}: {ponto}) na mesma planilha: use um formato só."
         )
-    if pistas:
-        return next(iter(pistas))
-    # Nenhuma célula decide: vale o costume de cada tipo de arquivo. O Excel em português
-    # separa as colunas por ponto e vírgula e os decimais por vírgula.
-    return "," if delimitador == ";" else "."
+    return next(iter(pistas)) if pistas else padrao
 
 
 def _pista(texto: str) -> str | None:
@@ -206,36 +330,30 @@ def _pista(texto: str) -> str | None:
 
 
 def _ler(
-    campos: dict[str, str],
+    campos: dict[str, Celula],
     decimal: str,
     cadastrados: dict[str, list[Insumo]],
     novos: dict[str, Insumo],
 ) -> _Linha:
-    nome = campos.get("insumo", "")
+    nome = _texto(campos.get("insumo", ""))
     if not nome:
         raise ValueError("falta o nome do insumo.")
     if len(nome) > 120:
         raise ValueError("nome do insumo com mais de 120 caracteres.")
-    unidade = campos.get("unidade", "")
+    unidade = _texto(campos.get("unidade", ""))
     if len(unidade) > 20:
         raise ValueError("unidade com mais de 20 caracteres.")
 
-    tipo = TIPOS.get(campos.get("tipo", "").casefold())
+    tipo_escrito = _texto(campos.get("tipo", ""))
+    tipo = TIPOS.get(tipo_escrito.casefold())
     if tipo is None:
-        raise ValueError(f'tipo "{campos.get("tipo", "")}" desconhecido; use entrada ou saída.')
+        raise ValueError(f'tipo "{tipo_escrito}" desconhecido; use entrada ou saída.')
 
     data = _data(campos.get("data", ""), "data")
     if data > hoje():
         raise ValueError("data no futuro.")
 
-    texto = campos.get("quantidade", "")
-    milhar = "." if decimal == "," else ","
-    try:
-        quantidade = round(
-            float(texto.replace(" ", "").replace(milhar, "").replace(decimal, ".")), 3
-        )
-    except ValueError:
-        raise ValueError(f'quantidade "{texto}" não é um número.') from None
+    quantidade = _quantidade(campos.get("quantidade", ""), decimal)
     # `not >` em vez de `<=`: pega também o NaN, que float("nan") aceita.
     if not quantidade > 0:
         raise ValueError("quantidade deve ser maior que zero.")
@@ -243,12 +361,23 @@ def _ler(
         raise ValueError("quantidade grande demais.")
 
     validade = None
-    if texto_validade := campos.get("validade", ""):
+    if _texto(valor_validade := campos.get("validade", "")):
         if tipo != "entrada":
             raise ValueError("validade só se informa numa entrada.")
-        validade = _data(texto_validade, "validade")
+        validade = _data(valor_validade, "validade")
     insumo = _insumo(nome, unidade, cadastrados, novos)
     return _Linha(insumo, tipo, data, quantidade, validade)
+
+
+def _quantidade(celula: Celula, decimal: str) -> float:
+    if isinstance(celula, float):
+        return round(celula, 3)
+    texto = _texto(celula)
+    milhar = "." if decimal == "," else ","
+    try:
+        return round(float(texto.replace(" ", "").replace(milhar, "").replace(decimal, ".")), 3)
+    except ValueError:
+        raise ValueError(f'quantidade "{texto}" não é um número.') from None
 
 
 def _insumo(
@@ -280,7 +409,12 @@ def _insumo(
     return insumo
 
 
-def _data(texto: str, coluna: str) -> date:
+def _data(celula: Celula, coluna: str) -> date:
+    if isinstance(celula, date):
+        return celula
+    # Número numa coluna de data é o número de série do Excel, sinal de célula sem
+    # formato de data: recusar é mais seguro que adivinhar.
+    texto = _texto(celula)
     for formato in FORMATOS_DE_DATA:
         try:
             return datetime.strptime(texto, formato).date()  # noqa: DTZ007 — só a data
