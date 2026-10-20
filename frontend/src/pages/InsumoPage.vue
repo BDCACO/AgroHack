@@ -25,6 +25,8 @@ watch(
     erro.value = null
     try {
       insumo.value = await buscarInsumo(id)
+      // A rota só sabe que é "Insumo"; a aba do navegador (e o leitor de tela) diz qual.
+      document.title = `${insumo.value.nome} · CampoCerto`
     } catch (falha) {
       erro.value = mensagemDeErro(falha)
     }

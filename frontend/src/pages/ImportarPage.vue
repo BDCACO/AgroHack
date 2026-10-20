@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import { URL_DA_PLANILHA_MODELO } from '@/services/estoque'
@@ -109,6 +109,16 @@ const colunas = [
   ['validade', 'Opcional, só em entradas: a validade do lote.'],
 ] as const
 
+// O resultado aparece sem trocar de página: o leitor de tela precisa ouvir que chegou. Os
+// erros têm role="alert" e a importação concluída, role="status"; aqui, o resto.
+const anuncio = computed(() => {
+  if (ocupado.value) return 'Conferindo a planilha…'
+  if (previa.value && !previa.value.erros.length) {
+    return `Planilha conferida: ${contar(previa.value.linhas, 'movimentação', 'movimentações')}. Confira o resumo e importe.`
+  }
+  return ''
+})
+
 const contar = (total: number, singular: string, plural: string) =>
   `${total.toLocaleString('pt-BR')} ${total === 1 ? singular : plural}`
 const dataBr = (data: string | null) => data?.split('-').reverse().join('/')
@@ -181,8 +191,14 @@ const quantidade = (valor: number, unidade: string) =>
       >
         Arquivo
       </h2>
+      <p
+        class="sr-only"
+        role="status"
+      >
+        {{ anuncio }}
+      </p>
       <label
-        class="flex cursor-pointer flex-col items-center rounded-lg border-2 border-dashed border-stone-300 bg-white px-4 py-8 text-center hover:border-campo-600"
+        class="flex cursor-pointer flex-col items-center rounded-lg border-2 border-dashed border-stone-300 bg-white px-4 py-8 text-center hover:border-campo-600 has-[:focus-visible]:border-campo-600 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600/30"
         :class="ocupado ? 'pointer-events-none opacity-60' : ''"
       >
         <span class="font-medium text-campo-700">

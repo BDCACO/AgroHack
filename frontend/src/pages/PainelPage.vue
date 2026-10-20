@@ -170,6 +170,7 @@ async function copiar() {
             v-if="podeCopiar"
             type="button"
             class="rounded-md px-3 py-1.5 text-sm font-medium text-campo-700 hover:bg-campo-50"
+            aria-live="polite"
             @click="copiar"
           >
             {{ copia ? rotuloDaCopia[copia] : 'Copiar lista' }}

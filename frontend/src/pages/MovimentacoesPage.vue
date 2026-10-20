@@ -112,7 +112,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
           <label
             v-for="tipo in (['saida', 'entrada'] as const)"
             :key="tipo"
-            class="cursor-pointer rounded px-4 py-1.5 text-sm font-medium"
+            class="cursor-pointer rounded px-4 py-1.5 text-sm font-medium has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600 has-[:focus-visible]:ring-offset-1"
             :class="form.tipo === tipo ? 'bg-campo-600 text-white' : 'text-stone-700 hover:bg-stone-100'"
           >
             <input

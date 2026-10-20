@@ -19,11 +19,12 @@ vi.mock('@/services/estoque', async (original) => ({
   listarMovimentacoes: vi.fn().mockResolvedValue([]),
 }))
 
-async function montarEm(caminho: string) {
+async function montarEm(caminho: string, opcoes: { attachTo?: HTMLElement } = {}) {
   const router = createRouter({ history: createMemoryHistory(), routes })
   await router.push(caminho)
   await router.isReady()
-  const wrapper = mount(App, { global: { plugins: [router] } })
+  // attachTo: só montado no documento o foco existe de verdade.
+  const wrapper = mount(App, { global: { plugins: [router] }, ...opcoes })
   await flushPromises()
   return { wrapper, router }
 }
@@ -72,6 +73,44 @@ describe('navegação', () => {
     await router.push('/insumos')
     await flushPromises()
     expect(gaveta.classes()).toContain('-translate-x-full')
+  })
+
+  it('fechada no celular, a gaveta sai do Tab; aberta, o resto da tela fica inerte', async () => {
+    const { wrapper } = await montarEm('/')
+    const gaveta = wrapper.find('#menu-lateral')
+    const conteudo = wrapper.find('main').element.parentElement!
+
+    expect(gaveta.classes()).toContain('max-lg:invisible')
+    await wrapper.find('button[aria-label="Abrir menu"]').trigger('click')
+
+    expect(gaveta.classes()).not.toContain('max-lg:invisible')
+    expect(conteudo.hasAttribute('inert')).toBe(true)
+  })
+
+  it('Esc fecha a gaveta e devolve o foco ao botão que a abriu', async () => {
+    const { wrapper } = await montarEm('/', { attachTo: document.body })
+    const abrir = wrapper.find('button[aria-label="Abrir menu"]')
+    await abrir.trigger('click')
+    await flushPromises()
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Fechar menu')
+
+    await wrapper.find('#menu-lateral').trigger('keydown', { key: 'Escape' })
+
+    expect(wrapper.find('#menu-lateral').classes()).toContain('-translate-x-full')
+    expect(document.activeElement).toBe(abrir.element)
+    wrapper.unmount()
+  })
+
+  it('ao trocar de página, o foco vai para o conteúdo novo', async () => {
+    const { wrapper, router } = await montarEm('/', { attachTo: document.body })
+
+    await router.push('/insumos')
+    await flushPromises()
+
+    expect(document.activeElement?.id).toBe('conteudo')
+    // E quem chega pelo teclado pode pular o menu desde o primeiro Tab.
+    expect(wrapper.find('a[href="#conteudo"]').text()).toBe('Pular para o conteúdo')
+    wrapper.unmount()
   })
 
   it('o resumo de status do menu reflete a verificação', async () => {
