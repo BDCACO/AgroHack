@@ -4,9 +4,9 @@ import { computed, onMounted, ref } from 'vue'
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import CartaoDeAlerta from '@/components/CartaoDeAlerta.vue'
 import CoberturaDoEstoque from '@/components/CoberturaDoEstoque.vue'
+import ContadorAnimado from '@/components/ContadorAnimado.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
-import IconeSvg from '@/components/IconeSvg.vue'
-import NumeroRolante from '@/components/NumeroRolante.vue'
+import IconeSvg, { type NomeIcone } from '@/components/IconeSvg.vue'
 import { URL_DO_RELATORIO } from '@/services/estoque'
 import { useEstoqueStore } from '@/stores/estoque'
 import type { Gravidade, Reposicao } from '@/types/api'
@@ -16,7 +16,41 @@ const estoque = useEstoqueStore()
 onMounted(() => estoque.carregar())
 
 const hoje = new Date()
-const dataDeHoje = hoje.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })
+const dataDeHoje = hoje.toLocaleDateString('pt-BR', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+})
+
+const GRAVIDADES: {
+  gravidade: Gravidade
+  titulo: string
+  dica: string
+  icone: NomeIcone
+  cor: { faixa: string; texto: string; icone: string; anel: string }
+}[] = [
+  {
+    gravidade: 'alta',
+    titulo: 'Urgentes',
+    dica: 'resolver hoje',
+    icone: 'urgente',
+    cor: { faixa: 'bg-red-500', texto: 'text-red-700', icone: 'bg-red-50 text-red-600', anel: 'ring-red-500' },
+  },
+  {
+    gravidade: 'media',
+    titulo: 'Atenção',
+    dica: 'nos próximos dias',
+    icone: 'relogio',
+    cor: { faixa: 'bg-amber-400', texto: 'text-amber-800', icone: 'bg-amber-50 text-amber-600', anel: 'ring-amber-400' },
+  },
+  {
+    gravidade: 'baixa',
+    titulo: 'Observar',
+    dica: 'com calma',
+    icone: 'olho',
+    cor: { faixa: 'bg-sky-400', texto: 'text-sky-800', icone: 'bg-sky-50 text-sky-600', anel: 'ring-sky-400' },
+  },
+]
 
 const contagem = computed(() => {
   const total: Record<Gravidade, number> = { alta: 0, media: 0, baixa: 0 }
@@ -24,37 +58,31 @@ const contagem = computed(() => {
   return total
 })
 
-const GRAVIDADES = [
-  { gravidade: 'alta', marca: 'bg-urgente', rotulo: (n: number) => (n === 1 ? 'urgente' : 'urgentes') },
-  {
-    gravidade: 'media',
-    marca: 'bg-atencao-forte',
-    rotulo: (n: number) => (n === 1 ? 'pede atenção' : 'pedem atenção'),
-  },
-  { gravidade: 'baixa', marca: 'bg-observar', rotulo: () => 'para observar' },
-] as const
-
-// A frase de abertura: o que importa hoje, com os nomes.
-const lista = new Intl.ListFormat('pt-BR', { style: 'long', type: 'conjunction' })
+// A frase do dia: o que o produtor precisa saber antes de rolar a página.
 const resumoDoDia = computed(() => {
   const urgentes = [
-    ...new Set(estoque.alertas.filter((a) => a.alerta.gravidade === 'alta').map((a) => a.insumo.nome)),
+    ...new Set(
+      estoque.alertas.filter((a) => a.alerta.gravidade === 'alta').map((a) => a.insumo.nome),
+    ),
   ]
   const { media, baixa } = contagem.value
   if (urgentes.length) {
-    return `${lista.format(urgentes)} ${urgentes.length === 1 ? 'precisa' : 'precisam'} de ação hoje.`
+    const quem = urgentes.length === 1 ? 'insumo precisa' : 'insumos precisam'
+    return `${urgentes.length} ${quem} de ação hoje: ${urgentes.join(', ')}.`
   }
-  if (media) return `Nada urgente hoje. ${media} ${media === 1 ? 'ponto pede' : 'pontos pedem'} atenção.`
-  if (baixa) return 'Nada urgente hoje. Há pontos para observar.'
-  return 'Estoque em ordem: nenhum alerta hoje.'
+  if (media) return `Nada urgente hoje; ${media} ${media === 1 ? 'ponto pede' : 'pontos pedem'} atenção nos próximos dias.`
+  if (baixa) return 'Tudo em dia. Há pontos para observar com calma.'
+  return 'Tudo em dia: nenhum alerta no estoque.'
 })
 
-// Os números filtram a lista: um clique mostra só aquela gravidade, outro desfaz.
+// Os cartões de gravidade filtram a lista: um clique mostra só os urgentes, outro desfaz.
 const filtro = ref<Gravidade | null>(null)
 const alertasVisiveis = computed(() =>
   filtro.value ? estoque.alertas.filter((a) => a.alerta.gravidade === filtro.value) : estoque.alertas,
 )
-const filtrar = (gravidade: Gravidade) => (filtro.value = filtro.value === gravidade ? null : gravidade)
+const filtrar = (gravidade: Gravidade) =>
+  (filtro.value = filtro.value === gravidade ? null : gravidade)
+const tituloDoFiltro = computed(() => GRAVIDADES.find((g) => g.gravidade === filtro.value)?.titulo)
 
 // Datas AAAA-MM-DD comparam certo como texto.
 const reposicoes = computed(() =>
@@ -66,8 +94,9 @@ const reposicoes = computed(() =>
 const dataBr = (data: string) => data.split('-').reverse().join('/')
 const quando = (r: Reposicao) => (r.pedir_hoje ? 'pedir hoje' : `pedir até ${dataBr(r.pedir_em)}`)
 
-// O pedido à revenda costuma sair pelo WhatsApp: a lista vai pronta, em texto, com o que
-// é para agora separado do que pode esperar (a quantidade destes vale para a data dada).
+// O pedido à revenda costuma sair pelo WhatsApp: a lista vai pronta, em texto. O que é
+// para pedir já vem separado do que ainda dá para esperar — a quantidade destes vale
+// para a data indicada, não para hoje.
 const listaDeCompras = computed(() => {
   const item = (r: (typeof reposicoes.value)[number]) =>
     `- ${r.insumo.nome}: ${r.quantidade.toLocaleString('pt-BR')} ${r.insumo.unidade}`
@@ -102,11 +131,13 @@ async function copiar() {
   <CabecalhoDePagina
     titulo="Painel"
     :sobretitulo="dataDeHoje"
+    :descricao="estoque.insumos.length ? resumoDoDia : 'Alertas sobre o estoque de insumos, com a justificativa de cada um.'"
   >
     <template
       v-if="estoque.insumos.length"
       #acoes
     >
+      <!-- Link de download comum: o arquivo vem pronto da API. -->
       <a
         :href="URL_DO_RELATORIO"
         download
@@ -115,7 +146,7 @@ async function copiar() {
       >
         <IconeSvg
           nome="baixar"
-          class="size-4 text-tinta-3"
+          class="h-4 w-4"
         />
         Baixar relatório (Excel)
       </a>
@@ -125,36 +156,37 @@ async function copiar() {
   <p
     v-if="estoque.erro"
     role="alert"
-    class="border-l-2 border-urgente pl-3 text-sm text-urgente"
+    class="cartao border-red-200 bg-red-50 p-4 text-sm text-red-800"
   >
     {{ estoque.erro }}
   </p>
 
-  <!-- A forma da página enquanto os dados chegam: nada salta quando chegam. -->
+  <!-- Esqueleto: a forma da página enquanto os dados chegam, sem salto quando chegam. -->
   <div
     v-else-if="!estoque.carregado"
     aria-busy="true"
     aria-label="Carregando o painel"
   >
-    <div class="esqueleto h-9 w-full max-w-xl" />
-    <div class="mt-8 grid grid-cols-3 border-y border-linha">
+    <div class="grid grid-cols-3 gap-3">
       <div
         v-for="n in 3"
         :key="n"
-        class="px-5 py-5"
-      >
-        <div class="esqueleto h-11 w-14" />
-        <div class="esqueleto mt-3 h-4 w-24" />
-      </div>
+        class="esqueleto h-28 rounded-xl"
+      />
     </div>
-    <div class="esqueleto mt-12 h-72" />
+    <div class="esqueleto mt-6 h-56 rounded-xl" />
+    <div
+      v-for="n in 3"
+      :key="n"
+      class="esqueleto mt-3 h-20 rounded-xl"
+    />
   </div>
 
   <EstadoVazio
     v-else-if="!estoque.insumos.length"
     icone="folha"
     titulo="Nenhum insumo cadastrado ainda"
-    texto="Cadastre os insumos e lance as compras e retiradas. Os alertas aparecem aqui, cada um com a conta que o justifica."
+    texto="Cadastre os insumos e lance as compras e retiradas: os alertas aparecem aqui, cada um com a conta que o justifica."
   >
     <RouterLink
       :to="{ name: 'insumos' }"
@@ -166,118 +198,127 @@ async function copiar() {
       :to="{ name: 'importar' }"
       class="botao-texto"
     >
-      Importar uma planilha
+      ou importar uma planilha
     </RouterLink>
   </EstadoVazio>
 
   <template v-else>
-    <p
-      class="max-w-3xl animate-surgir font-serif text-[1.625rem] leading-snug tracking-[-0.01em] text-tinta sm:text-[1.875rem]"
-      data-teste="resumo-do-dia"
-    >
-      {{ resumoDoDia }}
-    </p>
-
     <div
-      class="mt-8 grid grid-cols-3 border-y border-linha"
+      class="grid grid-cols-3 gap-3"
       role="group"
       aria-label="Filtrar os alertas por gravidade"
     >
       <button
-        v-for="item in GRAVIDADES"
+        v-for="(item, indice) in GRAVIDADES"
         :key="item.gravidade"
         type="button"
-        class="relative px-3 py-5 text-left transition-colors duration-150 not-first:border-l not-first:border-linha hover:bg-folha/70 disabled:pointer-events-none sm:px-5"
+        class="cartao group relative animate-surgir overflow-hidden p-3 text-left transition duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] disabled:pointer-events-none sm:p-4"
+        :class="filtro === item.gravidade ? ['ring-2 ring-offset-2', item.cor.anel] : ''"
+        :style="{ animationDelay: `${indice * 60}ms` }"
         :aria-pressed="filtro === item.gravidade"
         :disabled="!contagem[item.gravidade]"
         @click="filtrar(item.gravidade)"
       >
         <span
-          class="block font-serif text-[2.5rem] leading-none sm:text-5xl"
-          :class="contagem[item.gravidade] ? 'text-tinta' : 'text-linha-forte'"
-        >
-          <NumeroRolante :valor="contagem[item.gravidade]" />
-        </span>
-        <span class="mt-3 flex items-center gap-1.5 text-sm text-tinta-2">
-          <span
-            class="size-[7px] shrink-0 rounded-[2px]"
-            :class="item.marca"
-            aria-hidden="true"
-          />
-          {{ item.rotulo(contagem[item.gravidade]) }}
-        </span>
-        <!-- O filtro ativo ganha um traço embaixo, que cresce da esquerda. -->
-        <span
-          class="absolute inset-x-0 -bottom-px h-0.5 origin-left transition-transform duration-300 ease-chegar"
-          :class="[item.marca, filtro === item.gravidade ? 'scale-x-100' : 'scale-x-0']"
+          class="absolute inset-x-0 top-0 h-1"
+          :class="item.cor.faixa"
           aria-hidden="true"
         />
+        <span class="flex items-center justify-between gap-2">
+          <span
+            class="text-xs font-semibold sm:text-sm"
+            :class="item.cor.texto"
+          >{{ item.titulo }}</span>
+          <span
+            class="hidden rounded-lg p-1.5 transition-transform duration-200 group-hover:scale-110 sm:block"
+            :class="item.cor.icone"
+            aria-hidden="true"
+          >
+            <IconeSvg
+              :nome="item.icone"
+              class="h-4 w-4"
+            />
+          </span>
+        </span>
+        <span
+          class="mt-1 block text-3xl font-bold text-stone-900 sm:mt-2 sm:text-4xl"
+          :class="contagem[item.gravidade] ? '' : 'text-stone-300'"
+        >
+          <ContadorAnimado :valor="contagem[item.gravidade]" />
+        </span>
+        <span class="mt-0.5 hidden text-xs text-stone-500 sm:block">{{ item.dica }}</span>
       </button>
     </div>
 
-    <div class="mt-12 grid gap-12 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-      <section aria-labelledby="titulo-alertas">
-        <div class="flex items-baseline justify-between gap-3">
-          <h2
-            id="titulo-alertas"
-            class="titulo-secao"
-          >
-            Alertas
-            <span class="ml-1 font-sans text-sm font-normal text-tinta-3 tabular-nums">{{ alertasVisiveis.length }}</span>
-          </h2>
-          <button
-            v-if="filtro"
-            type="button"
-            class="botao-texto -mr-2 px-2 py-1 text-xs"
-            @click="filtro = null"
-          >
-            Mostrar todos
-          </button>
-        </div>
-        <p
-          v-if="!estoque.alertas.length"
-          class="mt-4 border-y border-linha py-6 text-sm text-tinta-2"
-        >
-          Nenhum alerta hoje. Os insumos estão dentro do esperado para o consumo registrado.
-        </p>
-        <TransitionGroup
-          v-else
-          tag="ul"
-          name="lista"
-          appear
-          class="relative mt-4 divide-y divide-linha border-y border-linha"
-        >
-          <CartaoDeAlerta
-            v-for="({ insumo, alerta }, indice) in alertasVisiveis"
-            :key="`${insumo.id}-${alerta.tipo}-${alerta.justificativa}`"
-            :alerta="alerta"
-            :insumo="insumo"
-            :style="{ '--i': indice }"
-          />
-        </TransitionGroup>
-      </section>
+    <CoberturaDoEstoque
+      :insumos="estoque.insumos"
+      class="mt-6 animate-surgir [animation-delay:150ms]"
+    />
 
-      <CoberturaDoEstoque
-        :insumos="estoque.insumos"
-        class="animate-surgir [animation-delay:80ms]"
-      />
-    </div>
+    <section
+      aria-labelledby="titulo-alertas"
+      class="mt-8"
+    >
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h2
+          id="titulo-alertas"
+          class="text-base font-semibold text-stone-900"
+        >
+          Alertas
+          <span class="ml-1 text-sm font-normal text-stone-500 tabular-nums">{{ alertasVisiveis.length }}</span>
+        </h2>
+        <button
+          v-if="filtro"
+          type="button"
+          class="botao-texto px-2 py-1 text-xs"
+          @click="filtro = null"
+        >
+          Só {{ tituloDoFiltro?.toLowerCase() }} · mostrar todos
+        </button>
+      </div>
+      <p
+        v-if="!estoque.alertas.length"
+        class="cartao mt-3 flex items-center gap-3 p-4 text-sm text-stone-600"
+      >
+        <IconeSvg
+          nome="confirmado"
+          class="h-6 w-6 shrink-0 text-campo-500"
+        />
+        Nenhum alerta hoje. Os insumos estão dentro do esperado para o consumo registrado.
+      </p>
+      <!-- Ao filtrar, quem fica desliza para o lugar e quem sai esmaece; ao carregar, os
+           cartões chegam em cascata, os mais graves primeiro. -->
+      <TransitionGroup
+        v-else
+        tag="ul"
+        name="lista"
+        class="relative mt-3 space-y-2"
+      >
+        <CartaoDeAlerta
+          v-for="({ insumo, alerta }, indice) in alertasVisiveis"
+          :key="`${insumo.id}-${alerta.tipo}-${alerta.justificativa}`"
+          :alerta="alerta"
+          :insumo="insumo"
+          :style="{ '--i': indice }"
+        />
+      </TransitionGroup>
+    </section>
 
     <section
       v-if="reposicoes.length"
       aria-labelledby="titulo-reposicao"
-      class="mt-14"
+      class="cartao mt-8 overflow-hidden"
     >
-      <div class="flex flex-wrap items-end justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-stone-100 px-5 py-4">
         <div>
           <h2
             id="titulo-reposicao"
-            class="titulo-secao"
+            class="text-base font-semibold text-stone-900"
           >
-            Reposição
+            Reposição estimada
           </h2>
-          <p class="mt-1 text-sm text-tinta-3">
-            Quantidade sugerida e data limite do pedido.
+          <p class="text-sm text-stone-500">
+            O que pedir e até quando, com a conta.
           </p>
         </div>
         <div class="flex flex-wrap gap-2">
@@ -290,7 +331,7 @@ async function copiar() {
           >
             <IconeSvg
               :nome="copia === 'copiada' ? 'confirmado' : 'copiar'"
-              class="size-4"
+              class="h-4 w-4"
             />
             {{ copia ? rotuloDaCopia[copia] : 'Copiar lista' }}
           </button>
@@ -303,39 +344,43 @@ async function copiar() {
           >
             <IconeSvg
               nome="enviar"
-              class="size-4"
+              class="h-4 w-4"
             />
             Enviar pelo WhatsApp
           </a>
         </div>
       </div>
-      <ul class="mt-5 divide-y divide-linha border-y border-linha">
+      <ul class="divide-y divide-stone-100">
         <li
           v-for="item in reposicoes"
           :key="item.insumo.id"
-          class="grid gap-x-8 gap-y-1.5 py-4 sm:grid-cols-[13rem_minmax(0,1fr)]"
+          class="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:gap-6"
           data-teste="reposicao"
         >
-          <div>
+          <div class="shrink-0 sm:w-52">
             <RouterLink
               :to="{ name: 'insumo', params: { id: item.insumo.id } }"
-              class="text-sm text-tinta-2 transition-colors duration-150 hover:text-campo-700"
+              class="text-sm font-medium text-stone-700 hover:text-campo-700 hover:underline"
             >
               {{ item.insumo.nome }}
             </RouterLink>
-            <p class="mt-0.5 font-serif text-2xl leading-tight text-tinta tabular-nums">
+            <p class="text-2xl font-bold text-stone-900 tabular-nums">
               {{ item.quantidade.toLocaleString('pt-BR') }}
-              <span class="font-sans text-sm text-tinta-3">{{ item.insumo.unidade }}</span>
+              <span class="text-base font-medium text-stone-500">{{ item.insumo.unidade }}</span>
             </p>
           </div>
-          <div class="min-w-0">
-            <p
-              class="text-sm font-medium"
-              :class="item.pedir_hoje ? 'text-urgente' : 'text-tinta'"
+          <div class="min-w-0 flex-1">
+            <span
+              class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset"
+              :class="item.pedir_hoje ? 'bg-red-50 text-red-700 ring-red-600/20' : 'bg-stone-50 text-stone-600 ring-stone-300'"
             >
+              <IconeSvg
+                :nome="item.pedir_hoje ? 'urgente' : 'calendario'"
+                class="h-3.5 w-3.5"
+              />
               {{ quando(item) }}
-            </p>
-            <p class="mt-0.5 text-sm leading-relaxed text-tinta-2">
+            </span>
+            <p class="mt-1.5 text-sm leading-relaxed text-stone-600">
               {{ item.justificativa }}
             </p>
           </div>
@@ -345,34 +390,33 @@ async function copiar() {
 
     <section
       aria-labelledby="titulo-limitacoes"
-      class="mt-14"
+      class="mt-8"
     >
       <h2
         id="titulo-limitacoes"
-        class="titulo-secao"
+        class="text-base font-semibold text-stone-900"
       >
         Limitações da análise
       </h2>
-      <p class="mt-1 text-sm text-tinta-3">
-        O que a conta não considera, por insumo.
+      <p class="mt-0.5 text-sm text-stone-500">
+        O que a conta não sabe, por insumo. Leia antes de decidir uma compra.
       </p>
-      <div class="mt-5 divide-y divide-linha border-y border-linha">
+      <div class="cartao mt-3 divide-y divide-stone-100">
         <details
           v-for="insumo in estoque.insumos"
           :key="insumo.id"
-          class="group"
+          class="group px-4 py-3"
         >
-          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm text-tinta transition-colors duration-150 hover:text-campo-700 [&::-webkit-details-marker]:hidden">
-            <span>
-              {{ insumo.nome }}
-              <span class="ml-1 text-tinta-3 tabular-nums">{{ insumo.analise.limitacoes.length }}</span>
-            </span>
+          <summary class="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-stone-800 [&::-webkit-details-marker]:hidden">
+            <!-- A seta gira ao abrir: mostra que o item abre e em que estado está. -->
             <IconeSvg
               nome="seta"
-              class="size-4 text-tinta-3 transition-transform duration-200 ease-mover group-open:rotate-90"
+              class="h-4 w-4 text-stone-400 transition-transform duration-200 group-open:rotate-90"
             />
+            {{ insumo.nome }}
+            <span class="font-normal text-stone-500">({{ insumo.analise.limitacoes.length }})</span>
           </summary>
-          <ul class="animate-surgir list-disc space-y-1 pb-4 pl-5 text-sm leading-relaxed text-tinta-2">
+          <ul class="mt-2 ml-6 animate-surgir list-disc space-y-1 pl-4 text-sm text-stone-600">
             <li
               v-for="limitacao in insumo.analise.limitacoes"
               :key="limitacao"

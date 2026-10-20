@@ -30,7 +30,7 @@ const status = useStatusSistemaStore()
     </template>
   </CabecalhoDePagina>
 
-  <div class="cartao max-w-lg animate-surgir divide-y divide-linha px-5">
+  <div class="cartao max-w-lg animate-surgir divide-y divide-stone-100 px-5">
     <IndicadorDeStatus
       rotulo="API"
       :estado="status.api"
@@ -42,7 +42,7 @@ const status = useStatusSistemaStore()
   </div>
   <p
     v-if="status.verificadoEm"
-    class="mt-3 text-xs text-tinta-3"
+    class="mt-3 text-xs text-stone-500"
   >
     Última verificação: {{ status.verificadoEm.toLocaleTimeString('pt-BR') }}
   </p>

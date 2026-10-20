@@ -6,7 +6,7 @@ import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import CartaoDeAlerta from '@/components/CartaoDeAlerta.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import GraficoDeEstoque from '@/components/GraficoDeEstoque.vue'
-import IconeSvg from '@/components/IconeSvg.vue'
+import IconeSvg, { type NomeIcone } from '@/components/IconeSvg.vue'
 import { buscarInsumo } from '@/services/estoque'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import type { InsumoDetalhe } from '@/types/api'
@@ -54,16 +54,17 @@ const numero = (valor: number, casas = 3) =>
 const dataBr = (data: string) => data.split('-').reverse().join('/')
 
 /** Os números que resumem o insumo. Quem calcula é a API; aqui só se formata. */
-const resumo = computed((): { rotulo: string; valor: string; alerta?: boolean }[] => {
+const resumo = computed((): { rotulo: string; valor: string; icone: NomeIcone; alerta?: boolean }[] => {
   if (!insumo.value) return []
   const { unidade, estoque_atual, analise } = insumo.value
   const { consumo_diario: consumo, cobertura_dias: cobertura, reposicao } = analise
   return [
-    { rotulo: 'Estoque atual', valor: `${numero(estoque_atual)} ${unidade}` },
-    { rotulo: 'Consumo médio', valor: consumo ? `${numero(consumo, 2)} ${unidade}/dia` : '—' },
-    { rotulo: 'Dura cerca de', valor: cobertura === null ? '—' : `${numero(Math.round(cobertura))} dias` },
+    { rotulo: 'Estoque atual', valor: `${numero(estoque_atual)} ${unidade}`, icone: 'insumos' },
+    { rotulo: 'Consumo médio', valor: consumo ? `${numero(consumo, 2)} ${unidade}/dia` : '—', icone: 'movimentacoes' },
+    { rotulo: 'Dura cerca de', valor: cobertura === null ? '—' : `${Math.round(cobertura)} dias`, icone: 'relogio' },
     {
       rotulo: 'Reposição',
+      icone: 'calendario',
       alerta: Boolean(reposicao?.pedir_hoje),
       valor: !reposicao
         ? 'nada a pedir'
@@ -85,11 +86,11 @@ const descricao = computed(() => {
 <template>
   <RouterLink
     :to="{ name: 'insumos' }"
-    class="group mb-6 inline-flex items-center gap-1 text-sm text-tinta-3 transition-colors duration-150 hover:text-tinta"
+    class="group mb-4 inline-flex items-center gap-1 text-sm font-semibold text-campo-700 hover:text-campo-900"
   >
     <IconeSvg
       nome="seta"
-      class="size-4 rotate-180 transition-transform duration-200 ease-chegar group-hover:-translate-x-0.5"
+      class="h-4 w-4 rotate-180 transition-transform duration-200 group-hover:-translate-x-1"
     />
     Insumos
   </RouterLink>
@@ -97,7 +98,7 @@ const descricao = computed(() => {
   <p
     v-if="erro"
     role="alert"
-    class="border-l-2 border-urgente pl-3 text-sm text-urgente"
+    class="cartao border-red-200 bg-red-50 p-4 text-sm text-red-800"
   >
     {{ erro }}
   </p>
@@ -124,22 +125,33 @@ const descricao = computed(() => {
       </template>
     </CabecalhoDePagina>
 
-    <dl class="grid grid-cols-2 border-t border-l border-linha lg:grid-cols-4">
+    <dl class="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <div
         v-for="(item, indice) in resumo"
         :key="item.rotulo"
-        class="animate-surgir border-r border-b border-linha px-4 py-5 sm:px-5"
-        :style="{ animationDelay: `${indice * 40}ms` }"
+        class="cartao animate-surgir p-4"
+        :class="item.alerta ? 'border-red-200 bg-red-50/60' : ''"
+        :style="{ animationDelay: `${indice * 60}ms` }"
       >
         <dt
-          class="text-sm"
-          :class="item.alerta ? 'text-urgente' : 'text-tinta-3'"
+          class="flex items-center gap-2 text-sm"
+          :class="item.alerta ? 'text-red-800' : 'text-stone-500'"
         >
+          <span
+            class="rounded-lg p-1.5"
+            :class="item.alerta ? 'bg-red-100 text-red-600' : 'bg-campo-50 text-campo-600'"
+            aria-hidden="true"
+          >
+            <IconeSvg
+              :nome="item.icone"
+              class="h-4 w-4"
+            />
+          </span>
           {{ item.rotulo }}
         </dt>
         <dd
-          class="mt-2 font-serif text-[1.625rem] leading-none tabular-nums"
-          :class="item.alerta ? 'text-urgente' : 'text-tinta'"
+          class="mt-2 text-xl font-bold"
+          :class="item.alerta ? 'text-red-700' : 'text-stone-900'"
         >
           {{ item.valor }}
         </dd>
@@ -156,43 +168,43 @@ const descricao = computed(() => {
     <section
       v-else
       aria-labelledby="titulo-grafico"
-      class="mt-12 animate-surgir [animation-delay:120ms]"
+      class="cartao mt-6 animate-surgir p-5 [animation-delay:200ms]"
     >
       <h2
         id="titulo-grafico"
-        class="titulo-secao"
+        class="text-base font-semibold text-stone-900"
       >
         Estoque ao longo do tempo
       </h2>
-      <p class="mt-1 text-sm text-tinta-3">
-        A linha tracejada projeta o consumo atual até o estoque zerar.
+      <p class="text-sm text-stone-500">
+        Tracejado: para onde o estoque vai no ritmo de consumo atual.
       </p>
       <GraficoDeEstoque
         :insumo="insumo"
         :hoje="hoje"
-        class="mt-4 border-y border-linha py-3"
+        class="mt-2"
       />
     </section>
 
     <section
       aria-labelledby="titulo-alertas"
-      class="mt-12"
+      class="mt-8"
     >
       <h2
         id="titulo-alertas"
-        class="titulo-secao"
+        class="text-base font-semibold text-stone-900"
       >
         Alertas
       </h2>
       <p
         v-if="!insumo.analise.alertas.length"
-        class="mt-4 border-y border-linha py-5 text-sm text-tinta-2"
+        class="cartao mt-3 p-4 text-sm text-stone-600"
       >
         Nenhum alerta hoje.
       </p>
       <ul
         v-else
-        class="mt-4 divide-y divide-linha border-y border-linha"
+        class="mt-3 space-y-2"
       >
         <CartaoDeAlerta
           v-for="alerta in insumo.analise.alertas"
@@ -202,7 +214,7 @@ const descricao = computed(() => {
       </ul>
       <p
         v-if="insumo.analise.reposicao"
-        class="mt-5 border-l-2 border-atencao-forte pl-3 text-sm leading-relaxed text-tinta"
+        class="cartao mt-3 border-amber-200 bg-amber-50/60 p-4 text-sm text-stone-800"
         data-teste="reposicao"
       >
         {{ insumo.analise.reposicao.justificativa }}
@@ -211,15 +223,15 @@ const descricao = computed(() => {
 
     <section
       aria-labelledby="titulo-limitacoes"
-      class="mt-12"
+      class="mt-8"
     >
       <h2
         id="titulo-limitacoes"
-        class="titulo-secao"
+        class="text-base font-semibold text-stone-900"
       >
         Limitações da análise
       </h2>
-      <ul class="mt-4 list-disc space-y-1 pl-5 text-sm leading-relaxed text-tinta-2">
+      <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-stone-600">
         <li
           v-for="limitacao in insumo.analise.limitacoes"
           :key="limitacao"
@@ -232,54 +244,51 @@ const descricao = computed(() => {
     <!-- A tabela é a versão do gráfico para quem não o enxerga ou quer o número exato. -->
     <details
       v-if="insumo.movimentacoes.length"
-      class="group mt-12 border-y border-linha"
+      class="cartao group mt-8 overflow-hidden"
     >
-      <summary class="flex cursor-pointer list-none items-center justify-between gap-2 py-3 text-sm font-medium text-tinta transition-colors duration-150 hover:text-campo-700 [&::-webkit-details-marker]:hidden">
-        <span>
-          Movimentações
-          <span class="ml-1 font-normal text-tinta-3 tabular-nums">{{ insumo.movimentacoes.length }}</span>
-        </span>
+      <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-stone-800 [&::-webkit-details-marker]:hidden">
         <IconeSvg
           nome="seta"
-          class="size-4 text-tinta-3 transition-transform duration-200 ease-mover group-open:rotate-90"
+          class="h-4 w-4 text-stone-400 transition-transform duration-200 group-open:rotate-90"
         />
+        Movimentações ({{ insumo.movimentacoes.length }})
       </summary>
-      <div class="animate-surgir overflow-x-auto border-t border-linha">
+      <div class="overflow-x-auto border-t border-stone-100">
         <table class="w-full text-left text-sm">
-          <thead class="text-xs text-tinta-3">
+          <thead class="bg-stone-50/80 text-xs tracking-wide text-stone-500 uppercase">
             <tr>
-              <th class="px-0 py-2 pr-4 font-medium">
+              <th class="px-4 py-2 font-semibold">
                 Data
               </th>
-              <th class="px-0 py-2 pr-4 font-medium">
+              <th class="px-4 py-2 font-semibold">
                 Tipo
               </th>
-              <th class="px-0 py-2 pr-4 text-right font-medium">
+              <th class="px-4 py-2 text-right font-semibold">
                 Quantidade
               </th>
-              <th class="px-0 py-2 pr-4 font-medium">
+              <th class="px-4 py-2 font-semibold">
                 Validade
               </th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-linha">
+          <tbody class="divide-y divide-stone-100">
             <tr
               v-for="mov in insumo.movimentacoes"
               :key="mov.id"
             >
-              <td class="py-2 pr-4 tabular-nums">
+              <td class="px-4 py-2 tabular-nums">
                 {{ dataBr(mov.data) }}
               </td>
               <td
-                class="py-2 pr-4"
+                class="px-4 py-2"
                 :class="mov.tipo === 'entrada' ? 'text-campo-700' : 'text-terra-700'"
               >
                 {{ mov.tipo === 'entrada' ? 'Entrada' : 'Saída' }}
               </td>
-              <td class="py-2 pr-4 text-right tabular-nums">
+              <td class="px-4 py-2 text-right tabular-nums">
                 {{ numero(mov.quantidade) }} {{ insumo.unidade }}
               </td>
-              <td class="py-2 pr-4 tabular-nums text-tinta-2">
+              <td class="px-4 py-2 tabular-nums text-stone-600">
                 {{ mov.validade ? dataBr(mov.validade) : '—' }}
               </td>
             </tr>
@@ -301,9 +310,9 @@ const descricao = computed(() => {
       <div
         v-for="n in 4"
         :key="n"
-        class="esqueleto h-24 rounded-md"
+        class="esqueleto h-24 rounded-xl"
       />
     </div>
-    <div class="esqueleto mt-6 h-80 rounded-md" />
+    <div class="esqueleto mt-6 h-80 rounded-xl" />
   </div>
 </template>

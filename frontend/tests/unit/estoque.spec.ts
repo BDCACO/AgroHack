@@ -164,7 +164,7 @@ describe('PainelPage', () => {
     expect(linhas).toEqual([
       expect.stringMatching(/Ureia.*3 dias.*acaba antes da entrega/),
       expect.stringMatching(/Sal.*20 dias.*pedir hoje/),
-      expect.stringMatching(/Calcário.*400 dias.*excesso/),
+      expect.stringMatching(/Calcário.*400 dias.*estoque de sobra/),
     ])
   })
 

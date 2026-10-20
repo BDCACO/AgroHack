@@ -8,20 +8,20 @@ defineProps<{
 </script>
 
 <template>
-  <header class="mb-8 flex flex-col gap-5 border-b border-linha pb-6 sm:flex-row sm:items-end sm:justify-between">
+  <header class="flex flex-col gap-4 pb-6 sm:flex-row sm:items-end sm:justify-between">
     <div class="min-w-0">
       <p
         v-if="sobretitulo"
-        class="mb-1 text-sm text-tinta-3 first-letter:uppercase"
+        class="text-xs font-semibold tracking-wider text-campo-700 uppercase"
       >
         {{ sobretitulo }}
       </p>
-      <h1 class="font-serif text-[2rem] leading-tight font-medium tracking-[-0.02em] text-tinta">
+      <h1 class="text-2xl font-bold text-campo-950 sm:text-3xl">
         {{ titulo }}
       </h1>
       <p
         v-if="descricao"
-        class="mt-2 max-w-2xl text-[0.9375rem] leading-relaxed text-tinta-2"
+        class="mt-1.5 max-w-2xl text-sm text-stone-600 sm:text-base"
       >
         {{ descricao }}
       </p>

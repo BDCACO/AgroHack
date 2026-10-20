@@ -3,18 +3,19 @@ import { computed } from 'vue'
 
 import type { Insumo } from '@/types/api'
 
-// Dias de estoque de cada insumo no consumo atual, do menor para o maior. A conta e a
-// situação vêm da API (cobertura, risco de falta, reposição); aqui só se desenha. Barras
-// em tinta; cor só no que pede ação, e sempre com o texto ao lado.
+// Quanto tempo cada insumo dura no ritmo atual, do mais apertado ao mais folgado. A conta
+// (cobertura) e a situação (risco de falta, reposição, excesso) vêm da API; aqui só se
+// desenha. A cor nunca anda sozinha: cada linha diz a situação em texto.
 const props = defineProps<{ insumos: Insumo[] }>()
 
-// Escala até 90 dias: um estoque para anos (excesso) não pode achatar as outras barras.
+// A régua vai até 90 dias: além disso é folga, e um estoque para anos (excesso) não
+// pode achatar todas as outras barras.
 const ESCALA_DIAS = 90
 
 const aparencia = {
-  falta: { barra: 'bg-urgente', texto: 'text-urgente' },
-  pedir: { barra: 'bg-atencao-forte', texto: 'text-atencao' },
-  folga: { barra: 'bg-tinta-2/70', texto: 'text-tinta-3' },
+  falta: { barra: 'bg-red-500', texto: 'text-red-700' },
+  pedir: { barra: 'bg-amber-400', texto: 'text-amber-800' },
+  folga: { barra: 'bg-campo-500', texto: 'text-stone-500' },
 } as const
 
 const dataBr = (data: string) => data.split('-').reverse().slice(0, 2).join('/')
@@ -27,105 +28,107 @@ const linhas = computed(() =>
       const { alertas, reposicao, cobertura_dias } = insumo.analise
       const tipos = alertas.map((alerta) => alerta.tipo)
       const dias = Math.round(cobertura_dias!)
+      // Cor só para o que pede ação agora; uma reposição para daqui a meses é texto,
+      // não alarme — senão quase toda barra acende e a cor perde o sentido.
       const [situacao, texto] = tipos.includes('risco_de_falta')
         ? (['falta', 'acaba antes da entrega'] as const)
         : reposicao?.pedir_hoje
           ? (['pedir', 'pedir hoje'] as const)
           : reposicao
             ? (['folga', `pedir até ${dataBr(reposicao.pedir_em)}`] as const)
-            : (['folga', tipos.includes('excesso') ? 'excesso' : 'em dia'] as const)
+            : (['folga', tipos.includes('excesso') ? 'estoque de sobra' : 'em dia'] as const)
       return { insumo, dias, situacao, texto }
     })
     .sort((a, b) => a.dias - b.dias),
 )
 
-// Sem consumo recente (ou com histórico curto) não há ritmo para projetar.
+// Sem consumo recente (ou histórico curto), não há ritmo para projetar.
 const semRitmo = computed(() =>
   props.insumos.filter((insumo) => insumo.analise.cobertura_dias === null),
 )
 </script>
 
 <template>
-  <section aria-labelledby="titulo-cobertura">
+  <section
+    aria-labelledby="titulo-cobertura"
+    class="cartao p-5"
+  >
     <h2
       id="titulo-cobertura"
-      class="titulo-secao"
+      class="text-base font-semibold text-stone-900"
     >
-      Dias de estoque
+      Quanto tempo o estoque dura
     </h2>
-    <p class="mt-1 text-sm text-tinta-3">
-      No consumo médio dos últimos 90 dias.
+    <p class="mt-0.5 text-sm text-stone-500">
+      No ritmo de consumo atual, do mais apertado ao mais folgado.
     </p>
 
-    <ul class="mt-5 divide-y divide-linha border-y border-linha">
+    <ul class="mt-5 space-y-4">
       <li
         v-for="(linha, indice) in linhas"
         :key="linha.insumo.id"
-        class="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-4 gap-y-2 py-3"
+        class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1.5 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_10rem]"
         data-teste="cobertura"
       >
         <RouterLink
           :to="{ name: 'insumo', params: { id: linha.insumo.id } }"
-          class="truncate text-sm text-tinta transition-colors duration-150 hover:text-campo-700"
+          class="truncate text-sm font-medium text-stone-800 hover:text-campo-700 hover:underline"
         >
           {{ linha.insumo.nome }}
         </RouterLink>
-        <p class="text-right leading-none whitespace-nowrap">
-          <span class="font-serif text-lg text-tinta tabular-nums">{{ linha.dias.toLocaleString('pt-BR') }}</span>
-          <span class="text-xs text-tinta-3">{{ ' ' + (linha.dias === 1 ? 'dia' : 'dias') }}</span>
-        </p>
         <div
-          class="relative col-span-2 h-1 rounded-full bg-linha"
+          class="relative h-2.5 rounded-full bg-stone-100 max-sm:order-last max-sm:col-span-2"
           aria-hidden="true"
         >
-          <!-- Cresce da esquerda, uma depois da outra, na ordem da lista. -->
+          <!-- Cresce da esquerda, uma barra depois da outra: a ordem de leitura é a de
+               urgência. -->
           <div
             class="absolute inset-y-0 left-0 origin-left animate-crescer rounded-full"
             :class="aparencia[linha.situacao].barra"
-            :style="{ width: porcento(linha.dias), animationDelay: `${120 + indice * 40}ms` }"
+            :style="{ width: porcento(linha.dias), animationDelay: `${indice * 70}ms` }"
           />
-          <!-- Prazo de entrega: barra que não chega até aqui acaba antes do pedido. -->
+          <!-- A marca do prazo de entrega: barra que não passa dela acaba antes de o
+               pedido chegar. -->
           <div
             v-if="linha.insumo.prazo_reposicao_dias !== null"
-            class="absolute -top-1 -bottom-1 w-px bg-tinta"
+            class="absolute -top-1 -bottom-1 w-0.5 rounded-full bg-stone-700"
             :style="{ left: porcento(linha.insumo.prazo_reposicao_dias) }"
             :title="`Entrega em ${linha.insumo.prazo_reposicao_dias} dias`"
           />
         </div>
-        <p
-          class="col-span-2 -mt-1 text-xs"
-          :class="aparencia[linha.situacao].texto"
-        >
-          {{ linha.texto }}
+        <p class="text-right text-sm leading-tight sm:text-left">
+          <span class="font-semibold text-stone-900 tabular-nums">
+            {{ linha.dias.toLocaleString('pt-BR') }} {{ linha.dias === 1 ? 'dia' : 'dias' }}
+          </span>
+          <span
+            class="block text-xs font-medium"
+            :class="aparencia[linha.situacao].texto"
+          >{{ linha.texto }}</span>
         </p>
       </li>
     </ul>
 
-    <p
+    <div
       v-if="semRitmo.length"
-      class="mt-4 text-xs leading-relaxed text-tinta-3"
+      class="mt-5 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-4 text-sm text-stone-500"
     >
       Sem consumo recente para estimar:
-      <!-- A vírgula vem do ::after, que não aparece no último. -->
-      <span
+      <RouterLink
         v-for="insumo in semRitmo"
         :key="insumo.id"
-        class="after:content-[',_'] last:after:content-none"
+        :to="{ name: 'insumo', params: { id: insumo.id } }"
+        class="rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-medium text-stone-700 transition-colors hover:bg-campo-100 hover:text-campo-800"
       >
-        <RouterLink
-          :to="{ name: 'insumo', params: { id: insumo.id } }"
-          class="text-tinta-2 underline decoration-linha-forte underline-offset-2 hover:decoration-tinta-3"
-        >
-          {{ insumo.nome }}
-        </RouterLink>
-      </span>
-    </p>
-    <p class="mt-3 flex items-center gap-2 text-xs text-tinta-3">
+        {{ insumo.nome }}
+      </RouterLink>
+    </div>
+
+    <p class="mt-4 flex items-center gap-2 text-xs text-stone-500">
       <span
-        class="inline-block h-3 w-px bg-tinta"
+        class="inline-block h-3 w-0.5 rounded-full bg-stone-700"
         aria-hidden="true"
       />
-      prazo de entrega · escala até 90 dias
+      prazo de entrega do fornecedor · régua até 90 dias
     </p>
   </section>
 </template>

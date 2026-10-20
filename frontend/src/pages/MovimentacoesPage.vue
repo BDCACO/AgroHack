@@ -85,7 +85,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
   <p
     v-if="estoque.erro"
     role="alert"
-    class="mt-6 text-sm text-urgente"
+    class="mt-6 text-sm text-red-700"
   >
     {{ estoque.erro }}
   </p>
@@ -110,21 +110,21 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
       @submit.prevent="lancar"
     >
       <fieldset class="sm:col-span-2 lg:col-span-6">
-        <legend class="text-sm font-medium text-tinta-2">
+        <legend class="text-sm font-medium text-stone-700">
           Tipo
         </legend>
-        <!-- A folha desliza até a opção escolhida: a troca fica visível. -->
-        <div class="relative mt-1.5 grid grid-cols-2 rounded-lg border border-linha bg-papel p-1 sm:inline-grid">
+        <!-- O fundo verde desliza para a opção escolhida: a troca fica visível. -->
+        <div class="relative mt-1.5 grid grid-cols-2 rounded-lg bg-stone-100 p-1 sm:inline-grid">
           <span
-            class="absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-md border border-linha-forte bg-folha transition-transform duration-250 ease-mover"
+            class="absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-md bg-campo-600 shadow-sm transition-transform duration-300 ease-(--ease-chegada)"
             :class="form.tipo === 'entrada' ? 'translate-x-full' : 'translate-x-0'"
             aria-hidden="true"
           />
           <label
             v-for="tipo in (['saida', 'entrada'] as const)"
             :key="tipo"
-            class="relative z-10 cursor-pointer rounded-md px-4 py-1.5 text-center text-sm font-medium transition-colors duration-150 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600 has-[:focus-visible]:ring-offset-1"
-            :class="form.tipo === tipo ? 'text-tinta' : 'text-tinta-3 hover:text-tinta'"
+            class="relative z-10 cursor-pointer rounded-md px-4 py-1.5 text-center text-sm font-semibold transition-colors duration-200 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600 has-[:focus-visible]:ring-offset-1"
+            :class="form.tipo === tipo ? 'text-white' : 'text-stone-600 hover:text-stone-900'"
           >
             <input
               v-model="form.tipo"
@@ -137,7 +137,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
           </label>
         </div>
       </fieldset>
-      <label class="text-sm font-medium text-tinta-2 lg:col-span-2">
+      <label class="text-sm font-medium text-stone-700 lg:col-span-2">
         Insumo
         <select
           v-model.number="form.insumoId"
@@ -159,7 +159,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
           </option>
         </select>
       </label>
-      <label class="text-sm font-medium text-tinta-2">
+      <label class="text-sm font-medium text-stone-700">
         Data
         <input
           v-model="form.data"
@@ -169,7 +169,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
           class="campo"
         >
       </label>
-      <label class="text-sm font-medium text-tinta-2">
+      <label class="text-sm font-medium text-stone-700">
         Quantidade
         <input
           v-model.number="form.quantidade"
@@ -182,9 +182,9 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
       </label>
       <label
         v-if="form.tipo === 'entrada'"
-        class="text-sm font-medium text-tinta-2 lg:col-span-2"
+        class="text-sm font-medium text-stone-700 lg:col-span-2"
       >
-        Validade do lote <span class="font-normal text-tinta-3">(se tiver)</span>
+        Validade do lote <span class="font-normal text-stone-500">(se tiver)</span>
         <input
           v-model="form.validade"
           type="date"
@@ -194,7 +194,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
       <p
         v-if="erroDoForm"
         role="alert"
-        class="text-sm text-urgente sm:col-span-2 lg:col-span-6"
+        class="text-sm text-red-700 sm:col-span-2 lg:col-span-6"
       >
         {{ erroDoForm }}
       </p>
@@ -211,7 +211,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
 
     <p
       v-if="!estoque.movimentacoes.length"
-      class="mt-6 text-sm text-tinta-3"
+      class="mt-6 text-sm text-stone-500"
     >
       Nenhuma movimentação lançada ainda. Comece pelo estoque que já está no galpão: lance como
       entrada, com a data de hoje.
@@ -224,21 +224,21 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
         <caption class="sr-only">
           Últimas movimentações
         </caption>
-        <thead class="border-b border-linha text-xs text-tinta-3">
+        <thead class="bg-stone-50/80 text-xs tracking-wide text-stone-500 uppercase">
           <tr>
-            <th class="px-4 py-2.5 font-medium">
+            <th class="px-4 py-3 font-semibold">
               Data
             </th>
-            <th class="px-4 py-2.5 font-medium">
+            <th class="px-4 py-3 font-semibold">
               Insumo
             </th>
-            <th class="px-4 py-2.5 font-medium">
+            <th class="px-4 py-3 font-semibold">
               Tipo
             </th>
-            <th class="px-4 py-2.5 text-right font-medium">
+            <th class="px-4 py-3 text-right font-semibold">
               Quantidade
             </th>
-            <th class="px-4 py-2.5 font-medium">
+            <th class="px-4 py-3 font-semibold">
               Validade
             </th>
             <th class="px-4 py-3">
@@ -246,17 +246,17 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
             </th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-linha">
+        <tbody class="divide-y divide-stone-100">
           <tr
             v-for="mov in estoque.movimentacoes"
             :key="mov.id"
-            class="transition-colors hover:bg-papel"
+            class="transition-colors hover:bg-stone-50/70"
             :class="mov.id === destacada ? 'animate-destaque' : ''"
           >
             <td class="px-4 py-3 tabular-nums">
               {{ dataBr(mov.data) }}
             </td>
-            <td class="px-4 py-3 font-medium text-tinta">
+            <td class="px-4 py-3 font-medium text-stone-800">
               <RouterLink
                 :to="{ name: 'insumo', params: { id: mov.insumo_id } }"
                 class="hover:text-campo-700 hover:underline"
@@ -267,12 +267,12 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
             <td class="px-4 py-3">
               <!-- Entrada aponta para o galpão (desce), saída para fora (sobe). -->
               <span
-                class="inline-flex items-center gap-1 text-sm"
-                :class="mov.tipo === 'entrada' ? 'text-campo-700' : 'text-terra-700'"
+                class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset"
+                :class="mov.tipo === 'entrada' ? 'bg-campo-50 text-campo-700 ring-campo-600/20' : 'bg-terra-50 text-terra-700 ring-terra-500/25'"
               >
                 <IconeSvg
                   nome="seta"
-                  class="size-3.5"
+                  class="h-3.5 w-3.5"
                   :class="mov.tipo === 'entrada' ? 'rotate-90' : '-rotate-90'"
                 />
                 {{ rotulo[mov.tipo] }}
@@ -281,13 +281,13 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
             <td class="px-4 py-3 text-right tabular-nums">
               {{ numero(mov.quantidade) }} {{ estoque.insumoPorId.get(mov.insumo_id)?.unidade }}
             </td>
-            <td class="px-4 py-3 tabular-nums text-tinta-2">
+            <td class="px-4 py-3 tabular-nums text-stone-600">
               {{ mov.validade ? dataBr(mov.validade) : '—' }}
             </td>
             <td class="px-4 py-3 text-right">
               <button
                 type="button"
-                class="rounded-md px-2 py-1 text-sm font-medium text-urgente transition-colors hover:bg-urgente-claro"
+                class="rounded-md px-2 py-1 text-sm font-medium text-red-700 transition-colors hover:bg-red-50"
                 @click="remover(mov)"
               >
                 Remover

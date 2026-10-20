@@ -3,23 +3,26 @@ import IconeSvg from '@/components/IconeSvg.vue'
 </script>
 
 <template>
-  <section class="max-w-xl animate-surgir pt-4">
-    <p class="text-sm text-tinta-3">
-      Erro 404
+  <section class="cartao flex animate-surgir flex-col items-center px-6 py-16 text-center">
+    <p
+      class="text-6xl font-bold tracking-tight text-campo-500"
+      aria-hidden="true"
+    >
+      404
     </p>
-    <h1 class="mt-2 font-serif text-[2rem] leading-tight font-medium tracking-[-0.02em] text-tinta">
+    <h1 class="mt-2 text-2xl font-bold text-campo-950">
       Página não encontrada
     </h1>
-    <p class="mt-3 text-tinta-2">
+    <p class="mt-1.5 max-w-sm text-sm text-stone-600">
       O endereço pode ter mudado, ou o insumo foi removido.
     </p>
     <RouterLink
       :to="{ name: 'painel' }"
-      class="botao-secundario group mt-8"
+      class="botao-primario group mt-6"
     >
       <IconeSvg
         nome="seta"
-        class="size-4 rotate-180 transition-transform duration-200 ease-chegar group-hover:-translate-x-0.5"
+        class="h-4 w-4 rotate-180 transition-transform duration-200 group-hover:-translate-x-0.5"
       />
       Voltar ao painel
     </RouterLink>
