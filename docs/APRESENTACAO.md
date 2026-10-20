@@ -5,7 +5,7 @@ mostra a conta que o justifica e o que a conta não sabe.**
 
 ## Antes de começar (no dia)
 
-1. `make up` e, com o stack no ar, `make demo` — **no dia da apresentação**: as datas da fazenda
+1. `make up` e, com o stack no ar, `make demo` **no próprio dia da apresentação**: as datas da fazenda
    são relativas ao dia da carga, e o roteiro abaixo depende disso.
 2. Abrir http://localhost:5173 e conferir no Painel: 2 urgentes, 3 de atenção, 2 para observar.
 3. Para mostrar no celular, abrir `http://<IP do notebook>:5173` (a porta do front fica aberta na
@@ -33,13 +33,13 @@ mostra a conta que o justifica e o que a conta não sabe.**
    risco de falta da ureia: a conta está ali, com os números.
 3. **Página da ureia** (clicar no nome). O gráfico: o consumo triplicou nos últimos três meses
    (adubação de cobertura), a última compra já foi quase toda usada, e o tracejado chega a zero
-   em uns 8 dias ("dura cerca de 8 dias"), com entrega em 10 — por isso é urgente. A reposição
+   em uns 8 dias ("dura cerca de 8 dias"), com entrega em 10. Por isso é urgente. A reposição
    diz quanto pedir e por quê.
 4. **Limitações.** Na mesma página: o que a conta não sabe (sazonalidade, embalagem, preço).
    Mostrar que o sistema é honesto sobre isso é diferencial.
 5. **Lista de compras e relatório.** Voltar ao Painel → "Enviar pelo WhatsApp": a lista sai
    pronta para a revenda. Depois, "Baixar relatório (Excel)" e abrir: os alertas nas cores da
-   tela, a reposição com o "pedir hoje" em destaque e a situação de cada insumo — para levar ao
+   tela, a reposição com o "pedir hoje" em destaque e a situação de cada insumo, para levar ao
    agrônomo ou ao banco. A última aba é a cópia de segurança das movimentações.
 6. **Importar planilha.** Em Importar dados, baixar a **planilha modelo (Excel)** e abri-la:
    cabeçalho formatado, listas de escolha com os insumos da fazenda, aba de instruções e um

@@ -1,6 +1,6 @@
 # Arquitetura do CampoCerto
 
-Plataforma de gestão inteligente de insumos rurais (AGROHACK 2026/2 — IFRO Campus Ariquemes).
+Plataforma de gestão inteligente de insumos rurais (AGROHACK 2026/2, IFRO Campus Ariquemes).
 Transforma registros de compras, retiradas e estoque em alertas justificados para o produtor.
 
 Este documento registra **o que existe hoje** e **as decisões tomadas**, incluindo o que foi
@@ -21,11 +21,11 @@ navegador ──► Vite (:5173) ──/api──► FastAPI (:8000) ──► P
 
 | Caminho | Responsabilidade |
 |---|---|
-| `app/main.py` | Fábrica `create_app(settings)` — testes criam a sua com configuração própria |
+| `app/main.py` | Fábrica `create_app(settings)`: os testes criam a sua com configuração própria |
 | `app/core/config.py` | `Settings` (pydantic-settings). Única fonte de variáveis de ambiente |
 | `app/core/database.py` | Engine, sessão e a dependência `get_db` |
 | `app/api/router.py` | Agrega as rotas da v1 (`/api/v1`) |
-| `app/api/routes/` | Rotas HTTP — finas: validam entrada, chamam serviço, devolvem schema |
+| `app/api/routes/` | Rotas HTTP, finas: validam entrada, chamam serviço, devolvem schema |
 | `app/schemas/` | Modelos Pydantic de entrada/saída da API |
 | `app/models/` | Modelos ORM (SQLAlchemy). Todo modelo novo é importado em `models/__init__.py` |
 | `migrations/` | Alembic. Linhagem única, toda migration com `downgrade` |
@@ -35,7 +35,7 @@ navegador ──► Vite (:5173) ──/api──► FastAPI (:8000) ──► P
 
 | Caminho | Responsabilidade | Regra |
 |---|---|---|
-| `app/domain/estoque.py` | Tipos de entrada (`Insumo`, `Lote`, `Retirada`), `Alerta` e as regras que não dependem de histórico: estoque abaixo do mínimo, lote vencido ou a vencer | **Sem I/O, sem banco, sem `datetime.now()`** — a data de referência entra como parâmetro |
+| `app/domain/estoque.py` | Tipos de entrada (`Insumo`, `Lote`, `Retirada`), `Alerta` e as regras que não dependem de histórico: estoque abaixo do mínimo, lote vencido ou a vencer | **Sem I/O, sem banco, sem `datetime.now()`**: a data de referência entra como parâmetro |
 | `app/analysis/consumo.py` | `analisar(...)`: consumo médio, cobertura em dias, risco de falta, excesso, baixa movimentação, consumo incomum e reposição estimada | Recebe listas, devolve `Analise` com **justificativa** em cada alerta e as **limitações** dos dados |
 
 Os limiares (janela de 90 dias, 30 dias para vencimento, 180 de cobertura para excesso, prazo
@@ -50,9 +50,9 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 
 | Caminho | Responsabilidade |
 |---|---|
-| `app/models/estoque.py` | `insumos` e `movimentacoes` (entrada ou saída, data, quantidade, validade). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura — uma fonte da verdade só |
+| `app/models/estoque.py` | `insumos` e `movimentacoes` (entrada ou saída, data, quantidade, validade). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só |
 | `app/services/estoque.py` | Casos de uso: cadastro, movimentações, a análise de cada insumo a partir do banco e o saldo dia a dia (histórico do gráfico). As rotas falam só com os serviços (este, `importacao`, `planilha_modelo` e `relatorio`) |
-| `app/services/importacao.py` | Importação de movimentações por planilha (Excel ou CSV) — ver abaixo |
+| `app/services/importacao.py` | Importação de movimentações por planilha (Excel ou CSV), ver abaixo |
 | `app/services/planilha_modelo.py` | A planilha modelo da importação e os estilos das planilhas geradas (cores da marca, títulos, impressão) |
 | `app/services/relatorio.py` | O relatório em Excel: resumo, alertas, reposição, situação de cada insumo e todas as movimentações |
 | `app/demo.py` | Fazenda fictícia para a apresentação (`make demo`): insumos marcados com `demonstracao`, que a tela sinaliza e `make demo-limpar` apaga sozinhos |
@@ -70,7 +70,7 @@ resumo. Os dois formatos viram cabeçalho + linhas de células e passam pelas me
 (`app/services/importacao.py`). O guia para quem preenche está em
 [`IMPORTACAO.md`](IMPORTACAO.md). Decisões:
 
-- **Prévia antes de gravar.** Sem `confirmar`, só confere e resume — inclusive quanto entra e
+- **Prévia antes de gravar.** Sem `confirmar`, só confere e resume, inclusive quanto entra e
   sai de cada insumo, que é onde um número lido errado salta aos olhos. A tela só então oferece
   importar. Se o confirmar falha sem resposta, a tela não oferece o mesmo botão (o servidor pode
   ter gravado): confere de novo, e `ja_lancadas` mostra se as linhas já estão lá.
@@ -82,13 +82,13 @@ resumo. Os dois formatos viram cabeçalho + linhas de células e passam pelas me
 - **Upload é entrada hostil.** Um `.xlsx` é um zip de XML: pequeno compactado, pode ser enorme
   aberto. Por isso, em camadas: pedido acima de 8 MB recusado com `413` antes de ler o corpo
   (`app/main.py`; pelo proxy do Vite essa recusa antecipada chega como `502`, porque o proxy
-  ainda estava enviando — a tela já barra arquivo acima de 5 MB antes de enviar, e em produção
+  ainda estava enviando; a tela já barra arquivo acima de 5 MB antes de enviar, e em produção
   o proxy reverso deve ter o próprio limite, como o `client_max_body_size` do nginx); arquivo
   de até 5 MB; conteúdo descompactado de até 50 MB (conferido no
   índice do zip, antes de abrir); `defusedxml` instalado, que o `openpyxl` usa sozinho contra
   XML malicioso; leitura em `read_only` (linha a linha) **ignorando a dimensão gravada no
-  arquivo** — que pode mentir: menor, cortaria linhas sem aviso; enorme, faria o leitor
-  preencher milhões de células vazias —; e tetos de 1.048.576 linhas (o do Excel), 5 milhões
+  arquivo**, que pode mentir (menor, cortaria linhas sem aviso; enorme, faria o leitor
+  preencher milhões de células vazias); e tetos de 1.048.576 linhas (o do Excel), 5 milhões
   de células lidas e 50 mil movimentações.
 - **CSV: o do Excel em português e o internacional.** Separador de colunas `;` ou `,`
   (decidido pelo cabeçalho), datas DD/MM/AAAA (e AAAA-MM-DD), BOM.
@@ -100,7 +100,7 @@ resumo. Os dois formatos viram cabeçalho + linhas de células e passam pelas me
   num arquivo separado por vírgulas), aspa sem fechar (que junta o resto do arquivo numa célula)
   e caractere NUL viram erro com o número da linha.
 - **Insumo pelo nome, sem diferenciar maiúsculas.** Nome novo vira insumo novo com a unidade da
-  planilha (obrigatória nesse caso); unidade diferente da cadastrada é erro — somar kg com saca
+  planilha (obrigatória nesse caso); unidade diferente da cadastrada é erro: somar kg com saca
   daria um estoque sem sentido. Se o cadastro tem dois nomes que só diferem em maiúsculas, a
   linha é erro: escolher um seria chute.
 - **Planilha importada duas vezes vira aviso, não erro** (`ja_lancadas`): duas retiradas iguais
@@ -110,7 +110,7 @@ resumo. Os dois formatos viram cabeçalho + linhas de células e passam pelas me
   cadastrados (aba própria, que alimenta a lista de escolha da coluna `insumo`) e com exemplos
   de datas recentes. Formatada para preencher certo: cabeçalho nas cores da marca com a
   explicação de cada coluna em comentário, datas DD/MM/AAAA na coluna inteira e validação do
-  próprio Excel até a linha 50.001 — data, tipo, quantidade e validade **barram** valor errado
+  próprio Excel até a linha 50.001: data, tipo, quantidade e validade **barram** valor errado
   (`showErrorMessage`, que o `openpyxl` deixa desligado por padrão); insumo e unidade só
   sugerem da lista, porque insumo novo vale. Nome de insumo é gravado sempre como texto (um
   "=1+1" não vira fórmula) e sem caractere de controle, que o cadastro e a importação também
@@ -124,8 +124,8 @@ tem banco a orquestrar e chama o motor direto.
 
 | Rota | O que faz |
 |---|---|
-| `GET /api/v1/health` | Liveness — o processo está no ar. Não toca o banco |
-| `GET /api/v1/ready` | Readiness — `200` com o banco respondendo, `503` sem ele |
+| `GET /api/v1/health` | Liveness: o processo está no ar. Não toca o banco |
+| `GET /api/v1/ready` | Readiness: `200` com o banco respondendo, `503` sem ele |
 | `GET /api/v1/insumos` | Insumos com estoque atual e a análise de hoje (alertas, reposição, limitações) |
 | `GET /api/v1/insumos/{id}` | Um insumo com a análise, o saldo no fim de cada dia com movimentação (`historico`) e as movimentações |
 | `POST /api/v1/insumos` · `PUT /api/v1/insumos/{id}` | Cadastra / altera insumo (nome, unidade, mínimo, prazo de reposição). `409` para nome repetido |
@@ -133,7 +133,7 @@ tem banco a orquestrar e chama o motor direto.
 | `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (`insumo_id`, `limite`) |
 | `POST /api/v1/movimentacoes` | Lança entrada ou saída. `422` para data futura, validade em saída ou insumo inexistente |
 | `DELETE /api/v1/movimentacoes/{id}` | Remove lançamento errado |
-| `POST /api/v1/importacoes` | Movimentações de uma planilha — `xlsx` (base64) ou `conteudo` (texto do CSV). Sem `confirmar`, só confere e resume, com o total de cada insumo; com erro, nada é gravado e a resposta lista os erros por linha |
+| `POST /api/v1/importacoes` | Movimentações de uma planilha: `xlsx` (base64) ou `conteudo` (texto do CSV). Sem `confirmar`, só confere e resume, com o total de cada insumo; com erro, nada é gravado e a resposta lista os erros por linha |
 | `GET /api/v1/importacoes/modelo.xlsx` | Planilha modelo formatada, com os insumos cadastrados para escolher da lista |
 | `GET /api/v1/relatorio.xlsx` | Relatório do estoque em Excel. A aba Movimentações tem o formato da importação: é também a cópia de segurança, e volta pela mesma tela |
 | `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período) e devolve alertas, reposição e limitações. `422` para entrada inválida |
@@ -148,47 +148,67 @@ tem banco a orquestrar e chama o motor direto.
 | `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só |
 | `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, gaveta no celular, resumo de status |
 | `src/pages/` | Uma página por rota: Painel (alertas, reposição com lista de compras para o WhatsApp, limitações), Insumos (cadastro), página do insumo (`/insumos/:id`: resumo, gráfico, alertas, movimentações, remover), Movimentações (entradas e saídas), Importar dados (Excel ou CSV, com prévia), Sistema |
-| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `ContadorAnimado`, `EstadoVazio`, `GraficoDeEstoque`, `IconeSvg`, `IndicadorDeStatus`, `LogoCampoCerto`, `SeloDeGravidade` |
-| `src/stores/` | Pinia — estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração |
+| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (dias de estoque de cada insumo), `EstadoVazio`, `GraficoDeEstoque`, `IconeSvg`, `IndicadorDeStatus`, `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
+| `src/stores/` | Pinia: estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração |
 | `src/services/http.ts` | **Cliente HTTP único** (Axios). Normaliza erro em `ApiError` |
 | `src/services/*.ts` | Uma função por endpoint |
 | `src/types/` | Tipos TypeScript dos contratos da API |
-| `src/styles/main.css` | Tailwind v4: tokens da marca e de movimento (`@theme`), componentes base (`.cartao`, `.botao-*`, `.campo`, `.esqueleto`) e as transições — ver "Design e movimento" |
+| `src/styles/main.css` | Tailwind v4: tokens da marca e de movimento (`@theme`), componentes base (`.cartao`, `.botao-*`, `.campo`, `.esqueleto`) e as transições (ver "Design e movimento") |
 | `public/modelo-movimentacoes.csv` | Modelo alternativo em CSV, servido como arquivo estático (com BOM, para o Excel abrir os acentos); o principal é o `.xlsx` gerado pela API |
 | `tests/unit/` | Vitest + Vue Test Utils |
 
 Regras: componente `.vue` **não chama axios** (passa por `services/`) e **não decide** regra de
-negócio — mostra o que a API calculou.
+negócio: mostra o que a API calculou.
 
 ### Design e movimento
 
-Visual calmo e terroso: verde de lavoura (`campo`, de 50 a 950) como cor da marca, terra e
-palha (`terra`) como acento quente, fundo de pedra clara, cartões brancos. Fonte **Plus Jakarta
-Sans** (`@fontsource-variable`), embutida no app: funciona sem internet, como numa apresentação.
-Tudo mora em `main.css`: as cores, a fonte, as curvas e durações de animação (`--ease-chegada`,
-`--animate-*`) e os componentes base — botão e cartão são classes (`.botao-primario`,
-`.cartao`...), não estilo repetido em cada tela.
+A referência é um caderno de campo: papel claro (`papel`, `folha`), tinta verde-escura
+(`tinta`, em três tons) e linhas finas (`linha`) separando as coisas, no lugar de cartões
+flutuantes com sombra. Títulos e números em **Fraunces** (serifa com tamanho óptico), o resto
+em **IBM Plex Sans**; as duas vêm de `@fontsource-variable` e ficam embutidas no app, então
+funcionam sem internet, como numa apresentação. O verde de lavoura (`campo`, de 50 a 950) é a
+marca e os botões principais.
 
-**Animação só onde informa**, curta (150–700 ms) e com chegada suave:
+Cor só onde pede ação: `urgente` (tijolo), `atencao` (ocre) e `observar` (ardósia), tons de
+terra em vez das cores padrão do Tailwind. As barras de "Dias de estoque" são cinza-tinta e só
+ficam vermelhas ou ocres quando há algo a fazer. Selo de gravidade é texto colorido com um
+quadradinho, sem pílula; ícones são de traço.
 
-- **O que mudou:** os números de gravidade contam até o valor novo; a linha recém-lançada em
-  Movimentações acende e esmaece; a barrinha da página ativa cresce no item novo do menu.
-- **Ordem de leitura:** alertas chegam em cascata, os mais graves primeiro; as barras de
-  "quanto tempo o estoque dura" crescem da esquerda, da mais apertada à mais folgada; a linha
-  do gráfico se desenha no sentido do tempo.
-- **De onde veio e para onde foi:** troca de página com transição curta; ao filtrar alertas,
-  quem fica desliza para o lugar e quem sai esmaece; o fundo do seletor Saída/Entrada desliza.
-- **Trabalho em andamento e resultado:** barra de "trabalhando" ao conferir a planilha, ícone
-  que gira ao verificar o sistema, sinal de concluído que se desenha, esqueleto no lugar do
-  conteúdo que está chegando.
-- **O que não pode esperar:** só o ponto do selo "Urgente" pulsa. Nada mais anima em loop.
+Tudo mora em `main.css`: cores, fontes, curvas, animações (`--animate-*`) e os componentes base
+(`.botao-primario`, `.cartao`, `.titulo-secao`...), para não repetir estilo em cada tela.
+
+**Animação só onde informa.** Só `transform` e `opacity`, com a curva certa para cada tipo de
+movimento:
+
+| Curva | Uso | Duração típica |
+|---|---|---|
+| `ease-chegar` (ease-out quint) | o que entra na tela | 200–300 ms |
+| `ease-sair` (ease-in cubic) | o que sai; mais rápido que a entrada | 150–200 ms |
+| `ease-mover` (ease-in-out cubic) | o que já está na tela e muda de lugar | 250–320 ms |
+
+Hover e clique ficam em 100–150 ms (o botão afunda para 97% ao apertar). O que se repete o dia
+todo, como abrir uma página do menu, tem transição curta e só de opacidade na saída.
+
+- **O que mudou:** os números do Painel rolam dígito a dígito até o valor, como um contador
+  mecânico (`NumeroRolante`); a linha recém-lançada em Movimentações acende e esmaece.
+- **Onde você está:** um marcador só desliza no menu até a página ativa, em vez de um fundo que
+  some de um item e aparece no outro. O mesmo vale para o seletor Saída/Entrada.
+- **Ordem de leitura:** os alertas chegam em cascata curta (30 ms entre um e outro, no máximo
+  dez), os mais graves primeiro; as barras de "Dias de estoque" crescem da esquerda; a linha do
+  gráfico se desenha no sentido do tempo.
+- **Para onde foi:** ao filtrar alertas, quem fica desliza para o lugar e quem sai esmaece.
+- **Trabalho em andamento e resultado:** barra que vai e volta ao conferir a planilha, ícone que
+  gira ao verificar o sistema, sinal de concluído que se desenha, esqueleto no lugar do conteúdo
+  que está chegando.
+
+Nada pulsa, nada anima em loop sem motivo e nada levanta no hover.
 
 Quem pede **menos movimento** ao sistema operacional (`prefers-reduced-motion`) não recebe
-animação nenhuma: a regra global em `main.css` zera as durações, o `ContadorAnimado` mostra o
-número direto, e toda tela aparece já no estado final.
+animação nenhuma: a regra global em `main.css` zera as durações e toda tela aparece já no
+estado final, números inclusive.
 
 **Gráficos: Apache ECharts**, importado peça por peça (`echarts/core` + linha, grade, tooltip,
-linhas de referência e o renderizador SVG), na página do insumo — que é carregada sob demanda,
+linhas de referência e o renderizador SVG), na página do insumo, que é carregada sob demanda,
 então o Painel não paga o peso. O gráfico do estoque mostra o saldo em degraus (o saldo vale até
 a próxima movimentação), a projeção tracejada no ritmo de consumo que a API calculou (até zerar,
 no máximo 90 dias à frente) e a linha do mínimo. Texto digitado pelo usuário que vai para o
@@ -222,7 +242,7 @@ tecnologias que não se aplicam.
 - `Settings` com pydantic-settings, validado no boot, **`ENVIRONMENT` obrigatório e restrito** a
   valores conhecidos (fail-closed) e `/docs` desligado em produção.
 - Separação **liveness (`/health`) × readiness (`/ready`)**.
-- Front e API na mesma origem via proxy do Vite — sem CORS.
+- Front e API na mesma origem via proxy do Vite, sem CORS.
 - Cliente HTTP único no front; nenhuma chamada HTTP crua espalhada.
 - Rotas com `import()` dinâmico.
 - `uv` + `pyproject.toml` com faixas de versão com teto; `ruff`; `pytest`.
@@ -243,16 +263,16 @@ tecnologias que não se aplicam.
 | openapi-fetch + TanStack Query | Axios + Pinia | Stack definida para o projeto |
 | Tipos TS gerados do OpenAPI | Escritos à mão (por ora) | Poucos recursos; geração entra quando a API crescer |
 | Dois stacks compose + rede `edge` | Um compose só | Sem serviços internos (MinIO, Redis, worker) a isolar |
-| MinIO, Redis, worker, ClamAV, rate-limit, auth com sessão | — | Nenhum requisito do CampoCerto pede, por ora |
+| MinIO, Redis, worker, ClamAV, rate-limit, auth com sessão | Não entrou | Nenhum requisito do CampoCerto pede, por ora |
 | mypy strict, import-linter, dependency-cruiser, cobertura 90% | ruff + vue-tsc + eslint | Proporcional ao tamanho; os gates entram se as regras de camada começarem a ser violadas |
 
 ## 6. Próximas decisões (pendentes)
 
-1. **Autenticação** — o desafio não exige; decidir se a demonstração é monousuário. Hoje qualquer
+1. **Autenticação.** O desafio não exige; decidir se a demonstração é monousuário. Hoje qualquer
    um que alcance a tela lê e altera tudo (as portas da API e do banco ficam só em 127.0.0.1; a do
    front fica aberta na rede).
 2. **Geração de tipos TS a partir do OpenAPI** (`openapi-typescript`) quando a API crescer.
 
 Decididas desde a versão anterior deste documento: a importação de planilha existe (Excel e
-CSV, seção 2); o ECharts entrou com o gráfico do insumo; o Pandas não entrou — nem o motor de
+CSV, seção 2); o ECharts entrou com o gráfico do insumo; o Pandas não entrou, porque nem o motor de
 análise nem a importação precisaram; o `openpyxl` entrou para ler e gerar `.xlsx`.

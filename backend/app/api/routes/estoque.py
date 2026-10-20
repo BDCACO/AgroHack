@@ -102,7 +102,7 @@ def remover_movimentacao(movimentacao_id: int, db: Session = Depends(get_db)) ->
 def importar_planilha(
     pedido: PedidoDeImportacao, db: Session = Depends(get_db)
 ) -> ResultadoImportacao:
-    """Movimentações de uma planilha — `xlsx` (base64) ou `conteudo` (texto do CSV) — com
+    """Movimentações de uma planilha, em `xlsx` (base64) ou `conteudo` (texto do CSV), com
     as colunas data, insumo, unidade, tipo, quantidade e validade. Sem `confirmar`, só
     confere e resume. Com um erro sequer, nada é gravado: a resposta lista os erros por
     linha e `importado` vem falso."""

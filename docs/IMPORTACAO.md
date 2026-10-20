@@ -8,7 +8,7 @@ sem relançar tudo pela tela.
 1. Em **Importar dados**, baixe a **planilha modelo (Excel)**.
 2. Preencha a aba **Movimentações**: uma linha por compra que chegou ou retirada do galpão.
 3. Volte a **Importar dados** e escolha o arquivo.
-4. Confira o resumo — quanto entra e sai de cada insumo — e clique em **Importar**.
+4. Confira o resumo (quanto entra e sai de cada insumo) e clique em **Importar**.
 
 Nada é gravado antes do passo 4. Se a planilha tiver qualquer erro, **nada** é gravado, e a tela
 diz a linha e o que corrigir.
@@ -19,7 +19,7 @@ diz a linha e o que corrigir.
 
 | Aba | Para quê |
 |---|---|
-| **Movimentações** | A que você preenche — e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade e tipo. O próprio Excel avisa se a data for futura, se o tipo não for entrada ou saída e se a quantidade não for maior que zero. |
+| **Movimentações** | A que você preenche, e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade e tipo. O próprio Excel avisa se a data for futura, se o tipo não for entrada ou saída e se a quantidade não for maior que zero. |
 | **Como preencher** | As instruções, resumidas. |
 | **Exemplo** | Três linhas preenchidas do jeito certo. |
 | **Insumos cadastrados** | Os insumos que já estão no CampoCerto, com a unidade de cada um. É de onde vem a lista de escolha da coluna `insumo`: depois de cadastrar outros, baixe o modelo de novo. |
@@ -33,11 +33,11 @@ Passe o mouse sobre o título de uma coluna para ver a explicação dela.
 | `data` | Sim | Dia em que a compra chegou ou em que o produto saiu do galpão. Não pode ser futura. | 05/03/2026 |
 | `insumo` | Sim | Nome do produto. Maiúsculas não importam: "ureia agrícola" é o mesmo que "Ureia agrícola". Um nome que não existe vira insumo novo. | Ureia agrícola |
 | `unidade` | Só para insumo novo | kg, L, t, sc, dose, un… Para um insumo já cadastrado, deixe em branco ou repita a do cadastro. | kg |
-| `tipo` | Sim | `entrada` (compra que chegou) ou `saída` (retirada do galpão) — no modelo, escolha da lista. Em outras planilhas também valem `compra`, `retirada` e `saida` sem acento. | saída |
+| `tipo` | Sim | `entrada` (compra que chegou) ou `saída` (retirada do galpão); no modelo, escolha da lista. Em outras planilhas também valem `compra`, `retirada` e `saida` sem acento. | saída |
 | `quantidade` | Sim | Maior que zero, na unidade do insumo. | 25,5 |
 | `validade` | Não | Validade do lote, só em entradas. Em branco se o produto não vence. | 30/06/2027 |
 
-Pode haver outras colunas — observação, fornecedor, nota fiscal —, desde que tenham título na
+Pode haver outras colunas (observação, fornecedor, nota fiscal), desde que tenham título na
 linha 1: a importação ignora as que não conhece.
 
 ## Excel ou CSV
@@ -52,7 +52,7 @@ linha 1: a importação ignora as que não conhece.
 
 ### Números escritos como texto
 
-No CSV — e numa célula de texto do Excel —, `25.500` tanto pode ser vinte e cinco e meio quanto
+No CSV, e numa célula de texto do Excel, `25.500` tanto pode ser vinte e cinco e meio quanto
 vinte e cinco mil. O CampoCerto decide olhando a planilha inteira, não célula a célula:
 
 | Na planilha | Lido como | Por quê |
@@ -74,12 +74,12 @@ todas as entradas e saídas no formato da importação. Guarde-o: num CampoCerto
 traz de volta os insumos e as movimentações.
 
 O que **não** volta: o estoque mínimo e o prazo de entrega de cada insumo (estão na aba
-**Estoque** do relatório; lance-os de novo na tela de Insumos — sem eles, os alertas e a
+**Estoque** do relatório; lance-os de novo na tela de Insumos, porque sem eles os alertas e a
 reposição mudam), os insumos sem nenhuma movimentação e a marca de dados de demonstração.
 Importado no mesmo sistema, a prévia avisa que todas as linhas já estão lá e não oferece o botão
-de importar — só um "importar mesmo assim", que pede confirmação.
+de importar, só um "importar mesmo assim", que pede confirmação.
 
-## O que a importação faz — e o que não faz
+## O que a importação faz e o que não faz
 
 - **Tudo ou nada.** Com um erro sequer, nada entra. Meia planilha importada deixaria o estoque
   errado sem ninguém perceber.
@@ -90,7 +90,7 @@ de importar — só um "importar mesmo assim", que pede confirmação.
   o mínimo não há alerta de estoque baixo, e sem o prazo a análise supõe 15 dias.
 - **O estoque é a soma das movimentações.** Lance como entrada o que já estava no galpão no
   começo do período; sem isso, as saídas deixam o estoque negativo.
-- **Limites:** 5 MB e 50.000 movimentações por arquivo — planilha maior, divida por ano. Uma
+- **Limites:** 5 MB e 50.000 movimentações por arquivo; planilha maior, divida por ano. Uma
   planilha com linhas e colunas preenchidas ou formatadas muito além dos dados também é recusada:
   apague o que sobra depois da última linha e da última coluna usadas.
 
@@ -116,5 +116,5 @@ de importar — só um "importar mesmo assim", que pede confirmação.
 | A planilha é grande demais… | Apague as linhas e colunas vazias depois dos dados, ou divida a planilha em partes. |
 | Arquivo maior que 5 MB | Divida a planilha em partes (um ano por arquivo, por exemplo). |
 
-A planilha `docs/exemplos/planilha-com-erros.csv` mostra vários desses erros de uma vez — útil
+A planilha `docs/exemplos/planilha-com-erros.csv` mostra vários desses erros de uma vez. Serve
 para ver como a tela os apresenta.
