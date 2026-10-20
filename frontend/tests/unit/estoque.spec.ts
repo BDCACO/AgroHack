@@ -10,7 +10,8 @@ import { ApiError } from '@/services/http'
 import { useEstoqueStore } from '@/stores/estoque'
 import type { Alerta, Insumo } from '@/types/api'
 
-vi.mock('@/services/estoque', () => ({
+vi.mock('@/services/estoque', async (original) => ({
+  ...(await original<typeof import('@/services/estoque')>()),
   listarInsumos: vi.fn(),
   listarMovimentacoes: vi.fn(),
   registrarMovimentacao: vi.fn(),
@@ -105,6 +106,7 @@ describe('PainelPage', () => {
     const ureia = insumo(2, 'Ureia', [falta])
     ureia.analise.reposicao = {
       pedir_em: '2000-01-01',
+      pedir_hoje: true,
       quantidade: 70,
       justificativa: 'Pedir hoje 70 kg: cobre 30 dias de consumo.',
     }
@@ -120,6 +122,50 @@ describe('PainelPage', () => {
     const reposicao = wrapper.find('[data-teste="reposicao"]').text()
     expect(reposicao).toContain('pedir hoje')
     expect(reposicao).toContain('Pedir hoje 70 kg')
+    const whatsapp = wrapper.find('[data-teste="whatsapp"]').attributes('href')!
+    expect(decodeURIComponent(whatsapp)).toContain('\nPedir agora:\n- Ureia: 70 kg')
+    expect(decodeURIComponent(whatsapp)).not.toContain('Próximos pedidos')
+    expect(wrapper.find('[data-teste="relatorio"]').attributes('href')).toBe(
+      '/api/v1/relatorio.xlsx',
+    )
+  })
+
+  it('os cartões de gravidade filtram a lista, e um segundo clique desfaz', async () => {
+    vi.mocked(api.listarInsumos).mockResolvedValue([
+      insumo(1, 'Calcário', [excesso]),
+      insumo(2, 'Ureia', [falta]),
+    ])
+    const wrapper = await montar()
+    const urgentes = wrapper.findAll('[role="group"] button')[0]!
+
+    await urgentes.trigger('click')
+    expect(urgentes.attributes('aria-pressed')).toBe('true')
+    expect(wrapper.findAll('[data-teste="alerta"]').map((a) => a.text())).toEqual([
+      expect.stringContaining('Ureia'),
+    ])
+
+    await urgentes.trigger('click')
+    expect(wrapper.findAll('[data-teste="alerta"]')).toHaveLength(2)
+  })
+
+  it('barras de cobertura: falta, pedir hoje e folga, do mais apertado ao mais folgado', async () => {
+    const ureia = insumo(1, 'Ureia', [falta])
+    ureia.analise.cobertura_dias = 3
+    const sal = insumo(2, 'Sal', [])
+    sal.analise.cobertura_dias = 20
+    sal.analise.reposicao = { pedir_em: '2000-01-01', pedir_hoje: true, quantidade: 5, justificativa: '' }
+    const calcario = insumo(3, 'Calcário', [excesso])
+    calcario.analise.cobertura_dias = 400
+    vi.mocked(api.listarInsumos).mockResolvedValue([calcario, sal, ureia])
+
+    const wrapper = await montar()
+
+    const linhas = wrapper.findAll('[data-teste="cobertura"]').map((l) => l.text())
+    expect(linhas).toEqual([
+      expect.stringMatching(/Ureia.*3 dias.*acaba antes da entrega/),
+      expect.stringMatching(/Sal.*20 dias.*pedir hoje/),
+      expect.stringMatching(/Calcário.*400 dias.*estoque de sobra/),
+    ])
   })
 
   it('sem insumos, convida a cadastrar', async () => {

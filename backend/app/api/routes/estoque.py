@@ -2,18 +2,24 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.relogio import hoje
 from app.schemas.estoque import (
     InsumoCadastro,
+    InsumoDetalhe,
     InsumoResposta,
     MovimentacaoEntrada,
     MovimentacaoResposta,
+    PedidoDeImportacao,
 )
 from app.services import estoque as servico
+from app.services import planilha_modelo, relatorio
+from app.services.importacao import ResultadoImportacao, importar
 
 router = APIRouter(tags=["estoque"])
 
 _NOME_DUPLICADO = HTTPException(status.HTTP_409_CONFLICT, "Já existe um insumo com esse nome.")
 _INSUMO_INEXISTENTE = "Insumo não encontrado."
+_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @router.get("/insumos", response_model=list[InsumoResposta])
@@ -40,6 +46,25 @@ def atualizar_insumo(
         raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
     except servico.NomeDuplicado:
         raise _NOME_DUPLICADO from None
+
+
+@router.get("/insumos/{insumo_id}", response_model=InsumoDetalhe)
+def detalhar_insumo(insumo_id: int, db: Session = Depends(get_db)) -> InsumoDetalhe:
+    """O insumo com a análise de hoje, o saldo dia a dia e as movimentações."""
+    try:
+        return servico.detalhar_insumo(db, insumo_id)
+    except servico.InsumoInexistente:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
+
+
+@router.delete("/insumos/{insumo_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remover_insumo(insumo_id: int, db: Session = Depends(get_db)) -> Response:
+    """Remove o insumo e todas as movimentações dele."""
+    try:
+        servico.remover_insumo(db, insumo_id)
+    except servico.InsumoInexistente:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/movimentacoes", response_model=list[MovimentacaoResposta])
@@ -71,3 +96,46 @@ def remover_movimentacao(movimentacao_id: int, db: Session = Depends(get_db)) ->
     if not servico.remover_movimentacao(db, movimentacao_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Movimentação não encontrada.")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/importacoes", response_model=ResultadoImportacao)
+def importar_planilha(
+    pedido: PedidoDeImportacao, db: Session = Depends(get_db)
+) -> ResultadoImportacao:
+    """Movimentações de uma planilha, em `xlsx` (base64) ou `conteudo` (texto do CSV), com
+    as colunas data, insumo, unidade, tipo, quantidade e validade. Sem `confirmar`, só
+    confere e resume. Com um erro sequer, nada é gravado: a resposta lista os erros por
+    linha e `importado` vem falso."""
+    arquivo = pedido.xlsx if pedido.xlsx is not None else pedido.conteudo
+    return importar(db, arquivo, confirmar=pedido.confirmar)
+
+
+@router.get(
+    "/importacoes/modelo.xlsx",
+    response_class=Response,
+    responses={200: {"content": {_XLSX: {}}, "description": "Planilha modelo"}},
+)
+def baixar_planilha_modelo(db: Session = Depends(get_db)) -> Response:
+    """Planilha modelo formatada, com os insumos cadastrados para escolher da lista."""
+    return Response(
+        planilha_modelo.gerar(db),
+        media_type=_XLSX,
+        headers={"Content-Disposition": 'attachment; filename="modelo-campocerto.xlsx"'},
+    )
+
+
+@router.get(
+    "/relatorio.xlsx",
+    response_class=Response,
+    responses={200: {"content": {_XLSX: {}}, "description": "Relatório do estoque"}},
+)
+def baixar_relatorio(db: Session = Depends(get_db)) -> Response:
+    """Alertas, reposição, situação de cada insumo e todas as movimentações, em Excel. A
+    aba Movimentações tem o formato da importação: serve de cópia de segurança."""
+    return Response(
+        relatorio.gerar(db),
+        media_type=_XLSX,
+        headers={
+            "Content-Disposition": f'attachment; filename="relatorio-campocerto-{hoje()}.xlsx"'
+        },
+    )

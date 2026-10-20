@@ -1,7 +1,7 @@
 """Engine e sessão do SQLAlchemy.
 
 Síncrono, e não async como no ArkoHub: lá o motivo do async era I/O concorrente
-por request; aqui o trabalho pesado será análise com Pandas, que é CPU-bound e
+por request; aqui o trabalho pesado é análise e leitura de planilhas, CPU-bound e
 síncrono. O FastAPI roda rotas `def` num threadpool, então o event loop não trava.
 """
 

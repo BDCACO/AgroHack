@@ -30,6 +30,7 @@ export interface Alerta {
 
 export interface Reposicao {
   pedir_em: string // AAAA-MM-DD
+  pedir_hoje: boolean // decidido pela API, na data de Rondônia
   quantidade: number
   justificativa: string
 }
@@ -66,4 +67,38 @@ export interface MovimentacaoEntrada {
 
 export interface Movimentacao extends MovimentacaoEntrada {
   id: number
+}
+
+export interface PontoDeEstoque {
+  data: string // AAAA-MM-DD
+  saldo: number // no fim do dia
+}
+
+export interface InsumoDetalhe extends Insumo {
+  historico: PontoDeEstoque[] // um ponto por dia com movimentação, do mais antigo
+  movimentacoes: Movimentacao[] // as mais recentes primeiro
+}
+
+/** A planilha do Excel em base64, ou o texto do CSV (já decodificado pelo navegador). */
+export type PlanilhaParaImportar = { xlsx: string } | { conteudo: string }
+
+export interface TotalDoInsumo {
+  nome: string
+  unidade: string
+  novo: boolean // não está cadastrado: a importação cadastra
+  entradas: number
+  saidas: number
+}
+
+export interface ResultadoImportacao {
+  linhas: number
+  entradas: number
+  saidas: number
+  insumos: TotalDoInsumo[] // na ordem da planilha
+  // ↑ é onde o produtor vê um erro de escala (mil lido como um) antes de gravar
+  primeira_data: string | null // AAAA-MM-DD
+  ultima_data: string | null
+  ja_lancadas: number // linhas iguais a movimentações já no banco: planilha repetida?
+  erros: string[] // "Linha 7: ..." — com um erro sequer, nada é gravado
+  importado: boolean
 }

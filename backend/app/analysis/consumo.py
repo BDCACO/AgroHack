@@ -41,6 +41,9 @@ class Reposicao:
     pedir_em: date
     quantidade: int
     justificativa: str
+    # Decidido aqui, na data de referência da análise (Rondônia): a tela e o relatório
+    # não comparam datas cada um com o seu relógio.
+    pedir_hoje: bool
 
 
 @dataclass(frozen=True)
@@ -122,7 +125,7 @@ def analisar(
                 "risco_de_falta",
                 "alta",
                 f"No ritmo atual ({ritmo}), o estoque dura cerca de {dias_legivel(cobertura)}"
-                f" — menos que o prazo de reposição de {dias_legivel(prazo)}.",
+                f", menos que o prazo de reposição de {dias_legivel(prazo)}.",
             )
         )
     elif cobertura > COBERTURA_EXCESSO_DIAS:
@@ -131,7 +134,7 @@ def analisar(
                 "excesso",
                 "baixa",
                 f"No ritmo atual ({ritmo}), o estoque dura cerca de {dias_legivel(cobertura)}"
-                f" — mais de {COBERTURA_EXCESSO_DIAS} dias de capital parado.",
+                f"; acima de {COBERTURA_EXCESSO_DIAS} dias, é capital parado.",
             )
         )
         # Com excesso não há compra a sugerir — e isso limita a data do pedido a
@@ -225,6 +228,7 @@ def _reposicao(insumo: Insumo, consumo: float, prazo: int, referencia: date) -> 
     return Reposicao(
         pedir_em=pedir_em,
         quantidade=quantidade,
+        pedir_hoje=dias_ate_pedir == 0,
         justificativa=(
             f"Pedir {quando} {quantidade_legivel(quantidade, unidade)}: com entrega em "
             f"{dias_legivel(prazo)}, cobre {HORIZONTE_COMPRA_DIAS} dias de consumo "

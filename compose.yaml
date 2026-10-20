@@ -49,6 +49,7 @@ services:
     working_dir: /app
     environment:
       API_PROXY_TARGET: http://api:8000
+      VITE_POLLING: "1"
     volumes:
       - ./frontend:/app
       # node_modules em volume: o do host (se existir) não é compatível com Alpine.

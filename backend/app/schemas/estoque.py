@@ -1,16 +1,19 @@
 from datetime import date
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Base64Bytes, BaseModel, ConfigDict, Field, model_validator
 
 from app.analysis.consumo import Analise
 from app.core.relogio import hoje
 
 # Teto da coluna NUMERIC(12, 3).
 QUANTIDADE_MAXIMA = 999_999_999
+# Caractere de controle num nome não aparece na tela, separa nomes que parecem iguais e
+# não pode ser gravado numa planilha do Excel.
+SEM_CARACTERE_DE_CONTROLE = r"^[^\x00-\x1f\x7f]*$"
 
 
-class InsumoCadastro(BaseModel):
+class _Insumo(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     nome: str = Field(min_length=1, max_length=120)
@@ -19,7 +22,13 @@ class InsumoCadastro(BaseModel):
     prazo_reposicao_dias: int | None = Field(default=None, ge=0, le=365)
 
 
-class InsumoResposta(InsumoCadastro):
+class InsumoCadastro(_Insumo):
+    # Só na entrada: um nome gravado antes desta regra não pode derrubar a listagem.
+    nome: str = Field(min_length=1, max_length=120, pattern=SEM_CARACTERE_DE_CONTROLE)
+    unidade: str = Field(min_length=1, max_length=20, pattern=SEM_CARACTERE_DE_CONTROLE)
+
+
+class InsumoResposta(_Insumo):
     id: int
     demonstracao: bool
     estoque_atual: float
@@ -49,3 +58,30 @@ class MovimentacaoResposta(_Movimentacao):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+
+
+class PontoDeEstoque(BaseModel):
+    data: date
+    saldo: float  # no fim do dia
+
+
+class InsumoDetalhe(InsumoResposta):
+    # Um ponto por dia com movimentação, do mais antigo ao mais recente.
+    historico: list[PontoDeEstoque]
+    movimentacoes: list[MovimentacaoResposta]  # as mais recentes primeiro
+
+
+class PedidoDeImportacao(BaseModel):
+    """Um dos dois: a planilha do Excel ou o texto do CSV (que o navegador decodifica). 5 MB
+    passam de dezenas de milhares de linhas: anos de registro de uma propriedade."""
+
+    xlsx: Base64Bytes | None = Field(default=None, max_length=5_000_000)
+    conteudo: str | None = Field(default=None, max_length=5_000_000)
+    # Falso = só confere e resume, para o produtor ver antes de gravar.
+    confirmar: bool = False
+
+    @model_validator(mode="after")
+    def _um_arquivo(self) -> Self:
+        if (self.xlsx is None) == (self.conteudo is None):
+            raise ValueError("envie a planilha em `xlsx` (base64) ou o CSV em `conteudo`")
+        return self

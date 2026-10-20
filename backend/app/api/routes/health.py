@@ -11,7 +11,7 @@ router = APIRouter(tags=["health"])
 
 @router.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
-    """Liveness: o processo está no ar. Não toca dependências, de propósito —
+    """Liveness: o processo está no ar. Não toca dependências, de propósito:
     quem precisa saber se o banco responde usa /ready (separação do ArkoHub)."""
     return HealthResponse(status="ok")
 

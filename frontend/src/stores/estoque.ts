@@ -8,6 +8,7 @@ import type {
   InsumoCadastro,
   Movimentacao,
   MovimentacaoEntrada,
+  PlanilhaParaImportar,
 } from '@/types/api'
 
 const ORDEM_GRAVIDADE = { alta: 0, media: 1, baixa: 2 } as const
@@ -63,13 +64,27 @@ export const useEstoqueStore = defineStore('estoque', {
         a.nome.localeCompare(b.nome, 'pt-BR'),
       )
     },
+    /** Leva junto as movimentações do insumo. */
+    async removerInsumo(id: number) {
+      await api.removerInsumo(id)
+      this.insumos = this.insumos.filter((insumo) => insumo.id !== id)
+      this.movimentacoes = this.movimentacoes.filter((mov) => mov.insumo_id !== id)
+    },
+    /** Devolve a movimentação criada, para a tela mostrar onde ela entrou. */
     async registrarMovimentacao(dados: MovimentacaoEntrada) {
-      await api.registrarMovimentacao(dados)
+      const criada = await api.registrarMovimentacao(dados)
       await this.carregar()
+      return criada
     },
     async removerMovimentacao(id: number) {
       await api.removerMovimentacao(id)
       await this.carregar()
+    },
+    /** Sem `confirmar`, só confere. Quando grava, recarrega: muda estoque e alertas. */
+    async importarPlanilha(planilha: PlanilhaParaImportar, confirmar: boolean) {
+      const resultado = await api.importarPlanilha(planilha, confirmar)
+      if (resultado.importado) await this.carregar()
+      return resultado
     },
   },
 })
