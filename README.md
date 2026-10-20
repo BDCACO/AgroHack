@@ -7,9 +7,10 @@ do mínimo, risco de falta, vencimento próximo, excesso, baixa movimentação, 
 reposição estimada — sempre com justificativa e limitações explícitas.
 
 > **Estado atual:** cadastro de insumos e lançamento de entradas e saídas pela tela ou por
-> planilha do Excel ou CSV (com planilha modelo formatada e prévia antes de gravar); o Painel mostra os alertas do motor de análise com a
-> justificativa de cada um, a reposição estimada (com lista de compras para o WhatsApp) e as
-> limitações. Cada insumo tem uma página com o gráfico do estoque e a projeção de quando acaba.
+> planilha do Excel ou CSV (com planilha modelo formatada e prévia antes de gravar); o Painel
+> mostra os alertas do motor de análise com a justificativa de cada um, a reposição estimada
+> (com lista de compras para o WhatsApp) e as limitações. Cada insumo tem uma página com o
+> gráfico do estoque e a projeção de quando acaba.
 
 ## Stack
 

@@ -33,7 +33,7 @@ Passe o mouse sobre o título de uma coluna para ver a explicação dela.
 | `data` | Sim | Dia em que a compra chegou ou em que o produto saiu do galpão. Não pode ser futura. | 05/03/2026 |
 | `insumo` | Sim | Nome do produto. Maiúsculas não importam: "ureia agrícola" é o mesmo que "Ureia agrícola". Um nome que não existe vira insumo novo. | Ureia agrícola |
 | `unidade` | Só para insumo novo | kg, L, t, sc, dose, un… Para um insumo já cadastrado, deixe em branco ou repita a do cadastro. | kg |
-| `tipo` | Sim | `entrada` (compra que chegou) ou `saída` (retirada do galpão). Também valem `compra` e `retirada`. | saída |
+| `tipo` | Sim | `entrada` (compra que chegou) ou `saída` (retirada do galpão) — no modelo, escolha da lista. Em outras planilhas também valem `compra`, `retirada` e `saida` sem acento. | saída |
 | `quantidade` | Sim | Maior que zero, na unidade do insumo. | 25,5 |
 | `validade` | Não | Validade do lote, só em entradas. Em branco se o produto não vence. | 30/06/2027 |
 
@@ -44,9 +44,11 @@ linha 1: a importação ignora as que não conhece.
 
 | Formato | Como fica |
 |---|---|
-| **.xlsx** (Excel) | O recomendado. Datas e números chegam como o Excel guarda, sem dúvida sobre vírgula ou ponto. Só a primeira aba é lida. |
+| **.xlsx** (Excel) | O recomendado. Datas e números chegam como o Excel guarda, sem dúvida sobre vírgula ou ponto. Só a primeira aba é lida. O `.xlsm` (com macros) também vale; as macros são ignoradas. |
 | **.csv** | Também vale, separado por ponto e vírgula (o "CSV" do Excel em português) ou por vírgula, com acentos em UTF-8 ou no formato do Excel antigo (Windows-1252). Há um modelo em CSV na mesma tela. |
 | **.xls** (Excel antigo) | Não é aceito. Abra no Excel e salve como **Pasta de Trabalho do Excel (.xlsx)**. |
+| **.ods** (LibreOffice) | Não é aceito. Abra no LibreOffice e salve como **Excel 2007-365 (.xlsx)**. |
+| **.numbers** | Não é aceito. No Numbers, **Arquivo → Exportar para → Excel**. |
 
 ### Números escritos como texto
 
@@ -60,6 +62,7 @@ vinte e cinco mil. O CampoCerto decide olhando a planilha inteira, não célula 
 | `0.250` | 0,25 | ninguém escreve `0.250` querendo dizer 250 |
 | `1.000`, num CSV separado por `;` e sem outra pista | 1.000 (mil) | o costume do Excel em português |
 | `25.500`, num CSV separado por `,` e sem outra pista | 25,5 | o costume internacional |
+| `25.500` digitado como texto num `.xlsx`, sem outra pista | 25.500 (vinte e cinco mil) | o costume do Excel em português |
 
 Uma planilha que mistura vírgula e ponto decimal é recusada. De todo modo, **confira os totais na
 prévia**: um número lido errado aparece ali, antes de gravar.
@@ -75,7 +78,9 @@ prévia**: um número lido errado aparece ali, antes de gravar.
   o mínimo não há alerta de estoque baixo, e sem o prazo a análise supõe 15 dias.
 - **O estoque é a soma das movimentações.** Lance como entrada o que já estava no galpão no
   começo do período; sem isso, as saídas deixam o estoque negativo.
-- **Limites:** 5 MB e 50.000 movimentações por arquivo. Planilha maior: divida por ano.
+- **Limites:** 5 MB e 50.000 movimentações por arquivo — planilha maior, divida por ano. Uma
+  planilha com linhas e colunas preenchidas ou formatadas muito além dos dados também é recusada:
+  apague o que sobra depois da última linha e da última coluna usadas.
 
 ## Erros comuns
 
@@ -90,11 +95,14 @@ prévia**: um número lido errado aparece ali, antes de gravar.
 | "Ureia" já está cadastrado em kg, não em sc | Converta para a unidade do cadastro (10 sacas de 50 kg = 500 kg). |
 | há mais de um insumo cadastrado como "ureia" | Renomeie um deles na tela de Insumos. |
 | validade só se informa numa entrada | Apague a validade da linha de saída. |
-| há valores em colunas sem título | Dê um título à coluna ou apague os valores. |
+| há valores na coluna H, que não tem título na linha 1 | Dê um título à coluna (na linha 1) ou apague os valores dela. |
+| o nome do insumo tem um caractere inválido | Há um caractere invisível no nome (comum em texto colado de outro programa): apague a célula e digite o nome de novo. |
 | 6 colunas, mas o cabeçalho tem 5 | CSV separado por vírgula com vírgula decimal: separe por ponto e vírgula ou ponha o número entre aspas. |
 | aspa (") sem fechar | Uma célula começa com aspa e não termina com outra: corrija e salve de novo. |
 | Quantidades com vírgula decimal e com ponto decimal na mesma planilha | Use um formato só em toda a coluna `quantidade`. |
-| Não deu para abrir a planilha do Excel | Abra o arquivo no Excel, salve como .xlsx e tente de novo. |
+| Não deu para abrir a planilha do Excel | Abra o arquivo no Excel, salve como .xlsx e tente de novo. Planilha protegida por senha: tire a senha antes. |
+| A planilha é grande demais… | Apague as linhas e colunas vazias depois dos dados, ou divida a planilha em partes. |
+| Arquivo grande demais: o máximo é 5 MB | Divida a planilha em partes (um ano por arquivo, por exemplo). |
 
 A planilha `docs/exemplos/planilha-com-erros.csv` mostra vários desses erros de uma vez — útil
 para ver como a tela os apresenta.

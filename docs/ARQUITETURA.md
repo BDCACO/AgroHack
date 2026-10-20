@@ -75,10 +75,19 @@ resumo. Os dois formatos viram cabeçalho + linhas de células e passam pelas me
 - **Tudo ou nada.** Com um erro sequer, nada entra, e a resposta lista os erros por linha. Meia
   planilha importada deixaria o estoque errado sem ninguém perceber.
 - **`.xlsx` é o formato principal.** Data e número chegam com tipo, sem a dúvida de vírgula ou
-  ponto, e o produtor não precisa converter nada. Lido com `openpyxl` em modo `read_only`
-  (linha a linha) e com `defusedxml` instalado, que o `openpyxl` usa sozinho contra XML
-  malicioso; teto de 5 MB e de 50 mil linhas, contra arquivo que se descompacta em milhões.
-  Só a primeira aba é lida, e o número da linha nos erros é o do Excel.
+  ponto, e o produtor não precisa converter nada. Só a primeira aba é lida, e o número da
+  linha nos erros é o do Excel.
+- **Upload é entrada hostil.** Um `.xlsx` é um zip de XML: pequeno compactado, pode ser enorme
+  aberto. Por isso, em camadas: pedido acima de 8 MB recusado com `413` antes de ler o corpo
+  (`app/main.py`; pelo proxy do Vite essa recusa antecipada chega como `502`, porque o proxy
+  ainda estava enviando — a tela já barra arquivo acima de 5 MB antes de enviar, e em produção
+  o proxy reverso deve ter o próprio limite, como o `client_max_body_size` do nginx); arquivo
+  de até 5 MB; conteúdo descompactado de até 50 MB (conferido no
+  índice do zip, antes de abrir); `defusedxml` instalado, que o `openpyxl` usa sozinho contra
+  XML malicioso; leitura em `read_only` (linha a linha) **ignorando a dimensão gravada no
+  arquivo** — que pode mentir: menor, cortaria linhas sem aviso; enorme, faria o leitor
+  preencher milhões de células vazias —; e tetos de 1.048.576 linhas (o do Excel), 5 milhões
+  de células lidas e 50 mil movimentações.
 - **CSV: o do Excel em português e o internacional.** Separador de colunas `;` ou `,`
   (decidido pelo cabeçalho), datas DD/MM/AAAA (e AAAA-MM-DD), BOM.
 - **O separador decimal é decidido pela planilha inteira**, não célula a célula: sozinho,
@@ -98,8 +107,12 @@ resumo. Os dois formatos viram cabeçalho + linhas de células e passam pelas me
   `app/services/planilha_modelo.py`), não um arquivo parado no repositório: vem com os insumos
   cadastrados (aba própria, que alimenta a lista de escolha da coluna `insumo`) e com exemplos
   de datas recentes. Formatada para preencher certo: cabeçalho nas cores da marca com a
-  explicação de cada coluna em comentário, datas DD/MM/AAAA e validação do próprio Excel (data
-  até hoje, tipo entrada/saída, quantidade maior que zero). O `.xls` antigo não é aceito.
+  explicação de cada coluna em comentário, datas DD/MM/AAAA na coluna inteira e validação do
+  próprio Excel até a linha 50.001 — data, tipo, quantidade e validade **barram** valor errado
+  (`showErrorMessage`, que o `openpyxl` deixa desligado por padrão); insumo e unidade só
+  sugerem da lista, porque insumo novo vale. Nome de insumo é gravado sempre como texto (um
+  "=1+1" não vira fórmula) e sem caractere de controle, que o cadastro e a importação também
+  recusam. `.xls`, `.ods` e `.numbers` não são aceitos: a tela diz como converter.
 
 O fluxo é `rota → serviço → (domínio | análise) → ORM`. As setas só apontam para dentro:
 `domain` e `analysis` não importam FastAPI nem SQLAlchemy. A exceção é `POST /analises`, que não
