@@ -78,6 +78,9 @@ export interface InsumoDetalhe extends Insumo {
   movimentacoes: Movimentacao[] // as mais recentes primeiro
 }
 
+/** A planilha do Excel em base64, ou o texto do CSV (já decodificado pelo navegador). */
+export type PlanilhaParaImportar = { xlsx: string } | { conteudo: string }
+
 export interface TotalDoInsumo {
   nome: string
   unidade: string

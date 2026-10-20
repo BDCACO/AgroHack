@@ -9,7 +9,9 @@ import * as api from '@/services/estoque'
 import { ApiError } from '@/services/http'
 import type { ResultadoImportacao } from '@/types/api'
 
-vi.mock('@/services/estoque', () => ({
+// Parcial: as chamadas à API são falsas, mas a URL do modelo é a de verdade.
+vi.mock('@/services/estoque', async (original) => ({
+  ...(await original<typeof import('@/services/estoque')>()),
   importarPlanilha: vi.fn(),
   listarInsumos: vi.fn().mockResolvedValue([]),
   listarMovimentacoes: vi.fn().mockResolvedValue([]),
@@ -53,7 +55,7 @@ describe('ImportarPage', () => {
 
     const wrapper = await montarEEscolher(csv)
 
-    expect(api.importarPlanilha).toHaveBeenCalledWith('insumo\nUreia agríc', false)
+    expect(api.importarPlanilha).toHaveBeenCalledWith({ conteudo: 'insumo\nUreia agríc' }, false)
     expect(wrapper.find('[data-teste="previa"]').text()).toContain(
       '2 movimentações: 1 entrada e 1 saída, de 02/03/2026 a 09/03/2026.',
     )
@@ -63,7 +65,7 @@ describe('ImportarPage', () => {
     await wrapper.find('[data-teste="previa"] button').trigger('click')
     await flushPromises()
 
-    expect(api.importarPlanilha).toHaveBeenLastCalledWith('insumo\nUreia agríc', true)
+    expect(api.importarPlanilha).toHaveBeenLastCalledWith({ conteudo: 'insumo\nUreia agríc' }, true)
     expect(api.listarInsumos).toHaveBeenCalled() // recarregou estoque e alertas
     expect(wrapper.find('[data-teste="importado"]').text()).toContain(
       'Importação concluída: 2 movimentações.',
@@ -96,14 +98,34 @@ describe('ImportarPage', () => {
     expect(wrapper.find('[data-teste="previa"]').exists()).toBe(false)
     await wrapper.find('[data-teste="conferir-de-novo"]').trigger('click')
     await flushPromises()
-    expect(api.importarPlanilha).toHaveBeenLastCalledWith('qualquer', false)
+    expect(api.importarPlanilha).toHaveBeenLastCalledWith({ conteudo: 'qualquer' }, false)
     expect(wrapper.find('[data-teste="ja-lancadas"]').exists()).toBe(true)
   })
 
-  it('arquivo do Excel nem é enviado', async () => {
-    const wrapper = await montarEEscolher(new TextEncoder().encode('PK'), 'estoque.xlsx')
+  it('planilha do Excel vai inteira, em base64', async () => {
+    vi.mocked(api.importarPlanilha).mockResolvedValueOnce(resumo)
+
+    await montarEEscolher(new TextEncoder().encode('PK planilha'), 'Estoque.XLSX')
+
+    // O FileReader responde fora da fila de microtarefas: espera a chamada chegar.
+    await vi.waitFor(() =>
+      expect(api.importarPlanilha).toHaveBeenCalledWith({ xlsx: btoa('PK planilha') }, false),
+    )
+  })
+
+  it('Excel antigo (.xls) nem é enviado: a tela diz como converter', async () => {
+    const wrapper = await montarEEscolher(new TextEncoder().encode('xls'), 'estoque.xls')
 
     expect(api.importarPlanilha).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('Salvar como → CSV')
+    expect(wrapper.text()).toContain('Pasta de Trabalho do Excel (.xlsx)')
+  })
+
+  it('o link do modelo aponta para a planilha que a API gera', () => {
+    const router = createRouter({ history: createMemoryHistory(), routes })
+    const wrapper = mount(ImportarPage, { global: { plugins: [router] } })
+
+    expect(wrapper.find('[data-teste="modelo-xlsx"]').attributes('href')).toBe(
+      '/api/v1/importacoes/modelo.xlsx',
+    )
   })
 })

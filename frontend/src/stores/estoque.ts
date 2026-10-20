@@ -8,6 +8,7 @@ import type {
   InsumoCadastro,
   Movimentacao,
   MovimentacaoEntrada,
+  PlanilhaParaImportar,
 } from '@/types/api'
 
 const ORDEM_GRAVIDADE = { alta: 0, media: 1, baixa: 2 } as const
@@ -78,8 +79,8 @@ export const useEstoqueStore = defineStore('estoque', {
       await this.carregar()
     },
     /** Sem `confirmar`, só confere. Quando grava, recarrega: muda estoque e alertas. */
-    async importarPlanilha(conteudo: string, confirmar: boolean) {
-      const resultado = await api.importarPlanilha(conteudo, confirmar)
+    async importarPlanilha(planilha: PlanilhaParaImportar, confirmar: boolean) {
+      const resultado = await api.importarPlanilha(planilha, confirmar)
       if (resultado.importado) await this.carregar()
       return resultado
     },

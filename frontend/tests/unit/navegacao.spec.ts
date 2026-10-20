@@ -13,7 +13,8 @@ vi.mock('@/services/health', () => ({
   buscarHealth: vi.fn().mockResolvedValue({ status: 'ok' }),
   buscarReadiness: vi.fn().mockResolvedValue({ status: 'pronto', database: 'ok' }),
 }))
-vi.mock('@/services/estoque', () => ({
+vi.mock('@/services/estoque', async (original) => ({
+  ...(await original<typeof import('@/services/estoque')>()),
   listarInsumos: vi.fn().mockResolvedValue([]),
   listarMovimentacoes: vi.fn().mockResolvedValue([]),
 }))

@@ -4,6 +4,7 @@ import type {
   InsumoDetalhe,
   Movimentacao,
   MovimentacaoEntrada,
+  PlanilhaParaImportar,
   ResultadoImportacao,
 } from '@/types/api'
 
@@ -47,16 +48,20 @@ export async function removerMovimentacao(id: number): Promise<void> {
   await http.delete(`/movimentacoes/${id}`)
 }
 
+/** A planilha modelo (.xlsx) que a API gera, já com os insumos cadastrados. É um link
+ * de download comum, não uma chamada pelo axios. */
+export const URL_DA_PLANILHA_MODELO = `${http.defaults.baseURL}/importacoes/modelo.xlsx`
+
 /** Sem `confirmar`, a API só confere a planilha e devolve o resumo. */
 export async function importarPlanilha(
-  conteudo: string,
+  planilha: PlanilhaParaImportar,
   confirmar: boolean,
 ): Promise<ResultadoImportacao> {
   // Planilha grande demora mais que os 10 s padrão. E, no confirmar, desistir antes do
   // servidor terminar é pior que esperar: ele grava assim mesmo.
   const { data } = await http.post<ResultadoImportacao>(
     '/importacoes',
-    { conteudo, confirmar },
+    { ...planilha, confirmar },
     { timeout: 120_000 },
   )
   return data

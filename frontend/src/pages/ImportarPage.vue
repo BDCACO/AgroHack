@@ -2,14 +2,15 @@
 import { ref } from 'vue'
 
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
+import { URL_DA_PLANILHA_MODELO } from '@/services/estoque'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
-import type { ResultadoImportacao } from '@/types/api'
+import type { PlanilhaParaImportar, ResultadoImportacao } from '@/types/api'
 
 // Só coleta e mostra: quem confere a planilha e decide o que é erro é a API.
 const estoque = useEstoqueStore()
 
 const nomeDoArquivo = ref('')
-const conteudo = ref('')
+const planilha = ref<PlanilhaParaImportar | null>(null)
 const previa = ref<ResultadoImportacao | null>(null)
 const importado = ref<ResultadoImportacao | null>(null)
 const ocupado = ref(false)
@@ -17,10 +18,21 @@ const erro = ref<string | null>(null)
 // O confirmar falhou sem resposta: o servidor pode ter gravado mesmo assim.
 const confirmacaoIncerta = ref(false)
 
-// O limite da API (5 MB de texto). Conferir antes poupa enviar o arquivo à toa.
+// O limite da API (5 MB). Conferir antes poupa enviar o arquivo à toa.
 const TAMANHO_MAXIMO = 5_000_000
 
-async function lerArquivo(arquivo: File): Promise<string> {
+/** O .xlsx vai inteiro, em base64, para a API ler. */
+function lerXlsx(arquivo: File): Promise<string> {
+  return new Promise((pronto, falhou) => {
+    const leitor = new FileReader()
+    // "data:<tipo>;base64,<conteúdo>" → só o conteúdo.
+    leitor.onload = () => pronto(String(leitor.result).split(',')[1] ?? '')
+    leitor.onerror = () => falhou(leitor.error)
+    leitor.readAsDataURL(arquivo)
+  })
+}
+
+async function lerCsv(arquivo: File): Promise<string> {
   const bytes = await arquivo.arrayBuffer()
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
@@ -40,22 +52,26 @@ async function escolher(evento: Event) {
   nomeDoArquivo.value = arquivo.name
   importado.value = null
   previa.value = null
-  if (/\.xlsx?$/i.test(arquivo.name)) {
-    erro.value = 'Este é um arquivo do Excel. Abra no Excel e use Arquivo → Salvar como → CSV.'
+  const nome = arquivo.name.toLowerCase()
+  if (nome.endsWith('.xls')) {
+    erro.value =
+      'Arquivo do Excel antigo (.xls). Abra no Excel e salve como Pasta de Trabalho do Excel (.xlsx).'
   } else if (arquivo.size > TAMANHO_MAXIMO) {
     erro.value = 'Arquivo maior que 5 MB. Divida a planilha em partes e importe uma de cada vez.'
+  } else if (nome.endsWith('.xlsx')) {
+    await enviar({ xlsx: await lerXlsx(arquivo) }, false)
   } else {
-    await enviar(await lerArquivo(arquivo), false)
+    await enviar({ conteudo: await lerCsv(arquivo) }, false)
   }
 }
 
-async function enviar(texto: string, confirmar: boolean) {
+async function enviar(arquivo: PlanilhaParaImportar, confirmar: boolean) {
   ocupado.value = true
   erro.value = null
   confirmacaoIncerta.value = false
   try {
-    const resultado = await estoque.importarPlanilha(texto, confirmar)
-    conteudo.value = texto
+    const resultado = await estoque.importarPlanilha(arquivo, confirmar)
+    planilha.value = arquivo
     previa.value = resultado.importado ? null : resultado
     importado.value = resultado.importado ? resultado : null
   } catch (falha) {
@@ -71,12 +87,17 @@ async function enviar(texto: string, confirmar: boolean) {
   }
 }
 
+/** Com a planilha já conferida: `confirmar` grava; sem, confere de novo. */
+function reenviar(confirmar: boolean) {
+  if (planilha.value) enviar(planilha.value, confirmar)
+}
+
 const colunas = [
-  ['data', 'DD/MM/AAAA, como o Excel grava.'],
-  ['insumo', 'Nome do produto. Se já estiver cadastrado, a linha entra nele.'],
-  ['unidade', 'kg, L, sc, t… Obrigatória só para insumo que ainda não existe.'],
+  ['data', 'Dia da compra ou da retirada, DD/MM/AAAA. Não pode ser futura.'],
+  ['insumo', 'Nome do produto. Se já estiver cadastrado, a linha entra nele; se não, é cadastrado.'],
+  ['unidade', 'kg, L, t, sc, dose… Obrigatória só para insumo novo.'],
   ['tipo', 'entrada (compra que chegou) ou saída (retirada do galpão).'],
-  ['quantidade', 'Maior que zero, com vírgula nos decimais: 25,5.'],
+  ['quantidade', 'Maior que zero. Decimais com vírgula: 25,5.'],
   ['validade', 'Opcional, só em entradas: a validade do lote.'],
 ] as const
 
@@ -105,7 +126,19 @@ const quantidade = (valor: number, unidade: string) =>
         Como montar a planilha
       </h2>
       <p class="mt-1 text-sm text-stone-600">
-        Uma linha por movimentação, com estas colunas na primeira linha:
+        Baixe a planilha modelo: ela já vem formatada, com listas de escolha, a lista dos seus
+        insumos e um exemplo preenchido. Uma linha por movimentação.
+      </p>
+      <a
+        :href="URL_DA_PLANILHA_MODELO"
+        download
+        class="mt-3 inline-flex rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700"
+        data-teste="modelo-xlsx"
+      >
+        Baixar planilha modelo (Excel)
+      </a>
+      <p class="mt-4 text-sm text-stone-600">
+        As colunas, na primeira linha:
       </p>
       <dl class="mt-3 space-y-2 text-sm">
         <div
@@ -120,16 +153,14 @@ const quantidade = (valor: number, unidade: string) =>
           </dd>
         </div>
       </dl>
-      <p class="mt-4 text-sm text-stone-600">
-        No Excel: <em>Arquivo → Salvar como → CSV</em>.
+      <p class="mt-4 text-sm text-stone-500">
+        Também vale um CSV com as mesmas colunas, separado por ponto e vírgula —
+        <a
+          href="/modelo-movimentacoes.csv"
+          download
+          class="font-medium text-campo-700 underline hover:text-campo-900"
+        >modelo em CSV</a>.
       </p>
-      <a
-        href="/modelo-movimentacoes.csv"
-        download
-        class="mt-3 inline-flex rounded-md border border-campo-600 px-4 py-2 text-sm font-medium text-campo-700 hover:bg-campo-50"
-      >
-        Baixar planilha modelo
-      </a>
     </section>
 
     <section
@@ -147,14 +178,14 @@ const quantidade = (valor: number, unidade: string) =>
         :class="ocupado ? 'pointer-events-none opacity-60' : ''"
       >
         <span class="font-medium text-campo-700">
-          {{ ocupado ? 'Conferindo…' : 'Escolher arquivo CSV' }}
+          {{ ocupado ? 'Conferindo…' : 'Escolher a planilha (.xlsx ou .csv)' }}
         </span>
         <span class="mt-1 text-sm text-stone-500">
           {{ nomeDoArquivo || 'Nada é gravado antes de você conferir o resumo.' }}
         </span>
         <input
           type="file"
-          accept=".csv,text/csv"
+          accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           class="sr-only"
           data-teste="arquivo"
           @change="escolher"
@@ -176,7 +207,7 @@ const quantidade = (valor: number, unidade: string) =>
             type="button"
             class="mt-2 rounded-md border border-campo-600 px-4 py-2 font-medium text-campo-700 hover:bg-campo-50"
             data-teste="conferir-de-novo"
-            @click="enviar(conteudo, false)"
+            @click="reenviar(false)"
           >
             Conferir de novo
           </button>
@@ -275,7 +306,7 @@ const quantidade = (valor: number, unidade: string) =>
           type="button"
           class="mt-4 rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700 disabled:opacity-50"
           :disabled="ocupado"
-          @click="enviar(conteudo, true)"
+          @click="reenviar(true)"
         >
           {{ ocupado ? 'Importando…' : `Importar ${contar(previa.linhas, 'movimentação', 'movimentações')}` }}
         </button>
