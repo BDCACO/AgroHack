@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import IconeSvg from '@/components/IconeSvg.vue'
+import LogoCampoCerto from '@/components/LogoCampoCerto.vue'
 import { itensDeMenu } from '@/router'
 import { useEstoqueStore } from '@/stores/estoque'
 import { useStatusSistemaStore } from '@/stores/statusSistema'
@@ -41,12 +42,17 @@ async function fecharGaveta() {
   botaoAbrir.value?.focus()
 }
 
+const ativo = (nome: string) => nome === (rota.meta.secao ?? rota.name)
+
 const resumoStatus = {
   verificando: { texto: 'Verificando sistema…', ponto: 'bg-stone-400 animate-pulse' },
   operando: { texto: 'Sistema operando', ponto: 'bg-green-400' },
   problema: { texto: 'Sistema com problema', ponto: 'bg-red-400' },
   'nao-verificado': { texto: 'Sistema não verificado', ponto: 'bg-stone-400' },
 } as const
+
+// O número no item "Painel" do menu: o que não pode esperar fica à vista em qualquer tela.
+const urgentes = computed(() => estoque.alertas.filter((a) => a.alerta.gravidade === 'alta').length)
 
 onMounted(() => status.verificar())
 </script>
@@ -62,19 +68,19 @@ onMounted(() => status.verificar())
 
     <!-- Barra superior: só no celular/tablet -->
     <header
-      class="sticky top-0 z-30 flex h-14 items-center justify-between bg-campo-700 px-4 text-white lg:hidden"
+      class="sticky top-0 z-30 flex h-14 items-center justify-between bg-campo-900/95 px-4 text-white shadow-sm backdrop-blur lg:hidden"
       :inert="gavetaAberta"
     >
       <RouterLink
         :to="{ name: 'painel' }"
-        class="text-lg font-semibold tracking-tight"
+        aria-label="CampoCerto, ir para o Painel"
       >
-        CampoCerto
+        <LogoCampoCerto com-nome />
       </RouterLink>
       <button
         ref="botaoAbrir"
         type="button"
-        class="rounded p-2 hover:bg-campo-600"
+        class="rounded-lg p-2 transition-colors hover:bg-white/10 active:scale-95"
         :aria-expanded="gavetaAberta"
         aria-controls="menu-lateral"
         aria-label="Abrir menu"
@@ -87,17 +93,24 @@ onMounted(() => status.verificar())
       </button>
     </header>
 
-    <!-- Fundo escurecido atrás da gaveta -->
-    <div
-      v-if="gavetaAberta"
-      class="fixed inset-0 z-40 bg-black/40 lg:hidden"
-      aria-hidden="true"
-      @click="fecharGaveta"
-    />
+    <!-- Fundo escurecido atrás da gaveta: esmaece junto com o deslize dela. -->
+    <Transition
+      enter-from-class="opacity-0"
+      leave-to-class="opacity-0"
+      enter-active-class="transition-opacity duration-200"
+      leave-active-class="transition-opacity duration-200"
+    >
+      <div
+        v-if="gavetaAberta"
+        class="fixed inset-0 z-40 bg-campo-950/50 backdrop-blur-[2px] lg:hidden"
+        aria-hidden="true"
+        @click="fecharGaveta"
+      />
+    </Transition>
 
     <aside
       id="menu-lateral"
-      class="fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-campo-900 text-campo-50 duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0"
+      class="fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-linear-to-b from-campo-900 to-campo-950 text-campo-50 shadow-xl duration-300 ease-(--ease-chegada) lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-none"
       :class="gavetaAberta ? 'translate-x-0 transition-[translate]' : '-translate-x-full transition-[translate,visibility] max-lg:invisible'"
       @keydown.esc="fecharGaveta"
     >
@@ -105,17 +118,18 @@ onMounted(() => status.verificar())
            foco andava pelos links escondidos fora da tela. A visibilidade só entra na
            animação ao fechar (some no fim do deslize); ao abrir, aparece na hora — senão o
            foco não entra nela, que no primeiro instante ainda estaria escondida. -->
-      <div class="flex h-16 items-center justify-between px-5">
+      <div class="flex h-18 items-center justify-between px-5">
         <RouterLink
           :to="{ name: 'painel' }"
-          class="text-xl font-semibold tracking-tight text-white"
+          class="text-white"
+          aria-label="CampoCerto, ir para o Painel"
         >
-          CampoCerto
+          <LogoCampoCerto com-nome />
         </RouterLink>
         <button
           ref="botaoFechar"
           type="button"
-          class="rounded p-1.5 hover:bg-white/10 lg:hidden"
+          class="rounded-lg p-1.5 transition-colors hover:bg-white/10 active:scale-95 lg:hidden"
           aria-label="Fechar menu"
           @click="fecharGaveta"
         >
@@ -127,27 +141,48 @@ onMounted(() => status.verificar())
       </div>
 
       <nav
-        class="flex-1 space-y-1 px-3 py-2"
+        class="flex-1 space-y-1 px-3 py-3"
         aria-label="Principal"
       >
         <RouterLink
           v-for="item in itensDeMenu"
           :key="item.nome"
+          v-slot="{ href, navigate }"
           :to="{ name: item.nome }"
-          class="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-campo-100 hover:bg-white/10 hover:text-white"
-          :class="item.nome === (rota.meta.secao ?? rota.name) ? 'bg-white/15 text-white' : ''"
+          custom
         >
-          <IconeSvg
-            :nome="item.icone"
-            class="h-5 w-5 shrink-0"
-          />
-          {{ item.rotulo }}
+          <a
+            :href="href"
+            class="group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150"
+            :class="ativo(item.nome) ? 'bg-white/15 text-white' : 'text-campo-100/80 hover:bg-white/5 hover:text-white'"
+            :aria-current="ativo(item.nome) ? 'page' : undefined"
+            @click="navigate"
+          >
+            <!-- A barrinha da página atual cresce no item novo ao navegar: mostra onde se está. -->
+            <span
+              class="absolute inset-y-2 left-0 w-1 origin-center rounded-r-full bg-campo-300 transition-transform duration-300 ease-(--ease-chegada)"
+              :class="ativo(item.nome) ? 'scale-y-100' : 'scale-y-0'"
+              aria-hidden="true"
+            />
+            <IconeSvg
+              :nome="item.icone"
+              class="h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-110"
+            />
+            <span data-teste="rotulo-menu">{{ item.rotulo }}</span>
+            <span
+              v-if="item.nome === 'painel' && urgentes"
+              class="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white"
+              data-teste="urgentes-menu"
+            >
+              {{ urgentes }}<span class="sr-only"> {{ urgentes === 1 ? 'urgente' : 'urgentes' }}</span>
+            </span>
+          </a>
         </RouterLink>
       </nav>
 
       <RouterLink
         :to="{ name: 'sistema' }"
-        class="mx-3 mb-4 flex items-center gap-2 rounded-md px-3 py-2 text-xs text-campo-100 hover:bg-white/10"
+        class="mx-3 mb-4 flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-campo-100/80 transition-colors hover:bg-white/5 hover:text-white"
         data-teste="resumo-status"
       >
         <span
@@ -174,14 +209,24 @@ onMounted(() => status.verificar())
         <p
           v-if="estoque.insumos.some((insumo) => insumo.demonstracao)"
           role="note"
-          class="mb-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          class="mb-6 animate-surgir rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
           data-teste="aviso-demonstracao"
         >
           <strong>Dados de demonstração.</strong> Parte dos insumos e movimentações foi gerada
           para apresentar o sistema e não vem de uma fazenda real. Para apagar:
           <code>make demo-limpar</code>.
         </p>
-        <RouterView />
+        <!-- Páginas têm mais de um elemento na raiz: o div dá à transição um só a animar. -->
+        <RouterView v-slot="{ Component, route: atual }">
+          <Transition
+            name="pagina"
+            mode="out-in"
+          >
+            <div :key="atual.path">
+              <component :is="Component" />
+            </div>
+          </Transition>
+        </RouterView>
       </main>
       <footer class="border-t border-stone-200 px-4 py-4 text-center text-xs text-stone-500">
         CampoCerto · AGROHACK 2026/2 · IFRO Campus Ariquemes
