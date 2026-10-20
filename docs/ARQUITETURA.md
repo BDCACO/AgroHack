@@ -52,7 +52,9 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 |---|---|
 | `app/models/estoque.py` | `insumos` e `movimentacoes` (entrada ou saída, data, quantidade, validade). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura — uma fonte da verdade só |
 | `app/services/estoque.py` | Casos de uso: cadastro, movimentações, a análise de cada insumo a partir do banco e o saldo dia a dia (histórico do gráfico). Única camada que as rotas de estoque chamam |
-| `app/services/importacao.py` | Importação de movimentações por planilha CSV — ver abaixo |
+| `app/services/importacao.py` | Importação de movimentações por planilha (Excel ou CSV) — ver abaixo |
+| `app/services/planilha_modelo.py` | A planilha modelo da importação e os estilos das planilhas geradas (cores da marca, títulos, impressão) |
+| `app/services/relatorio.py` | O relatório em Excel: resumo, alertas, reposição, situação de cada insumo e todas as movimentações |
 | `app/demo.py` | Fazenda fictícia para a apresentação (`make demo`): insumos marcados com `demonstracao`, que a tela sinaliza e `make demo-limpar` apaga sozinhos |
 | `app/core/relogio.py` | `hoje()` na data de Rondônia (UTC−4 fixo, sem horário de verão), não na do servidor |
 
@@ -75,7 +77,8 @@ resumo. Os dois formatos viram cabeçalho + linhas de células e passam pelas me
 - **Tudo ou nada.** Com um erro sequer, nada entra, e a resposta lista os erros por linha. Meia
   planilha importada deixaria o estoque errado sem ninguém perceber.
 - **`.xlsx` é o formato principal.** Data e número chegam com tipo, sem a dúvida de vírgula ou
-  ponto, e o produtor não precisa converter nada. Só a primeira aba é lida, e o número da
+  ponto, e o produtor não precisa converter nada. Lê a aba **Movimentações** (a do modelo e a
+  do relatório) ou, se não houver, a primeira; o número da
   linha nos erros é o do Excel.
 - **Upload é entrada hostil.** Um `.xlsx` é um zip de XML: pequeno compactado, pode ser enorme
   aberto. Por isso, em camadas: pedido acima de 8 MB recusado com `413` antes de ler o corpo
@@ -133,6 +136,7 @@ tem banco a orquestrar e chama o motor direto.
 | `DELETE /api/v1/movimentacoes/{id}` | Remove lançamento errado |
 | `POST /api/v1/importacoes` | Movimentações de uma planilha — `xlsx` (base64) ou `conteudo` (texto do CSV). Sem `confirmar`, só confere e resume, com o total de cada insumo; com erro, nada é gravado e a resposta lista os erros por linha |
 | `GET /api/v1/importacoes/modelo.xlsx` | Planilha modelo formatada, com os insumos cadastrados para escolher da lista |
+| `GET /api/v1/relatorio.xlsx` | Relatório do estoque em Excel. A aba Movimentações tem o formato da importação: é também a cópia de segurança, e volta pela mesma tela |
 | `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período) e devolve alertas, reposição e limitações. `422` para entrada inválida |
 | `GET /api/v1/docs` | Swagger UI (desligado em `production`) |
 | `GET /api/v1/openapi.json` | Schema OpenAPI (desligado em `production`) |

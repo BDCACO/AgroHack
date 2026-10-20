@@ -91,10 +91,10 @@ def gerar(db: Session) -> bytes:
     movimentacoes = livro.active
     movimentacoes.title = "Movimentações"
     movimentacoes.sheet_properties.tabColor = VERDE
-    _aba_de_movimentacoes(movimentacoes, total_de_insumos=len(insumos))
+    aba_de_movimentacoes(movimentacoes, total_de_insumos=len(insumos))
     _aba_de_instrucoes(livro.create_sheet("Como preencher"))
     exemplo = livro.create_sheet("Exemplo")
-    _aba_de_movimentacoes(exemplo, total_de_insumos=0, linhas=_exemplos(referencia))
+    aba_de_movimentacoes(exemplo, total_de_insumos=0, linhas=_exemplos(referencia))
     _aba_de_insumos(livro.create_sheet("Insumos cadastrados"), insumos)
 
     arquivo = BytesIO()
@@ -102,16 +102,16 @@ def gerar(db: Session) -> bytes:
     return arquivo.getvalue()
 
 
-def _aba_de_movimentacoes(
+def aba_de_movimentacoes(
     aba: Worksheet, *, total_de_insumos: int, linhas: list[tuple] | None = None
 ) -> None:
-    _titulos(aba, [coluna.titulo for coluna in COLUNAS])
+    titulos(aba, [coluna.titulo for coluna in COLUNAS])
     for indice, coluna in enumerate(COLUNAS, start=1):
         aba.column_dimensions[get_column_letter(indice)].width = coluna.largura
         # O comentário aparece ao passar o mouse no título: a explicação fica à mão.
         aba.cell(1, indice).comment = Comment(coluna.explicacao, "CampoCerto", 90, 260)
     aba.freeze_panes = "A2"
-    _para_imprimir(aba)
+    para_imprimir(aba)
 
     # Formato na coluna inteira, para valer em qualquer linha que o produtor preencher;
     # célula já escrita (o exemplo) precisa do seu.
@@ -120,9 +120,13 @@ def _aba_de_movimentacoes(
         aba.column_dimensions[letra].alignment = Alignment(horizontal="center")
     for linha in linhas or []:
         aba.append(linha)
-    for data, *_, validade in aba.iter_rows(min_row=2, max_col=len(COLUNAS)):
+    for linha in aba.iter_rows(min_row=2, max_col=len(COLUNAS)):
+        data, *_, validade = linha
         data.number_format = validade.number_format = FORMATO_DATA
         data.alignment = validade.alignment = Alignment(horizontal="center")
+        for celula in linha:
+            if isinstance(celula.value, str):
+                celula.data_type = "s"  # nome começando com "=" não vira fórmula
     if linhas is not None:
         return  # o exemplo é para ler, não para preencher
     # Até a última linha que a importação aceita: a faixa é só texto no arquivo.
@@ -210,19 +214,19 @@ def _aba_de_instrucoes(aba: Worksheet) -> None:
         aba.column_dimensions[letra].width = largura
 
     aba["A1"] = "Como preencher a planilha de movimentações"
-    aba["A1"].font = _fonte(bold=True, size=16, color=VERDE_ESCURO)
+    aba["A1"].font = fonte(bold=True, size=16, color=VERDE_ESCURO)
     aba["A2"] = (
         "Uma linha por movimentação: cada compra que chegou (entrada) ou retirada do galpão "
         "(saída). Preencha a aba Movimentações; a aba Exemplo mostra como fica."
     )
-    aba["A2"].font = _fonte(color=CINZA)
+    aba["A2"].font = fonte(color=CINZA)
 
-    _titulos(aba, ["Coluna", "Obrigatória", "Como preencher"], linha=4)
+    titulos(aba, ["Coluna", "Obrigatória", "Como preencher"], linha=4)
     for numero, coluna in enumerate(COLUNAS, start=5):
-        aba.cell(numero, 1, coluna.titulo).font = _fonte(bold=True, color=VERDE)
+        aba.cell(numero, 1, coluna.titulo).font = fonte(bold=True, color=VERDE)
         aba.cell(numero, 2, coluna.obrigatoria)
         aba.cell(numero, 3, coluna.explicacao)
-        _texto_corrido(aba, numero, coluna.explicacao, larguras["C"])
+        texto_corrido(aba, numero, coluna.explicacao, larguras["C"])
         for indice in range(1, 4):
             aba.cell(numero, indice).border = Border(bottom=Side(color=CINZA_CLARO))
 
@@ -252,18 +256,18 @@ def _aba_de_instrucoes(aba: Worksheet) -> None:
             ],
         ),
     ):
-        aba.cell(proxima, 1, titulo).font = _fonte(bold=True, size=12, color=VERDE_ESCURO)
+        aba.cell(proxima, 1, titulo).font = fonte(bold=True, size=12, color=VERDE_ESCURO)
         for item in itens:
             proxima += 1
             aba.cell(proxima, 1, item)
             aba.merge_cells(start_row=proxima, start_column=1, end_row=proxima, end_column=3)
-            _texto_corrido(aba, proxima, item, sum(larguras.values()))
+            texto_corrido(aba, proxima, item, sum(larguras.values()))
         proxima += 2
-    _para_imprimir(aba)
+    para_imprimir(aba)
 
 
 def _aba_de_insumos(aba: Worksheet, insumos: list[Insumo]) -> None:
-    _titulos(aba, ["insumo", "unidade"])
+    titulos(aba, ["insumo", "unidade"])
     aba.column_dimensions["A"].width = 34
     aba.column_dimensions["B"].width = 11
     aba.freeze_panes = "A2"
@@ -276,26 +280,27 @@ def _aba_de_insumos(aba: Worksheet, insumos: list[Insumo]) -> None:
             celula.data_type = "s"
     if not insumos:
         aba["A2"] = "Nenhum insumo cadastrado ainda: os da planilha serão cadastrados."
-        aba["A2"].font = _fonte(italic=True, color=CINZA)
+        aba["A2"].font = fonte(italic=True, color=CINZA)
     # É referência (e a fonte da lista de escolha): protegida contra edição sem querer.
     aba.protection.sheet = True
 
 
-def _fonte(**estilo: object) -> Font:
+def fonte(**estilo: object) -> Font:
     """Calibri explícita: fonte sem nome cada programa de planilha resolve de um jeito."""
     return Font(name="Calibri", **{"size": 11, **estilo})
 
 
-def _titulos(aba: Worksheet, titulos: list[str], linha: int = 1) -> None:
-    for indice, titulo in enumerate(titulos, start=1):
+def titulos(aba: Worksheet, textos: list[str], linha: int = 1) -> None:
+    """Linha de títulos nas cores da marca."""
+    for indice, titulo in enumerate(textos, start=1):
         celula = aba.cell(linha, indice, titulo)
-        celula.font = _fonte(bold=True, color="FFFFFF")
+        celula.font = fonte(bold=True, color="FFFFFF")
         celula.fill = PatternFill("solid", fgColor=VERDE)
         celula.alignment = Alignment(horizontal="center", vertical="center")
     aba.row_dimensions[linha].height = 22
 
 
-def _texto_corrido(aba: Worksheet, linha: int, texto: str, largura: int) -> None:
+def texto_corrido(aba: Worksheet, linha: int, texto: str, largura: int) -> None:
     """Quebra o texto na largura da coluna e ajusta a altura da linha: nem todo programa
     de planilha recalcula a altura sozinho."""
     for celula in aba[linha]:
@@ -303,7 +308,7 @@ def _texto_corrido(aba: Worksheet, linha: int, texto: str, largura: int) -> None
     aba.row_dimensions[linha].height = 15 * math.ceil(len(texto) / (largura * 1.1))
 
 
-def _para_imprimir(aba: Worksheet) -> None:
+def para_imprimir(aba: Worksheet) -> None:
     aba.page_setup.orientation = "landscape"
     aba.page_setup.fitToWidth = 1
     aba.page_setup.fitToHeight = 0

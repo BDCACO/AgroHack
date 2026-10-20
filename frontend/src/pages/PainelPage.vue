@@ -5,6 +5,7 @@ import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import CartaoDeAlerta from '@/components/CartaoDeAlerta.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import SeloDeGravidade from '@/components/SeloDeGravidade.vue'
+import { URL_DO_RELATORIO } from '@/services/estoque'
 import { useEstoqueStore } from '@/stores/estoque'
 import type { Gravidade } from '@/types/api'
 
@@ -70,7 +71,22 @@ async function copiar() {
   <CabecalhoDePagina
     titulo="Painel"
     descricao="Alertas sobre o estoque de insumos, com a justificativa de cada um."
-  />
+  >
+    <template
+      v-if="estoque.insumos.length"
+      #acoes
+    >
+      <!-- Link de download comum: o arquivo vem pronto da API. -->
+      <a
+        :href="URL_DO_RELATORIO"
+        download
+        class="rounded-md border border-campo-600 px-4 py-2 text-sm font-medium text-campo-700 hover:bg-campo-50"
+        data-teste="relatorio"
+      >
+        Baixar relatório (Excel)
+      </a>
+    </template>
+  </CabecalhoDePagina>
 
   <p
     v-if="estoque.erro"

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.relogio import hoje
 from app.schemas.estoque import (
     InsumoCadastro,
     InsumoDetalhe,
@@ -11,7 +12,7 @@ from app.schemas.estoque import (
     PedidoDeImportacao,
 )
 from app.services import estoque as servico
-from app.services import planilha_modelo
+from app.services import planilha_modelo, relatorio
 from app.services.importacao import ResultadoImportacao, importar
 
 router = APIRouter(tags=["estoque"])
@@ -120,4 +121,21 @@ def baixar_planilha_modelo(db: Session = Depends(get_db)) -> Response:
         planilha_modelo.gerar(db),
         media_type=_XLSX,
         headers={"Content-Disposition": 'attachment; filename="modelo-campocerto.xlsx"'},
+    )
+
+
+@router.get(
+    "/relatorio.xlsx",
+    response_class=Response,
+    responses={200: {"content": {_XLSX: {}}, "description": "Relatório do estoque"}},
+)
+def baixar_relatorio(db: Session = Depends(get_db)) -> Response:
+    """Alertas, reposição, situação de cada insumo e todas as movimentações, em Excel. A
+    aba Movimentações tem o formato da importação: serve de cópia de segurança."""
+    return Response(
+        relatorio.gerar(db),
+        media_type=_XLSX,
+        headers={
+            "Content-Disposition": f'attachment; filename="relatorio-campocerto-{hoje()}.xlsx"'
+        },
     )

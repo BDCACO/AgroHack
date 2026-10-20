@@ -220,7 +220,7 @@ def _linhas_do_csv(leitor: _csv.Reader, cabecalho: list[str], erros: list[str]) 
 
 
 def _ler_xlsx(dados: bytes, erros: list[str]) -> tuple[list[str], _Lidas, str] | None:
-    """Lê a primeira aba. O número de cada linha é o da linha no Excel."""
+    """Lê a aba Movimentações, ou a primeira. O número de cada linha é o da linha no Excel."""
     lidas: _Lidas = []
     try:
         with ZipFile(io.BytesIO(dados)) as compactado:
@@ -235,7 +235,10 @@ def _ler_xlsx(dados: bytes, erros: list[str]) -> tuple[list[str], _Lidas, str] |
         erros.append(_XLSX_ILEGIVEL)
         return None
     try:
-        aba = livro.worksheets[0]
+        # A aba de preencher do modelo (e a do relatório, que serve de cópia de segurança);
+        # numa planilha qualquer, a primeira.
+        abas = {aba.title.casefold(): aba for aba in livro.worksheets}
+        aba = abas.get("movimentações", livro.worksheets[0])
         # A dimensão gravada no arquivo pode mentir: menor, cortaria linhas sem aviso;
         # enorme, faria o leitor preencher milhões de células vazias.
         aba.reset_dimensions()

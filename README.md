@@ -10,7 +10,8 @@ reposição estimada — sempre com justificativa e limitações explícitas.
 > planilha do Excel ou CSV (com planilha modelo formatada e prévia antes de gravar); o Painel
 > mostra os alertas do motor de análise com a justificativa de cada um, a reposição estimada
 > (com lista de compras para o WhatsApp) e as limitações. Cada insumo tem uma página com o
-> gráfico do estoque e a projeção de quando acaba.
+> gráfico do estoque e a projeção de quando acaba. Tudo sai num relatório em Excel, que também
+> é a cópia de segurança das movimentações.
 
 ## Stack
 

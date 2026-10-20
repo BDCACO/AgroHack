@@ -19,7 +19,7 @@ diz a linha e o que corrigir.
 
 | Aba | Para quê |
 |---|---|
-| **Movimentações** | A que você preenche — e a única que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade e tipo. O próprio Excel avisa se a data for futura, se o tipo não for entrada ou saída e se a quantidade não for maior que zero. |
+| **Movimentações** | A que você preenche — e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade e tipo. O próprio Excel avisa se a data for futura, se o tipo não for entrada ou saída e se a quantidade não for maior que zero. |
 | **Como preencher** | As instruções, resumidas. |
 | **Exemplo** | Três linhas preenchidas do jeito certo. |
 | **Insumos cadastrados** | Os insumos que já estão no CampoCerto, com a unidade de cada um. É de onde vem a lista de escolha da coluna `insumo`: depois de cadastrar outros, baixe o modelo de novo. |
@@ -44,7 +44,7 @@ linha 1: a importação ignora as que não conhece.
 
 | Formato | Como fica |
 |---|---|
-| **.xlsx** (Excel) | O recomendado. Datas e números chegam como o Excel guarda, sem dúvida sobre vírgula ou ponto. Só a primeira aba é lida. O `.xlsm` (com macros) também vale; as macros são ignoradas. |
+| **.xlsx** (Excel) | O recomendado. Datas e números chegam como o Excel guarda, sem dúvida sobre vírgula ou ponto. É lida a aba **Movimentações** ou, se não houver uma, a primeira. O `.xlsm` (com macros) também vale; as macros são ignoradas. |
 | **.csv** | Também vale, separado por ponto e vírgula (o "CSV" do Excel em português) ou por vírgula, com acentos em UTF-8 ou no formato do Excel antigo (Windows-1252). Há um modelo em CSV na mesma tela. |
 | **.xls** (Excel antigo) | Não é aceito. Abra no Excel e salve como **Pasta de Trabalho do Excel (.xlsx)**. |
 | **.ods** (LibreOffice) | Não é aceito. Abra no LibreOffice e salve como **Excel 2007-365 (.xlsx)**. |
@@ -66,6 +66,13 @@ vinte e cinco mil. O CampoCerto decide olhando a planilha inteira, não célula 
 
 Uma planilha que mistura vírgula e ponto decimal é recusada. De todo modo, **confira os totais na
 prévia**: um número lido errado aparece ali, antes de gravar.
+
+## Cópia de segurança
+
+O **relatório em Excel** (botão *Baixar relatório* no Painel) traz, na aba **Movimentações**,
+todas as entradas e saídas no formato da importação. Guarde-o: para recuperar os dados num
+CampoCerto novo, basta importá-lo. Importado no mesmo sistema, a prévia avisa que todas as linhas
+já estão lá.
 
 ## O que a importação faz — e o que não faz
 

@@ -52,6 +52,9 @@ export async function removerMovimentacao(id: number): Promise<void> {
  * de download comum, não uma chamada pelo axios. */
 export const URL_DA_PLANILHA_MODELO = `${http.defaults.baseURL}/importacoes/modelo.xlsx`
 
+/** Relatório do estoque (.xlsx): alertas, reposição, insumos e todas as movimentações. */
+export const URL_DO_RELATORIO = `${http.defaults.baseURL}/relatorio.xlsx`
+
 /** Sem `confirmar`, a API só confere a planilha e devolve o resumo. */
 export async function importarPlanilha(
   planilha: PlanilhaParaImportar,

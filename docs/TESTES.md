@@ -13,6 +13,7 @@ no lugar do `get_db`.
 | `test_config.py` | `ENVIRONMENT` obrigatório e restrito; `/docs` ligado fora de produção e desligado em produção |
 | `test_estoque.py` | Cadastro de insumo (nome repetido = `409`), estoque e análise calculados das movimentações, movimentação inválida (`422`), alteração, listagem e remoção; detalhe do insumo com o saldo dia a dia; remover insumo leva as movimentações |
 | `test_importacao.py` | **CSV:** planilha do Excel em português (BOM, `;`, vírgula decimal, `1.000`, DD/MM/AAAA); prévia não grava e traz o total de cada insumo; confirmar grava e cadastra insumos novos; reimportar avisa `ja_lancadas`; separador decimal decidido pela planilha inteira (`0.250`, `25.500`, `1,234.5`) e planilha que mistura os dois; células a mais, aspa sem fechar (inclusive estourando o limite do `csv`); unidade diferente da cadastrada; nomes do cadastro que só diferem em maiúsculas; com um erro, nada é gravado — e cada erro diz a linha; planilha vazia ou sem as colunas. **Excel (.xlsx):** a planilha modelo vem formatada (títulos, comentários, formato de data na coluna, validações que barram e listas que só sugerem) e com os insumos cadastrados, gravados como texto mesmo com "=" ou caractere de controle; o modelo preenchido volta pela importação, com data e número tipados ou digitados como texto; o exemplo do próprio modelo importa sem erro; modelo vazio não tem o que importar; os erros apontam a linha do Excel (inclusive número de série no lugar da data e valor em coluna sem título); arquivo que não é `.xlsx`; pedido sem arquivo ou com os dois formatos. **Arquivo hostil:** dimensão gravada errada não corta a importação; planilha inflada (linha além do limite do Excel) é recusada em segundos; conteúdo descompactado acima do teto; pedido acima de 8 MB recusado com `413` antes de ler o corpo; nome com caractere de controle recusado no cadastro e na importação; valor em coluna sem título diz a letra da coluna |
+| `test_relatorio.py` | Relatório em Excel com a fazenda de demonstração: abas, alertas dos mais graves aos mais leves, reposição, situação de cada insumo; a aba Movimentações volta pela importação (tudo já lançado); sem nada cadastrado |
 | `test_demo.py` | A fazenda de demonstração acende os alertas do roteiro, insumo por insumo; recarregar substitui; limpar apaga só a demonstração |
 | `test_analises.py` | `POST /analises`: resposta com alertas, reposição e limitações; `422` para período invertido e retirada negativa |
 | `test_motor_de_analise.py` | Cada alerta do motor (mínimo, falta, vencimento, excesso, baixa movimentação, consumo incomum), a reposição estimada com as contas à mão, e as limitações quando falta histórico ou cadastro |
@@ -56,6 +57,12 @@ make check-db
 Confere `GET /api/v1/ready` → `{"status":"pronto","database":"ok"}` e lê a revisão aplicada na
 tabela `alembic_version` do PostgreSQL (deve ser a última migration de
 `backend/migrations/versions/`).
+
+## No GitHub (CI)
+
+`.github/workflows/verificacao.yml` roda o mesmo que o `make verify` — ruff, pytest, vue-tsc,
+eslint e vitest — em todo PR e em todo push na `main`, direto com uv e Node (sem Docker). PR com
+a verificação vermelha não deve ser mergeado.
 
 ## Lint e tipos
 

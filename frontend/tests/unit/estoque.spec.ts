@@ -10,7 +10,8 @@ import { ApiError } from '@/services/http'
 import { useEstoqueStore } from '@/stores/estoque'
 import type { Alerta, Insumo } from '@/types/api'
 
-vi.mock('@/services/estoque', () => ({
+vi.mock('@/services/estoque', async (original) => ({
+  ...(await original<typeof import('@/services/estoque')>()),
   listarInsumos: vi.fn(),
   listarMovimentacoes: vi.fn(),
   registrarMovimentacao: vi.fn(),
@@ -123,6 +124,9 @@ describe('PainelPage', () => {
     const whatsapp = wrapper.find('[data-teste="whatsapp"]').attributes('href')!
     expect(decodeURIComponent(whatsapp)).toContain('\nPedir agora:\n- Ureia: 70 kg')
     expect(decodeURIComponent(whatsapp)).not.toContain('Próximos pedidos')
+    expect(wrapper.find('[data-teste="relatorio"]').attributes('href')).toBe(
+      '/api/v1/relatorio.xlsx',
+    )
   })
 
   it('sem insumos, convida a cadastrar', async () => {
