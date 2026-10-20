@@ -148,17 +148,44 @@ tem banco a orquestrar e chama o motor direto.
 | `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só |
 | `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, gaveta no celular, resumo de status |
 | `src/pages/` | Uma página por rota: Painel (alertas, reposição com lista de compras para o WhatsApp, limitações), Insumos (cadastro), página do insumo (`/insumos/:id`: resumo, gráfico, alertas, movimentações, remover), Movimentações (entradas e saídas), Importar dados (Excel ou CSV, com prévia), Sistema |
-| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `CartaoDeAlerta`, `EstadoVazio`, `GraficoDeEstoque`, `IconeSvg`, `IndicadorDeStatus`, `SeloDeGravidade` |
+| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `ContadorAnimado`, `EstadoVazio`, `GraficoDeEstoque`, `IconeSvg`, `IndicadorDeStatus`, `LogoCampoCerto`, `SeloDeGravidade` |
 | `src/stores/` | Pinia — estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração |
 | `src/services/http.ts` | **Cliente HTTP único** (Axios). Normaliza erro em `ApiError` |
 | `src/services/*.ts` | Uma função por endpoint |
 | `src/types/` | Tipos TypeScript dos contratos da API |
-| `src/styles/main.css` | Tailwind v4 + tokens da marca (`@theme`) |
+| `src/styles/main.css` | Tailwind v4: tokens da marca e de movimento (`@theme`), componentes base (`.cartao`, `.botao-*`, `.campo`, `.esqueleto`) e as transições — ver "Design e movimento" |
 | `public/modelo-movimentacoes.csv` | Modelo alternativo em CSV, servido como arquivo estático (com BOM, para o Excel abrir os acentos); o principal é o `.xlsx` gerado pela API |
 | `tests/unit/` | Vitest + Vue Test Utils |
 
 Regras: componente `.vue` **não chama axios** (passa por `services/`) e **não decide** regra de
 negócio — mostra o que a API calculou.
+
+### Design e movimento
+
+Visual calmo e terroso: verde de lavoura (`campo`, de 50 a 950) como cor da marca, terra e
+palha (`terra`) como acento quente, fundo de pedra clara, cartões brancos. Fonte **Plus Jakarta
+Sans** (`@fontsource-variable`), embutida no app: funciona sem internet, como numa apresentação.
+Tudo mora em `main.css`: as cores, a fonte, as curvas e durações de animação (`--ease-chegada`,
+`--animate-*`) e os componentes base — botão e cartão são classes (`.botao-primario`,
+`.cartao`...), não estilo repetido em cada tela.
+
+**Animação só onde informa**, curta (150–700 ms) e com chegada suave:
+
+- **O que mudou:** os números de gravidade contam até o valor novo; a linha recém-lançada em
+  Movimentações acende e esmaece; a barrinha da página ativa cresce no item novo do menu.
+- **Ordem de leitura:** alertas chegam em cascata, os mais graves primeiro; as barras de
+  "quanto tempo o estoque dura" crescem da esquerda, da mais apertada à mais folgada; a linha
+  do gráfico se desenha no sentido do tempo.
+- **De onde veio e para onde foi:** troca de página com transição curta; ao filtrar alertas,
+  quem fica desliza para o lugar e quem sai esmaece; o fundo do seletor Saída/Entrada desliza.
+- **Trabalho em andamento e resultado:** barra de "trabalhando" ao conferir a planilha, ícone
+  que gira ao verificar o sistema, sinal de concluído que se desenha, esqueleto no lugar do
+  conteúdo que está chegando.
+- **O que não pode esperar:** só o ponto do selo "Urgente" pulsa. Nada mais anima em loop.
+
+Quem pede **menos movimento** ao sistema operacional (`prefers-reduced-motion`) não recebe
+animação nenhuma: a regra global em `main.css` zera as durações, o `ContadorAnimado` mostra o
+número direto, e toda tela aparece já no estado final.
 
 **Gráficos: Apache ECharts**, importado peça por peça (`echarts/core` + linha, grade, tooltip,
 linhas de referência e o renderizador SVG), na página do insumo — que é carregada sob demanda,
