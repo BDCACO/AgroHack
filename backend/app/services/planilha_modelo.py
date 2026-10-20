@@ -87,7 +87,7 @@ def gerar(db: Session) -> bytes:
     livro.properties.creator = "CampoCerto"
     livro.properties.title = "Movimentações de insumos para importar"
 
-    # A primeira aba é a que a importação lê: tem de ser a de preencher.
+    # A aba que a importação lê (pelo nome) e a primeira que o produtor vê ao abrir.
     movimentacoes = livro.active
     movimentacoes.title = "Movimentações"
     movimentacoes.sheet_properties.tabColor = VERDE

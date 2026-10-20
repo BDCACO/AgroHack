@@ -41,6 +41,9 @@ class Reposicao:
     pedir_em: date
     quantidade: int
     justificativa: str
+    # Decidido aqui, na data de referência da análise (Rondônia): a tela e o relatório
+    # não comparam datas cada um com o seu relógio.
+    pedir_hoje: bool
 
 
 @dataclass(frozen=True)
@@ -225,6 +228,7 @@ def _reposicao(insumo: Insumo, consumo: float, prazo: int, referencia: date) -> 
     return Reposicao(
         pedir_em=pedir_em,
         quantidade=quantidade,
+        pedir_hoje=dias_ate_pedir == 0,
         justificativa=(
             f"Pedir {quando} {quantidade_legivel(quantidade, unidade)}: com entrega em "
             f"{dias_legivel(prazo)}, cobre {HORIZONTE_COMPRA_DIAS} dias de consumo "

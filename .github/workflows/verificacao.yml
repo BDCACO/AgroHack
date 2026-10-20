@@ -20,6 +20,8 @@ jobs:
   backend:
     name: Backend (ruff + pytest)
     runs-on: ubuntu-latest
+    # Um teste travado não prende a máquina do GitHub por horas.
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: backend
@@ -38,6 +40,7 @@ jobs:
   frontend:
     name: Frontend (vue-tsc + eslint + vitest)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: frontend

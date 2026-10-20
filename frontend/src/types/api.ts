@@ -30,6 +30,7 @@ export interface Alerta {
 
 export interface Reposicao {
   pedir_em: string // AAAA-MM-DD
+  pedir_hoje: boolean // decidido pela API, na data de Rondônia
   quantidade: number
   justificativa: string
 }

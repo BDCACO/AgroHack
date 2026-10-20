@@ -7,7 +7,7 @@ import EstadoVazio from '@/components/EstadoVazio.vue'
 import SeloDeGravidade from '@/components/SeloDeGravidade.vue'
 import { URL_DO_RELATORIO } from '@/services/estoque'
 import { useEstoqueStore } from '@/stores/estoque'
-import type { Gravidade } from '@/types/api'
+import type { Gravidade, Reposicao } from '@/types/api'
 
 // Só exibe: quem decide alerta, justificativa, reposição e limitação é o backend.
 const estoque = useEstoqueStore()
@@ -32,7 +32,7 @@ const reposicoes = computed(() =>
 
 const hoje = () => new Date().toLocaleDateString('sv-SE')
 const dataBr = (data: string) => data.split('-').reverse().join('/')
-const quando = (pedirEm: string) => (pedirEm <= hoje() ? 'pedir hoje' : `pedir até ${dataBr(pedirEm)}`)
+const quando = (r: Reposicao) => (r.pedir_hoje ? 'pedir hoje' : `pedir até ${dataBr(r.pedir_em)}`)
 
 // O pedido à revenda costuma sair pelo WhatsApp: a lista vai pronta, em texto. O que é
 // para pedir já vem separado do que ainda dá para esperar — a quantidade destes vale
@@ -40,8 +40,8 @@ const quando = (pedirEm: string) => (pedirEm <= hoje() ? 'pedir hoje' : `pedir a
 const listaDeCompras = computed(() => {
   const item = (r: (typeof reposicoes.value)[number]) =>
     `- ${r.insumo.nome}: ${r.quantidade.toLocaleString('pt-BR')} ${r.insumo.unidade}`
-  const agora = reposicoes.value.filter((r) => r.pedir_em <= hoje())
-  const depois = reposicoes.value.filter((r) => r.pedir_em > hoje())
+  const agora = reposicoes.value.filter((r) => r.pedir_hoje)
+  const depois = reposicoes.value.filter((r) => !r.pedir_hoje)
   return [
     `Lista de compras (CampoCerto, ${dataBr(hoje())})`,
     ...(agora.length ? ['', 'Pedir agora:', ...agora.map(item)] : []),
@@ -202,9 +202,9 @@ async function copiar() {
             </RouterLink>
             <span
               class="ml-2 text-sm font-normal"
-              :class="item.pedir_em <= hoje() ? 'text-red-700' : 'text-stone-500'"
+              :class="item.pedir_hoje ? 'text-red-700' : 'text-stone-500'"
             >
-              {{ quando(item.pedir_em) }}
+              {{ quando(item) }}
             </span>
           </p>
           <p class="mt-0.5 text-sm text-stone-600">

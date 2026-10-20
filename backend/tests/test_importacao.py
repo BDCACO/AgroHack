@@ -284,6 +284,10 @@ def test_modelo_nao_vira_formula_nem_quebra_com_nome_estranho(
         ("=1+1", "s"),
         ("Salmineral", "s"),
     ]
+    # Nome antigo, de antes da regra, não derruba nenhuma tela: a regra vale na entrada.
+    estranho = next(i for i in client.get("/api/v1/insumos").json() if "\x0b" in i["nome"])
+    assert client.get(f"/api/v1/insumos/{estranho['id']}").status_code == 200
+    assert client.get("/api/v1/relatorio.xlsx").status_code == 200
 
 
 def test_nome_com_caractere_de_controle_e_recusado(client: TestClient) -> None:

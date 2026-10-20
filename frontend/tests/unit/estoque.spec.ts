@@ -106,6 +106,7 @@ describe('PainelPage', () => {
     const ureia = insumo(2, 'Ureia', [falta])
     ureia.analise.reposicao = {
       pedir_em: '2000-01-01',
+      pedir_hoje: true,
       quantidade: 70,
       justificativa: 'Pedir hoje 70 kg: cobre 30 dias de consumo.',
     }

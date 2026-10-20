@@ -134,3 +134,20 @@ describe('ImportarPage', () => {
     )
   })
 })
+
+describe('ImportarPage, planilha toda já lançada', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('não convida a importar: só "mesmo assim", com confirmação', async () => {
+    vi.mocked(api.importarPlanilha).mockReset().mockResolvedValueOnce({ ...resumo, ja_lancadas: 2 })
+    const confirmar = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const wrapper = await montarEEscolher(new TextEncoder().encode('qualquer'))
+
+    const botoes = wrapper.findAll('[data-teste="previa"] button')
+    expect(botoes.map((b) => b.text())).toEqual(['Importar mesmo assim (duplica tudo)'])
+    await botoes[0]!.trigger('click')
+
+    expect(confirmar).toHaveBeenCalledOnce()
+    expect(api.importarPlanilha).toHaveBeenCalledOnce() // recusou: nada foi gravado
+  })
+})

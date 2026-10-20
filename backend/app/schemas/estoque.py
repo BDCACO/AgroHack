@@ -13,16 +13,22 @@ QUANTIDADE_MAXIMA = 999_999_999
 SEM_CARACTERE_DE_CONTROLE = r"^[^\x00-\x1f\x7f]*$"
 
 
-class InsumoCadastro(BaseModel):
+class _Insumo(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    nome: str = Field(min_length=1, max_length=120, pattern=SEM_CARACTERE_DE_CONTROLE)
-    unidade: str = Field(min_length=1, max_length=20, pattern=SEM_CARACTERE_DE_CONTROLE)
+    nome: str = Field(min_length=1, max_length=120)
+    unidade: str = Field(min_length=1, max_length=20)
     estoque_minimo: float | None = Field(default=None, ge=0, le=QUANTIDADE_MAXIMA)
     prazo_reposicao_dias: int | None = Field(default=None, ge=0, le=365)
 
 
-class InsumoResposta(InsumoCadastro):
+class InsumoCadastro(_Insumo):
+    # Só na entrada: um nome gravado antes desta regra não pode derrubar a listagem.
+    nome: str = Field(min_length=1, max_length=120, pattern=SEM_CARACTERE_DE_CONTROLE)
+    unidade: str = Field(min_length=1, max_length=20, pattern=SEM_CARACTERE_DE_CONTROLE)
+
+
+class InsumoResposta(_Insumo):
     id: int
     demonstracao: bool
     estoque_atual: float

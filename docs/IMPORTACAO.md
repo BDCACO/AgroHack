@@ -70,9 +70,14 @@ prévia**: um número lido errado aparece ali, antes de gravar.
 ## Cópia de segurança
 
 O **relatório em Excel** (botão *Baixar relatório* no Painel) traz, na aba **Movimentações**,
-todas as entradas e saídas no formato da importação. Guarde-o: para recuperar os dados num
-CampoCerto novo, basta importá-lo. Importado no mesmo sistema, a prévia avisa que todas as linhas
-já estão lá.
+todas as entradas e saídas no formato da importação. Guarde-o: num CampoCerto novo, importá-lo
+traz de volta os insumos e as movimentações.
+
+O que **não** volta: o estoque mínimo e o prazo de entrega de cada insumo (estão na aba
+**Estoque** do relatório; lance-os de novo na tela de Insumos — sem eles, os alertas e a
+reposição mudam), os insumos sem nenhuma movimentação e a marca de dados de demonstração.
+Importado no mesmo sistema, a prévia avisa que todas as linhas já estão lá e não oferece o botão
+de importar — só um "importar mesmo assim", que pede confirmação.
 
 ## O que a importação faz — e o que não faz
 
@@ -109,7 +114,7 @@ já estão lá.
 | Quantidades com vírgula decimal e com ponto decimal na mesma planilha | Use um formato só em toda a coluna `quantidade`. |
 | Não deu para abrir a planilha do Excel | Abra o arquivo no Excel, salve como .xlsx e tente de novo. Planilha protegida por senha: tire a senha antes. |
 | A planilha é grande demais… | Apague as linhas e colunas vazias depois dos dados, ou divida a planilha em partes. |
-| Arquivo grande demais: o máximo é 5 MB | Divida a planilha em partes (um ano por arquivo, por exemplo). |
+| Arquivo maior que 5 MB | Divida a planilha em partes (um ano por arquivo, por exemplo). |
 
 A planilha `docs/exemplos/planilha-com-erros.csv` mostra vários desses erros de uma vez — útil
 para ver como a tela os apresenta.

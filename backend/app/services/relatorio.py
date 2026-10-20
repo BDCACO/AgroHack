@@ -63,7 +63,7 @@ def gerar(db: Session) -> bytes:
     resumo.title = "Resumo"
     _aba_de_resumo(resumo, insumos, referencia)
     _aba_de_alertas(livro.create_sheet("Alertas"), insumos)
-    _aba_de_reposicao(livro.create_sheet("Reposição"), insumos, referencia)
+    _aba_de_reposicao(livro.create_sheet("Reposição"), insumos)
     _aba_de_estoque(livro.create_sheet("Estoque"), insumos)
     aba_de_movimentacoes(
         livro.create_sheet("Movimentações"), total_de_insumos=0, linhas=_movimentacoes(db)
@@ -99,9 +99,7 @@ def _aba_de_resumo(aba: Worksheet, insumos: list[InsumoResposta], referencia: da
         linha += 1
         _selo(aba.cell(linha, 1), gravidade)
         aba.cell(linha, 2, total).font = fonte(bold=True)
-    pedir_hoje = sum(
-        1 for i in insumos if i.analise.reposicao and i.analise.reposicao.pedir_em <= referencia
-    )
+    pedir_hoje = sum(1 for i in insumos if i.analise.reposicao and i.analise.reposicao.pedir_hoje)
     for rotulo, valor in (("Pedir hoje", pedir_hoje), ("Insumos cadastrados", len(insumos))):
         linha += 1
         aba.cell(linha, 1, rotulo)
@@ -116,7 +114,8 @@ def _aba_de_resumo(aba: Worksheet, insumos: list[InsumoResposta], referencia: da
         (
             "Movimentações",
             "Todas as entradas e saídas, no formato da importação: este arquivo também é a "
-            "cópia de segurança, e volta para o CampoCerto pela tela Importar dados.",
+            "cópia de segurança, e volta pela tela Importar dados. O mínimo e o prazo de cada "
+            "insumo (aba Estoque) não voltam: lance-os de novo na tela de Insumos.",
         ),
     ):
         linha += 1
@@ -143,7 +142,7 @@ def _aba_de_alertas(aba: Worksheet, insumos: list[InsumoResposta]) -> None:
     _filtro(aba, len(alertas))
 
 
-def _aba_de_reposicao(aba: Worksheet, insumos: list[InsumoResposta], referencia: date) -> None:
+def _aba_de_reposicao(aba: Worksheet, insumos: list[InsumoResposta]) -> None:
     _tabela(
         aba,
         [("insumo", 28), ("quantidade", 13), ("unidade", 10), ("pedir até", 13), ("conta", 80)],
@@ -162,7 +161,7 @@ def _aba_de_reposicao(aba: Worksheet, insumos: list[InsumoResposta], referencia:
         pedir.number_format = FORMATO_DATA
         aba.cell(numero, 5, reposicao.justificativa)
         texto_corrido(aba, numero, reposicao.justificativa, 80)
-        if reposicao.pedir_em <= referencia:
+        if reposicao.pedir_hoje:
             # O que é para pedir hoje salta aos olhos, como na tela.
             pedir.fill = PatternFill("solid", fgColor=GRAVIDADES["alta"][1])
             pedir.font = fonte(bold=True, color=GRAVIDADES["alta"][2])

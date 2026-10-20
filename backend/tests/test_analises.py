@@ -32,6 +32,7 @@ def test_analise_devolve_alertas_reposicao_e_limitacoes(client: TestClient) -> N
     assert corpo["consumo_diario"] == 2
     assert [a["tipo"] for a in corpo["alertas"]] == ["risco_de_falta", "vencimento_proximo"]
     assert corpo["reposicao"]["pedir_em"] == str(REF)
+    assert corpo["reposicao"]["pedir_hoje"] is True
     assert corpo["reposicao"]["justificativa"].startswith("Pedir hoje 70 kg")
     assert corpo["limitacoes"]
 

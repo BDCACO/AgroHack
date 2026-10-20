@@ -48,7 +48,12 @@ function ureia(): InsumoDetalhe {
       consumo_diario: 2.5,
       cobertura_dias: 8.4,
       alertas: [{ tipo: 'risco_de_falta', gravidade: 'alta', justificativa: 'Dura 8 dias.' }],
-      reposicao: { pedir_em: '2000-01-01', quantidade: 70, justificativa: 'Pedir hoje 70 kg.' },
+      reposicao: {
+        pedir_em: '2000-01-01',
+        pedir_hoje: true,
+        quantidade: 70,
+        justificativa: 'Pedir hoje 70 kg.',
+      },
       limitacoes: [],
     },
     historico: [

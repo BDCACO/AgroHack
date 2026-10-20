@@ -65,7 +65,7 @@ const resumo = computed(() => {
       rotulo: 'Reposição',
       valor: !reposicao
         ? 'nada a pedir'
-        : reposicao.pedir_em <= hoje
+        : reposicao.pedir_hoje
           ? 'pedir hoje'
           : `pedir até ${dataBr(reposicao.pedir_em)}`,
     },

@@ -32,8 +32,9 @@ mostra a conta que o justifica e o que a conta não sabe.**
 2. **Painel.** O resumo por gravidade e a lista de alertas. Ler em voz alta a justificativa do
    risco de falta da ureia: a conta está ali, com os números.
 3. **Página da ureia** (clicar no nome). O gráfico: o consumo triplicou nos últimos três meses
-   (adubação de cobertura), a última compra já foi quase toda usada, e o tracejado zera em ~9
-   dias com entrega de 10 — por isso é urgente. A reposição diz quanto pedir e por quê.
+   (adubação de cobertura), a última compra já foi quase toda usada, e o tracejado chega a zero
+   em uns 8 dias ("dura cerca de 8 dias"), com entrega em 10 — por isso é urgente. A reposição
+   diz quanto pedir e por quê.
 4. **Limitações.** Na mesma página: o que a conta não sabe (sazonalidade, embalagem, preço).
    Mostrar que o sistema é honesto sobre isso é diferencial.
 5. **Lista de compras e relatório.** Voltar ao Painel → "Enviar pelo WhatsApp": a lista sai

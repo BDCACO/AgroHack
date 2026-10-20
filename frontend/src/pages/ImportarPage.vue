@@ -52,17 +52,24 @@ async function escolher(evento: Event) {
   nomeDoArquivo.value = arquivo.name
   importado.value = null
   previa.value = null
+  erro.value = null
+  confirmacaoIncerta.value = false // o aviso era do arquivo anterior
   const extensao = arquivo.name.toLowerCase().split('.').pop() ?? ''
-  if (extensao in OUTROS_FORMATOS) {
-    erro.value = OUTROS_FORMATOS[extensao]!
-  } else if (arquivo.size > TAMANHO_MAXIMO) {
-    erro.value = 'Arquivo maior que 5 MB. Divida a planilha em partes e importe uma de cada vez.'
-  } else if (extensao === 'xlsx' || extensao === 'xlsm') {
-    await enviar({ xlsx: await lerXlsx(arquivo) }, false)
-  } else if (extensao === 'csv' || extensao === 'txt') {
-    await enviar({ conteudo: await lerCsv(arquivo) }, false)
-  } else {
-    erro.value = 'Formato não reconhecido. Use a planilha do Excel (.xlsx) ou um CSV.'
+  try {
+    if (extensao in OUTROS_FORMATOS) {
+      erro.value = OUTROS_FORMATOS[extensao]!
+    } else if (arquivo.size > TAMANHO_MAXIMO) {
+      erro.value = 'Arquivo maior que 5 MB. Divida a planilha em partes e importe uma de cada vez.'
+    } else if (extensao === 'xlsx' || extensao === 'xlsm') {
+      await enviar({ xlsx: await lerXlsx(arquivo) }, false)
+    } else if (extensao === 'csv' || extensao === 'txt') {
+      await enviar({ conteudo: await lerCsv(arquivo) }, false)
+    } else {
+      erro.value = 'Formato não reconhecido. Use a planilha do Excel (.xlsx) ou um CSV.'
+    }
+  } catch {
+    // O navegador não conseguiu ler o arquivo (apagado, movido, sem permissão).
+    erro.value = 'Não deu para ler o arquivo. Escolha-o de novo.'
   }
 }
 
@@ -93,6 +100,13 @@ async function enviar(arquivo: PlanilhaParaImportar, confirmar: boolean) {
   } finally {
     ocupado.value = false
   }
+}
+
+function importarRepetida() {
+  const ok = window.confirm(
+    'Todas as linhas desta planilha já estão no sistema. Importar de novo duplica cada entrada e saída. Continuar?',
+  )
+  if (ok) reenviar(true)
 }
 
 /** Com a planilha já conferida: `confirmar` grava; sem, confere de novo. */
@@ -326,7 +340,20 @@ const quantidade = (valor: number, unidade: string) =>
           lançadas.
           Se esta planilha já foi importada, importar de novo duplica o consumo.
         </p>
+        <!-- Tudo já lançado: é a mesma planilha (ou a cópia de segurança) de novo. Importar
+             seria dobrar o consumo, então o botão principal não convida a isso. -->
         <button
+          v-if="previa.ja_lancadas === previa.linhas"
+          type="button"
+          class="mt-4 rounded-md px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+          :disabled="ocupado"
+          data-teste="importar-mesmo-assim"
+          @click="importarRepetida"
+        >
+          Importar mesmo assim (duplica tudo)
+        </button>
+        <button
+          v-else
           type="button"
           class="mt-4 rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700 disabled:opacity-50"
           :disabled="ocupado"
