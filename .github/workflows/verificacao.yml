@@ -26,7 +26,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # O Python vem do backend/.python-version; o uv o instala.
-      - uses: astral-sh/setup-uv@v10
+      # Sem tag flutuante de versão maior nesta action: fixa a versão inteira.
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           working-directory: backend
       - run: uv sync --frozen
