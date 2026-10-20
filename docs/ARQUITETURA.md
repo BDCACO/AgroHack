@@ -44,18 +44,24 @@ padrão de 15 dias...) são constantes no topo de cada módulo, com o porquê ao
 pedem DataFrame, e a conta fica legível para quem vai justificá-la ao produtor. Pandas entra se
 a importação de planilhas pedir.
 
-O motor está exposto por `POST /api/v1/analises`, que recebe os dados no corpo e não toca o
-banco: a modelagem depende do formato dos dados (seção 6). A resposta é o próprio `Analise` do
-motor; a entrada é validada por `app/schemas/analise.py`.
+A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema espelho.
 
-### Camada prevista
+### Estoque (banco, serviço e rotas)
 
-| Caminho | Responsabilidade | Regra |
-|---|---|---|
-| `app/services/` | Casos de uso: orquestram repositório, regra e análise | Entra com o primeiro repositório; até lá, a rota de análise chama o motor direto |
+| Caminho | Responsabilidade |
+|---|---|
+| `app/models/estoque.py` | `insumos` e `movimentacoes` (entrada ou saída, data, quantidade, validade). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura — uma fonte da verdade só |
+| `app/services/estoque.py` | Casos de uso: cadastro, movimentações e a análise de cada insumo a partir do banco. Única camada que as rotas de estoque chamam |
+| `app/demo.py` | Fazenda fictícia para a apresentação (`make demo`): insumos marcados com `demonstracao`, que a tela sinaliza e `make demo-limpar` apaga sozinhos |
+| `app/core/relogio.py` | `hoje()` na data de Rondônia (UTC−4 fixo, sem horário de verão), não na do servidor |
 
-O fluxo esperado é `rota → serviço → (domínio | análise) → repositório/ORM`. As setas só
-apontam para dentro: `domain` e `analysis` não importam FastAPI nem SQLAlchemy.
+Lote = entrada com validade. Como a retirada não diz de qual lote saiu, o saldo de cada lote é
+estimado supondo que se usa primeiro o que vence primeiro (`lotes_em_estoque`), e a análise diz
+isso nas limitações. Quantidades são `NUMERIC(12, 3)` no banco e `float` no Python.
+
+O fluxo é `rota → serviço → (domínio | análise) → ORM`. As setas só apontam para dentro:
+`domain` e `analysis` não importam FastAPI nem SQLAlchemy. A exceção é `POST /analises`, que não
+tem banco a orquestrar e chama o motor direto.
 
 ### Endpoints atuais
 
@@ -63,6 +69,11 @@ apontam para dentro: `domain` e `analysis` não importam FastAPI nem SQLAlchemy.
 |---|---|
 | `GET /api/v1/health` | Liveness — o processo está no ar. Não toca o banco |
 | `GET /api/v1/ready` | Readiness — `200` com o banco respondendo, `503` sem ele |
+| `GET /api/v1/insumos` | Insumos com estoque atual e a análise de hoje (alertas, reposição, limitações) |
+| `POST /api/v1/insumos` · `PUT /api/v1/insumos/{id}` | Cadastra / altera insumo (nome, unidade, mínimo, prazo de reposição). `409` para nome repetido |
+| `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (`insumo_id`, `limite`) |
+| `POST /api/v1/movimentacoes` | Lança entrada ou saída. `422` para data futura, validade em saída ou insumo inexistente |
+| `DELETE /api/v1/movimentacoes/{id}` | Remove lançamento errado |
 | `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período) e devolve alertas, reposição e limitações. `422` para entrada inválida |
 | `GET /api/v1/docs` | Swagger UI (desligado em `production`) |
 | `GET /api/v1/openapi.json` | Schema OpenAPI (desligado em `production`) |
@@ -74,9 +85,9 @@ apontam para dentro: `domain` e `analysis` não importam FastAPI nem SQLAlchemy.
 | `src/main.ts` | Instala Pinia e Router, importa o CSS |
 | `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só |
 | `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, gaveta no celular, resumo de status |
-| `src/pages/` | Uma página por rota: Painel, Insumos, Movimentações, Importar dados, Sistema |
-| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `EstadoVazio`, `IconeSvg`, `IndicadorDeStatus` |
-| `src/stores/` | Pinia — estado compartilhado e as ações que chamam os serviços |
+| `src/pages/` | Uma página por rota: Painel (alertas, reposição, limitações), Insumos (cadastro), Movimentações (entradas e saídas), Importar dados, Sistema |
+| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `EstadoVazio`, `IconeSvg`, `IndicadorDeStatus`, `SeloDeGravidade` |
+| `src/stores/` | Pinia — estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração |
 | `src/services/http.ts` | **Cliente HTTP único** (Axios). Normaliza erro em `ApiError` |
 | `src/services/*.ts` | Uma função por endpoint |
 | `src/types/` | Tipos TypeScript dos contratos da API |
@@ -134,8 +145,9 @@ tecnologias que não se aplicam.
 
 ## 6. Próximas decisões (pendentes)
 
-1. **Formato dos dados da organização** — não presumido. A modelagem (`models/`) e a importação
-   dependem dele.
+1. **Importação de planilha** — a organização não forneceu arquivos de dados, então os dados
+   entram pelo cadastro na tela. Um modelo de planilha próprio (CSV) é opcional, para quem já tem
+   histórico guardado.
 2. **Autenticação** — o desafio não exige; decidir se a demonstração é monousuário.
 3. **Geração de tipos TS a partir do OpenAPI** (`openapi-typescript`) quando houver mais de um
    recurso.

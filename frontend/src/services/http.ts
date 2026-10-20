@@ -19,6 +19,14 @@ export class ApiError extends Error {
     super(status === null ? 'a API não respondeu' : `a API respondeu ${status}`)
     this.name = 'ApiError'
   }
+
+  /** Frase para mostrar na tela: a que a API escreveu (409, 404...), quando há uma.
+   * Erro de validação (422) vem como lista técnica do Pydantic — não serve ao usuário. */
+  get mensagem(): string {
+    if (this.status === null) return 'Sem resposta do servidor. Tente de novo em instantes.'
+    const detalhe = (this.detail as { detail?: unknown } | undefined)?.detail
+    return typeof detalhe === 'string' ? detalhe : 'Não foi possível concluir. Confira os dados.'
+  }
 }
 
 http.interceptors.response.use(

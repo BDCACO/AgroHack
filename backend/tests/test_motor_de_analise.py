@@ -7,11 +7,13 @@ import pytest
 
 from app.analysis.consumo import analisar
 from app.domain.estoque import (
+    Entrada,
     Insumo,
     Lote,
     Retirada,
     alerta_estoque_minimo,
     alertas_de_validade,
+    lotes_em_estoque,
     quantidade_legivel,
 )
 
@@ -168,3 +170,23 @@ def test_quantidade_legivel_no_formato_brasileiro() -> None:
     assert quantidade_legivel(1234.5, "kg") == "1.234,5 kg"
     assert quantidade_legivel(0.03, "L") == "0,03 L"
     assert quantidade_legivel(12, "sc") == "12 sc"
+
+
+def test_lotes_em_estoque_usa_primeiro_o_que_vence_primeiro_entre_os_que_ja_chegaram() -> None:
+    dezembro, agosto = date(2026, 12, 1), date(2026, 8, 1)
+    entradas = [
+        Entrada(antes(10), 5),  # sem validade: vai para o fim da fila e não vira lote
+        Entrada(antes(9), 10, dezembro),
+        Entrada(antes(7), 10, agosto),
+        Entrada(antes(1), 5, agosto),
+    ]
+    retiradas = [
+        # Só o lote de dezembro tinha chegado: sai dele, mesmo vencendo depois.
+        Retirada(antes(8), 4),
+        # Agora o de agosto vence primeiro.
+        Retirada(antes(6), 8),
+        # No mesmo dia, a entrada conta antes da retirada.
+        Retirada(antes(1), 3),
+    ]
+
+    assert lotes_em_estoque(entradas, retiradas) == [Lote(6, dezembro), Lote(4, agosto)]

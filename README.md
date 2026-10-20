@@ -6,10 +6,9 @@ Transforma registros de compras, retiradas e estoque em informação para decis�
 do mínimo, risco de falta, vencimento próximo, excesso, baixa movimentação, consumo incomum e
 reposição estimada — sempre com justificativa e limitações explícitas.
 
-> **Estado atual:** frontend, API e banco sobem e conversam entre si. O motor de análise
-> (`backend/app/domain` + `backend/app/analysis`) está pronto, testado e exposto em
-> `POST /api/v1/analises` (dados no corpo, sem banco). A modelagem e a importação esperam o
-> formato dos dados da organização.
+> **Estado atual:** cadastro de insumos e lançamento de entradas e saídas pela tela; o Painel
+> mostra os alertas do motor de análise com a justificativa de cada um, a reposição estimada e
+> as limitações. Importação de planilha ainda não existe.
 
 ## Stack
 
@@ -45,6 +44,13 @@ partes estão conectadas.
 
 Sem `make`? Os alvos são atalhos de `docker compose`: `docker compose up --build`.
 
+## Demonstração
+
+Sem dados reais à mão, `make demo` (com o stack no ar) cria uma fazenda **fictícia** com 6 meses
+de movimentações, pensada para acender cada tipo de alerta, mais um insumo saudável para
+contraste. As datas são relativas ao dia da carga: rode no dia da apresentação. A tela avisa que
+são dados de demonstração, e `make demo-limpar` apaga só eles, preservando o que foi cadastrado.
+
 ## Comandos
 
 ```bash
@@ -53,6 +59,8 @@ make up         # sobe os serviços
 make down       # derruba (os dados do banco ficam no volume)
 make logs       # logs
 make migrate    # alembic upgrade head
+make demo       # carrega a fazenda de demonstração (fictícia, datas relativas a hoje)
+make demo-limpar  # apaga só os dados de demonstração
 make test       # pytest + vitest
 make lint       # ruff + vue-tsc + eslint
 make check-db   # confere API ↔ PostgreSQL com o stack no ar

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate test test-backend test-frontend lint check-db verify
+.PHONY: help up down logs migrate demo demo-limpar test test-backend test-frontend lint check-db verify
 
 COMPOSE := docker compose
 # Testes e lint rodam DENTRO do container (padrão do ArkoHub): a máquina não
@@ -23,6 +23,12 @@ logs: ## Acompanha os logs de todos os serviços
 
 migrate: ## Aplica as migrations (alembic upgrade head)
 	$(COMPOSE) run --rm api alembic upgrade head
+
+demo: ## Carrega a fazenda de demonstração (fictícia, datas relativas a hoje; substitui a anterior)
+	$(COMPOSE) run --rm api python -m app.demo carregar
+
+demo-limpar: ## Apaga só os dados de demonstração
+	$(COMPOSE) run --rm api python -m app.demo limpar
 
 test-backend: ## Pytest da API (SQLite em memória, sem banco)
 	$(API_RUN) pytest -p no:cacheprovider

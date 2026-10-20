@@ -15,11 +15,32 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
+from app.core.database import get_db
 from app.main import create_app
+from app.models import Base
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient]:
-    with TestClient(create_app()) as c:
+def db() -> Iterator[Session]:
+    """Banco novo por teste, com as tabelas dos modelos. StaticPool: uma conexão só,
+    para o SQLite em memória ser o mesmo banco no teste e nas threads das rotas."""
+    engine = create_engine(
+        "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False}
+    )
+    # O SQLite só cumpre FOREIGN KEY (e o ON DELETE CASCADE) se pedirem, como o Postgres.
+    event.listen(engine, "connect", lambda conexao, _: conexao.execute("PRAGMA foreign_keys=ON"))
+    Base.metadata.create_all(engine)
+    with Session(engine, autoflush=False, expire_on_commit=False) as sessao:
+        yield sessao
+
+
+@pytest.fixture
+def client(db: Session) -> Iterator[TestClient]:
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: db
+    with TestClient(app) as c:
         yield c

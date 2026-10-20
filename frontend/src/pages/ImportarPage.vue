@@ -6,13 +6,20 @@ import EstadoVazio from '@/components/EstadoVazio.vue'
 <template>
   <CabecalhoDePagina
     titulo="Importar dados"
-    descricao="Envie os registros de compras, retiradas e estoque para atualizar as análises."
+    descricao="Carregar de uma vez o histórico de compras e retiradas que já está numa planilha."
   />
-  <!-- O formulário de envio entra quando o formato dos arquivos da organização
-       for conhecido — não presumimos colunas nem tipo de arquivo. -->
+  <!-- A organização não forneceu arquivos de dados: o modelo de planilha será nosso, e
+       só entra se der tempo (docs/ARQUITETURA.md, "Próximas decisões"). -->
   <EstadoVazio
     icone="importar"
-    titulo="Importação em preparação"
-    texto="Os formatos aceitos serão definidos a partir dos arquivos fornecidos pela organização do desafio."
-  />
+    titulo="Importação de planilha ainda não disponível"
+    texto="Por enquanto, lance as compras e retiradas na tela de Movimentações."
+  >
+    <RouterLink
+      :to="{ name: 'movimentacoes' }"
+      class="inline-flex rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700"
+    >
+      Ir para Movimentações
+    </RouterLink>
+  </EstadoVazio>
 </template>
