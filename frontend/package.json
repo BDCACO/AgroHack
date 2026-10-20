@@ -12,7 +12,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource-variable/ibm-plex-sans": "^5.3.0",
     "axios": "^1.20.0",
     "echarts": "^6.1.0",
     "pinia": "^4.1.0",

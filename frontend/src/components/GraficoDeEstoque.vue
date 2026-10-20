@@ -12,11 +12,11 @@ use([LineChart, GridComponent, MarkLineComponent, TooltipComponent, SVGRenderer]
 
 const props = defineProps<{ insumo: InsumoDetalhe; hoje: string }>()
 
-// Tokens do main.css (campo-600 e os cinzas stone): as opções do ECharts não leem CSS.
-const COR = '#3f7a2c'
-const TINTA = '#57534e'
-const TINTA_SUAVE = '#78716c'
-const GRADE = '#e7e5e4'
+// Cores de main.css (campo-700, tinta, linha): as opções do ECharts não leem CSS.
+const COR = '#34562b'
+const TINTA = '#4a564f'
+const TINTA_SUAVE = '#636b64'
+const GRADE = '#e6e1d5'
 // Projetar além disso só esticaria o eixo: estoque para meses já é alerta de excesso.
 const HORIZONTE_DIAS = 90
 
@@ -80,7 +80,7 @@ function opcoes(): EChartsCoreOption {
     // A linha se desenha da esquerda para a direita, no sentido em que o tempo passa.
     animationDuration: 900,
     animationEasing: 'cubicOut',
-    textStyle: { fontFamily: "'Plus Jakarta Sans Variable', system-ui, sans-serif" },
+    textStyle: { fontFamily: "'IBM Plex Sans Variable', system-ui, sans-serif" },
     grid: { left: 8, right: 24, top: 24, bottom: 8, containLabel: true },
     xAxis: {
       type: 'time',
@@ -97,6 +97,13 @@ function opcoes(): EChartsCoreOption {
       splitLine: { lineStyle: { color: GRADE } },
     },
     tooltip: {
+      // No estilo do app: folha clara, linha fina, sombra discreta.
+      backgroundColor: '#fffefb',
+      borderColor: GRADE,
+      borderWidth: 1,
+      padding: [8, 12],
+      textStyle: { color: '#1a2620', fontSize: 13 },
+      extraCssText: 'border-radius: 8px; box-shadow: 0 6px 20px rgb(26 38 32 / 0.08);',
       trigger: 'axis',
       axisPointer: { type: 'line', lineStyle: { color: TINTA_SUAVE, width: 1 } },
       formatter: (itens: unknown) => {
@@ -119,7 +126,7 @@ function opcoes(): EChartsCoreOption {
         showSymbol: real.length === 1,
         color: COR,
         lineStyle: { width: 2 },
-        areaStyle: { opacity: 0.1 },
+        areaStyle: { opacity: 0.07 },
         markLine: {
           symbol: 'none',
           silent: true,

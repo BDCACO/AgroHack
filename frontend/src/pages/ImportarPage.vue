@@ -165,11 +165,11 @@ const quantidade = (valor: number, unidade: string) =>
     >
       <h2
         id="titulo-modelo"
-        class="text-base font-semibold text-stone-900"
+        class="titulo-secao"
       >
         Como montar a planilha
       </h2>
-      <p class="mt-1 text-sm text-stone-600">
+      <p class="mt-1 text-sm text-tinta-2">
         Baixe a planilha modelo: ela já vem formatada, com listas de escolha, a lista dos seus
         insumos e um exemplo preenchido. Uma linha por movimentação.
       </p>
@@ -185,7 +185,7 @@ const quantidade = (valor: number, unidade: string) =>
         />
         Baixar planilha modelo (Excel)
       </a>
-      <p class="mt-4 text-sm text-stone-600">
+      <p class="mt-4 text-sm text-tinta-2">
         As colunas, na primeira linha:
       </p>
       <dl class="mt-3 space-y-2 text-sm">
@@ -193,16 +193,16 @@ const quantidade = (valor: number, unidade: string) =>
           v-for="[coluna, explicacao] in colunas"
           :key="coluna"
         >
-          <dt class="inline-block rounded bg-campo-50 px-1.5 font-mono text-xs font-semibold text-campo-700">
+          <dt class="font-mono text-[0.8125rem] font-medium text-campo-700">
             {{ coluna }}
           </dt>
-          <dd class="text-stone-600">
+          <dd class="text-tinta-2">
             {{ explicacao }}
           </dd>
         </div>
       </dl>
-      <p class="mt-4 text-sm text-stone-500">
-        Também vale um CSV com as mesmas colunas, separado por ponto e vírgula —
+      <p class="mt-4 text-sm text-tinta-3">
+        Também vale um CSV com as mesmas colunas, separado por ponto e vírgula. Há um
         <a
           href="/modelo-movimentacoes.csv"
           download
@@ -231,11 +231,11 @@ const quantidade = (valor: number, unidade: string) =>
            aqui". Os filhos ignoram o ponteiro nessa hora; senão o dragleave dispara ao
            passar por cima deles e a área pisca. -->
       <label
-        class="group relative flex animate-surgir cursor-pointer flex-col items-center overflow-hidden rounded-xl border-2 border-dashed px-4 py-10 text-center transition duration-200 [animation-delay:80ms] has-[:focus-visible]:border-campo-600 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600/30"
+        class="group relative flex animate-surgir cursor-pointer flex-col items-center overflow-hidden rounded-[10px] border border-dashed px-4 py-12 text-center transition-colors duration-150 [animation-delay:60ms] has-[:focus-visible]:border-campo-700 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-700/15"
         :class="[
           arrastando
-            ? 'scale-[1.01] border-campo-600 bg-campo-50 [&_*]:pointer-events-none'
-            : 'border-stone-300 bg-white hover:border-campo-500 hover:bg-campo-50/50',
+            ? 'border-campo-700 bg-campo-50/70 [&_*]:pointer-events-none'
+            : 'border-linha-forte bg-folha hover:border-tinta-3',
           ocupado ? 'pointer-events-none' : '',
         ]"
         data-teste="area-de-soltar"
@@ -244,21 +244,17 @@ const quantidade = (valor: number, unidade: string) =>
         @dragleave="arrastando = false"
         @drop.prevent="soltar"
       >
-        <span
-          class="flex h-14 w-14 items-center justify-center rounded-full bg-campo-100 text-campo-700 transition duration-300 ease-(--ease-chegada)"
-          :class="arrastando ? '-translate-y-1.5 scale-110 bg-campo-600 text-white' : 'group-hover:-translate-y-0.5'"
-          aria-hidden="true"
-        >
-          <IconeSvg
-            nome="importar"
-            class="h-7 w-7"
-          />
-        </span>
-        <span class="mt-3 font-semibold text-campo-800">
+        <!-- A seta sobe quando há arquivo por cima: é para lá que ele vai. -->
+        <IconeSvg
+          nome="importar"
+          class="size-7 transition duration-200 ease-chegar"
+          :class="arrastando ? '-translate-y-1 text-campo-700' : 'text-tinta-3 group-hover:text-tinta-2'"
+        />
+        <span class="mt-3 font-medium text-tinta">
           {{ ocupado ? 'Conferindo…' : arrastando ? 'Solte para conferir' : 'Escolha ou arraste a planilha' }}
         </span>
-        <span class="mt-1 text-sm text-stone-500">
-          {{ nomeDoArquivo || '.xlsx ou .csv · nada é gravado antes de você conferir o resumo' }}
+        <span class="mt-1 text-sm text-tinta-3">
+          {{ nomeDoArquivo || 'Excel (.xlsx) ou CSV. Nada é gravado antes da sua confirmação.' }}
         </span>
         <!-- Barra de "trabalhando" enquanto a API confere: o pedido está andando. -->
         <span
@@ -281,7 +277,7 @@ const quantidade = (valor: number, unidade: string) =>
         <div
           v-if="erro"
           role="alert"
-          class="cartao mt-4 border-red-200 bg-red-50 p-4 text-sm text-red-800"
+          class="cartao mt-4 border-urgente/25 bg-urgente-claro p-4 text-sm text-urgente"
         >
           <p>{{ erro }}</p>
           <template v-if="confirmacaoIncerta">
@@ -308,17 +304,17 @@ const quantidade = (valor: number, unidade: string) =>
         <div
           v-if="previa?.erros.length"
           role="alert"
-          class="cartao mt-4 border-red-200 bg-red-50 p-5"
+          class="cartao mt-4 border-urgente/25 bg-urgente-claro p-5"
           data-teste="erros"
         >
-          <p class="flex items-center gap-2 font-semibold text-red-800">
+          <p class="flex items-center gap-2 font-semibold text-urgente">
             <IconeSvg
               nome="urgente"
               class="h-5 w-5 shrink-0"
             />
             Nada foi importado. Corrija na planilha e escolha o arquivo de novo:
           </p>
-          <ul class="mt-2 max-h-64 list-disc space-y-1 overflow-y-auto pl-5 text-sm text-red-800">
+          <ul class="mt-2 max-h-64 list-disc space-y-1 overflow-y-auto pl-5 text-sm text-urgente">
             <li
               v-for="mensagem in previa.erros"
               :key="mensagem"
@@ -333,7 +329,7 @@ const quantidade = (valor: number, unidade: string) =>
           class="cartao mt-4 p-5"
           data-teste="previa"
         >
-          <p class="font-semibold text-stone-900">
+          <p class="font-semibold text-tinta">
             {{ contar(previa.linhas, 'movimentação', 'movimentações') }}:
             {{ contar(previa.entradas, 'entrada', 'entradas') }} e
             {{ contar(previa.saidas, 'saída', 'saídas') }}, de {{ dataBr(previa.primeira_data) }} a
@@ -345,7 +341,7 @@ const quantidade = (valor: number, unidade: string) =>
               <caption class="sr-only">
                 Total por insumo
               </caption>
-              <thead class="text-xs uppercase tracking-wide text-stone-500">
+              <thead class="border-b border-linha text-xs text-tinta-3">
                 <tr>
                   <th class="py-1 pr-4 font-semibold">
                     Insumo
@@ -358,17 +354,17 @@ const quantidade = (valor: number, unidade: string) =>
                   </th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-stone-100">
+              <tbody class="divide-y divide-linha">
                 <tr
                   v-for="insumo in previa.insumos"
                   :key="insumo.nome"
                   data-teste="total-insumo"
                 >
-                  <td class="py-1.5 pr-4 text-stone-800">
+                  <td class="py-1.5 pr-4 text-tinta">
                     {{ insumo.nome }}
                     <span
                       v-if="insumo.novo"
-                      class="ml-1 rounded-full bg-campo-100 px-2 py-0.5 text-xs font-semibold text-campo-700"
+                      class="ml-1.5 text-xs text-campo-700"
                     >novo</span>
                   </td>
                   <td class="py-1.5 pr-4 text-right tabular-nums">
@@ -383,14 +379,14 @@ const quantidade = (valor: number, unidade: string) =>
           </div>
           <p
             v-if="previa.insumos.some((insumo) => insumo.novo)"
-            class="mt-2 text-sm text-stone-600"
+            class="mt-2 text-sm text-tinta-2"
           >
             Os insumos novos serão cadastrados. Depois, complete o mínimo e o prazo de entrega deles
             na tela de Insumos.
           </p>
           <p
             v-if="previa.ja_lancadas"
-            class="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+            class="mt-3 rounded-lg border border-atencao/25 bg-atencao-claro p-3 text-sm text-atencao"
             data-teste="ja-lancadas"
           >
             {{ contar(previa.ja_lancadas, 'linha é igual', 'linhas são iguais') }} a movimentações já

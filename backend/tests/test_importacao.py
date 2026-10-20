@@ -135,7 +135,7 @@ def test_planilha_sem_as_colunas_do_modelo(client: TestClient) -> None:
 
     assert previa["erros"] == [
         "Faltam as colunas: data, insumo, tipo, quantidade. A primeira linha precisa ter os "
-        "títulos — use a planilha modelo."
+        "títulos. Use a planilha modelo."
     ]
     assert importar(client, "")["erros"] == ["O arquivo está vazio."]
     so_cabecalho = importar(client, "data;insumo;tipo;quantidade\n")

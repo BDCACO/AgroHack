@@ -81,10 +81,10 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
     class="cartao mt-2 mb-6 grid animate-surgir gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4"
     @submit.prevent="salvar"
   >
-    <h2 class="text-base font-semibold text-stone-900 sm:col-span-2 lg:col-span-4">
+    <h2 class="titulo-secao sm:col-span-2 lg:col-span-4">
       {{ editandoId === undefined ? 'Novo insumo' : 'Alterar insumo' }}
     </h2>
-    <label class="text-sm font-medium text-stone-700">
+    <label class="text-sm font-medium text-tinta-2">
       Nome
       <input
         v-model="form.nome"
@@ -94,7 +94,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         class="campo"
       >
     </label>
-    <label class="text-sm font-medium text-stone-700">
+    <label class="text-sm font-medium text-tinta-2">
       Unidade
       <input
         v-model="form.unidade"
@@ -113,8 +113,8 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         <option value="un" />
       </datalist>
     </label>
-    <label class="text-sm font-medium text-stone-700">
-      Estoque mínimo <span class="font-normal text-stone-500">(opcional)</span>
+    <label class="text-sm font-medium text-tinta-2">
+      Estoque mínimo <span class="font-normal text-tinta-3">(opcional)</span>
       <input
         v-model.number="form.estoque_minimo"
         type="number"
@@ -123,8 +123,8 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         class="campo"
       >
     </label>
-    <label class="text-sm font-medium text-stone-700">
-      Prazo de entrega, em dias <span class="font-normal text-stone-500">(opcional)</span>
+    <label class="text-sm font-medium text-tinta-2">
+      Prazo de entrega, em dias <span class="font-normal text-tinta-3">(opcional)</span>
       <input
         v-model.number="form.prazo"
         type="number"
@@ -134,14 +134,14 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         class="campo"
       >
     </label>
-    <p class="text-xs text-stone-500 sm:col-span-2 lg:col-span-4">
+    <p class="text-xs text-tinta-3 sm:col-span-2 lg:col-span-4">
       O mínimo dispara o alerta de estoque baixo e vira margem de segurança na reposição. O prazo
       é quanto o fornecedor leva para entregar; sem ele, a análise assume 15 dias e avisa.
     </p>
     <p
       v-if="erroDoForm"
       role="alert"
-      class="text-sm text-red-700 sm:col-span-2 lg:col-span-4"
+      class="text-sm text-urgente sm:col-span-2 lg:col-span-4"
     >
       {{ erroDoForm }}
     </p>
@@ -155,7 +155,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
       </button>
       <button
         type="button"
-        class="botao-texto text-stone-700 hover:bg-stone-100"
+        class="botao-texto text-tinta-2 hover:bg-papel"
         @click="aberto = false"
       >
         Cancelar
@@ -166,7 +166,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
   <p
     v-if="estoque.erro"
     role="alert"
-    class="mt-6 text-sm text-red-700"
+    class="mt-6 text-sm text-urgente"
   >
     {{ estoque.erro }}
   </p>
@@ -191,21 +191,21 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
     class="cartao animate-surgir overflow-x-auto"
   >
     <table class="w-full text-left text-sm">
-      <thead class="bg-stone-50/80 text-xs tracking-wide text-stone-500 uppercase">
+      <thead class="border-b border-linha text-xs text-tinta-3">
         <tr>
-          <th class="px-4 py-3 font-semibold">
+          <th class="px-4 py-2.5 font-medium">
             Insumo
           </th>
-          <th class="px-4 py-3 text-right font-semibold">
+          <th class="px-4 py-2.5 text-right font-medium">
             Estoque atual
           </th>
-          <th class="px-4 py-3 text-right font-semibold">
+          <th class="px-4 py-2.5 text-right font-medium">
             Mínimo
           </th>
-          <th class="px-4 py-3 text-right font-semibold">
+          <th class="px-4 py-2.5 text-right font-medium">
             Prazo
           </th>
-          <th class="px-4 py-3 font-semibold">
+          <th class="px-4 py-2.5 font-medium">
             Situação
           </th>
           <th class="px-4 py-3">
@@ -213,13 +213,13 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
           </th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-stone-100">
+      <tbody class="divide-y divide-linha">
         <tr
           v-for="insumo in estoque.insumos"
           :key="insumo.id"
-          class="transition-colors hover:bg-stone-50/70"
+          class="transition-colors hover:bg-papel"
         >
-          <td class="px-4 py-3 font-medium text-stone-800">
+          <td class="px-4 py-3 font-medium text-tinta">
             <RouterLink
               :to="{ name: 'insumo', params: { id: insumo.id } }"
               class="hover:text-campo-700 hover:underline"
@@ -229,14 +229,14 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
           </td>
           <td
             class="px-4 py-3 text-right tabular-nums"
-            :class="insumo.estoque_atual < 0 ? 'text-red-700' : ''"
+            :class="insumo.estoque_atual < 0 ? 'text-urgente' : ''"
           >
             {{ numero(insumo.estoque_atual) }} {{ insumo.unidade }}
           </td>
-          <td class="px-4 py-3 text-right tabular-nums text-stone-600">
+          <td class="px-4 py-3 text-right tabular-nums text-tinta-2">
             {{ insumo.estoque_minimo === null ? '—' : `${numero(insumo.estoque_minimo)} ${insumo.unidade}` }}
           </td>
-          <td class="px-4 py-3 text-right tabular-nums text-stone-600">
+          <td class="px-4 py-3 text-right tabular-nums text-tinta-2">
             {{ insumo.prazo_reposicao_dias === null ? '—' : `${insumo.prazo_reposicao_dias} dias` }}
           </td>
           <td class="px-4 py-3">

@@ -92,7 +92,7 @@ describe('InsumoPage', () => {
     ])
     expect(wrapper.find('[data-teste="alerta"] p').text()).toBe('Risco de falta')
     // O detalhe fica sob "Insumos" no menu.
-    const ativo = wrapper.find('nav[aria-label="Principal"] a.bg-white\\/15')
+    const ativo = wrapper.find('nav[aria-label="Principal"] a[aria-current="page"]')
     expect(ativo.text()).toBe('Insumos')
   })
 

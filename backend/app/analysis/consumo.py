@@ -125,7 +125,7 @@ def analisar(
                 "risco_de_falta",
                 "alta",
                 f"No ritmo atual ({ritmo}), o estoque dura cerca de {dias_legivel(cobertura)}"
-                f" — menos que o prazo de reposição de {dias_legivel(prazo)}.",
+                f", menos que o prazo de reposição de {dias_legivel(prazo)}.",
             )
         )
     elif cobertura > COBERTURA_EXCESSO_DIAS:
@@ -134,7 +134,7 @@ def analisar(
                 "excesso",
                 "baixa",
                 f"No ritmo atual ({ritmo}), o estoque dura cerca de {dias_legivel(cobertura)}"
-                f" — mais de {COBERTURA_EXCESSO_DIAS} dias de capital parado.",
+                f"; acima de {COBERTURA_EXCESSO_DIAS} dias, é capital parado.",
             )
         )
         # Com excesso não há compra a sugerir — e isso limita a data do pedido a

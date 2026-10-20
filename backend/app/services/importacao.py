@@ -320,7 +320,7 @@ def _cabecalho(valores: list[str], erros: list[str]) -> list[str] | None:
     if faltando := [c for c in COLUNAS_OBRIGATORIAS if c not in cabecalho]:
         erros.append(
             f"Faltam as colunas: {', '.join(faltando)}. A primeira linha precisa ter os "
-            "títulos — use a planilha modelo."
+            "títulos. Use a planilha modelo."
         )
         return None
     return cabecalho

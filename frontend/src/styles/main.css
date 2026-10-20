@@ -1,70 +1,76 @@
 @import 'tailwindcss';
 
-/* Tokens da marca. Tailwind v4 gera as utilitárias a partir daqui
- * (bg-campo-600, text-terra-700, animate-surgir...) — cada decisão mora num lugar só. */
 @theme {
-  /* Verde de lavoura: a cor da marca, do broto (50) à mata fechada (950). */
-  --color-campo-50: #f2f8ef;
-  --color-campo-100: #e0efd9;
-  --color-campo-200: #c3dfb5;
-  --color-campo-300: #9cc887;
-  --color-campo-400: #74ad5c;
-  --color-campo-500: #55913e;
-  --color-campo-600: #3f7a2c;
-  --color-campo-700: #326223;
-  --color-campo-800: #29501e;
-  --color-campo-900: #1f3b17;
-  --color-campo-950: #0f210a;
+  /* Papel e tinta. A interface é um caderno de campo: fundo claro e quente, texto verde
+   * quase preto, linhas finas separando as coisas. Sombra e cor ficam para o que importa. */
+  --color-papel: #f6f4ee;
+  --color-folha: #fffefb;
+  --color-linha: #e6e1d5;
+  --color-linha-forte: #d3ccbc;
+  --color-tinta: #1a2620;
+  --color-tinta-2: #4a564f;
+  --color-tinta-3: #636b64;
 
-  /* Terra e palha: o acento quente, para o que é de entrada, de galpão, de saco. */
-  --color-terra-50: #faf6f0;
-  --color-terra-100: #f3ece2;
-  --color-terra-200: #e6d5bd;
-  --color-terra-300: #d4b98f;
-  --color-terra-500: #a87f48;
-  --color-terra-700: #7a5a32;
-  --color-terra-900: #4a371f;
+  /* Verde da marca, do broto (50) à mata fechada (950). */
+  --color-campo-50: #f2f6ef;
+  --color-campo-100: #e1ebdb;
+  --color-campo-200: #c4d7b8;
+  --color-campo-300: #9dbd8b;
+  --color-campo-400: #739d5f;
+  --color-campo-500: #548044;
+  --color-campo-600: #416a34;
+  --color-campo-700: #34562b;
+  --color-campo-800: #2a4624;
+  --color-campo-900: #1f341b;
+  --color-campo-950: #0f1d0c;
 
-  --font-sans: 'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  /* Situação. Cores de terra, e cada uma com a versão de fundo. */
+  --color-urgente: #a8371f;
+  --color-urgente-claro: #f6e4dd;
+  --color-atencao: #85570f;
+  --color-atencao-forte: #c48a2c;
+  --color-atencao-claro: #f4ead4;
+  --color-observar: #3d5c78;
+  --color-observar-claro: #e4ebf1;
 
-  /* Movimento. Curto e com chegada suave: a animação mostra de onde algo veio ou o que
-   * mudou, e sai do caminho. Nada de enfeite em loop. */
-  --ease-chegada: cubic-bezier(0.22, 1, 0.36, 1);
-  --animate-surgir: surgir 320ms var(--ease-chegada) both;
-  --animate-crescer: crescer 700ms var(--ease-chegada) both;
-  --animate-destaque: destaque 1.8s ease-out;
-  --animate-brilho: brilho 1.4s ease-in-out infinite;
-  --animate-pulsar: pulsar 2s ease-out infinite;
-  --animate-vaivem: vaivem 1.1s ease-in-out infinite;
-  --animate-tracar-circulo: tracar 600ms var(--ease-chegada) forwards;
-  --animate-tracar-marca: tracar 380ms var(--ease-chegada) 450ms forwards;
+  --font-sans: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
 
-  /* O que chega: sobe um pouco e aparece. */
+  /* Movimento. Três curvas, uma por situação: o que entra desacelera ao chegar, o que sai
+   * acelera ao ir embora, o que muda de lugar acelera e desacelera. */
+  --ease-chegar: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-sair: cubic-bezier(0.32, 0, 0.67, 0);
+  --ease-mover: cubic-bezier(0.645, 0.045, 0.355, 1);
+
+  --animate-surgir: surgir 280ms var(--ease-chegar) both;
+  --animate-crescer: crescer 700ms var(--ease-chegar) both;
+  --animate-destaque: destaque 1.6s ease-out;
+  --animate-brilho: brilho 1.6s ease-in-out infinite;
+  --animate-vaivem: vaivem 1.1s var(--ease-mover) infinite;
+  --animate-tracar-circulo: tracar 450ms var(--ease-chegar) forwards;
+  --animate-tracar-marca: tracar 300ms var(--ease-chegar) 320ms forwards;
+
   @keyframes surgir {
     from {
       opacity: 0;
-      transform: translateY(8px);
+      transform: translateY(6px);
     }
   }
-  /* Barras de quantidade: crescem da esquerda, no sentido em que se leem. */
   @keyframes crescer {
     from {
       transform: scaleX(0);
     }
   }
-  /* A linha que acabou de ser lançada: acende e volta ao normal. */
   @keyframes destaque {
     from {
       background-color: var(--color-campo-100);
     }
   }
-  /* Esqueleto enquanto carrega. */
   @keyframes brilho {
     50% {
-      opacity: 0.5;
+      opacity: 0.55;
     }
   }
-  /* Barra de "trabalhando": vai e volta enquanto a API confere. */
   @keyframes vaivem {
     from {
       transform: translateX(-100%);
@@ -73,37 +79,22 @@
       transform: translateX(300%);
     }
   }
-  /* O sinal de concluído se desenha: primeiro o círculo, depois a marca. */
   @keyframes tracar {
     to {
       stroke-dashoffset: 0;
-    }
-  }
-  /* Só o ponto de "urgente": uma onda que chama o olho para o que não pode esperar. */
-  @keyframes pulsar {
-    from {
-      box-shadow: 0 0 0 0 rgb(220 38 38 / 0.45);
-    }
-    to {
-      box-shadow: 0 0 0 8px rgb(220 38 38 / 0);
     }
   }
 }
 
 @layer base {
   body {
-    @apply bg-stone-100/60 text-stone-800 antialiased;
-    font-feature-settings: 'ss01';
+    @apply bg-papel text-tinta antialiased;
   }
 
-  h1,
-  h2,
-  h3 {
-    @apply tracking-tight;
+  ::selection {
+    @apply bg-campo-100 text-tinta;
   }
 
-  /* Quem pediu menos movimento ao sistema operacional não recebe animação nenhuma: as
-   * telas continuam iguais, só param de se mexer. */
   @media (prefers-reduced-motion: reduce) {
     *,
     ::before,
@@ -117,82 +108,84 @@
 }
 
 @layer components {
-  /* Campo de formulário: um estilo só para input e select de todas as telas. */
   .campo {
-    @apply mt-1 block w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-normal text-stone-800 shadow-xs transition-colors focus:border-campo-600 focus:ring-2 focus:ring-campo-600/20 focus:outline-none;
+    @apply mt-1.5 block w-full rounded-md border border-linha-forte bg-folha px-3 py-2 text-sm font-normal text-tinta transition-colors duration-150 placeholder:text-tinta-3 focus:border-campo-700 focus:ring-2 focus:ring-campo-700/15 focus:outline-none;
   }
 
-  /* Cartão: a superfície de tudo que é bloco de conteúdo. */
   .cartao {
-    @apply rounded-xl border border-stone-200/80 bg-white shadow-xs;
+    @apply rounded-[10px] border border-linha bg-folha;
   }
 
-  /* Botões. O "afundar" ao clicar confirma o toque — no celular, sem cursor, é o que
-   * diz que o dedo pegou. */
+  /* Título de seção: serifa, sem caixa alta nem espaçamento largo. */
+  .titulo-secao {
+    @apply font-serif text-xl font-medium tracking-[-0.01em] text-tinta;
+  }
+
+  /* Botões. Cor e borda respondem em 150 ms; o clique afunda o botão por 100 ms. */
   .botao-primario,
   .botao-secundario,
   .botao-texto,
   .botao-perigo {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-[color,background-color,border-color,transform] duration-150 ease-out active:scale-[0.97] active:duration-100 disabled:pointer-events-none disabled:opacity-45;
   }
   .botao-primario {
-    @apply bg-campo-600 text-white shadow-sm shadow-campo-900/10 hover:bg-campo-700;
+    @apply bg-campo-800 text-white hover:bg-campo-900;
   }
   .botao-secundario {
-    @apply border border-campo-600/40 bg-white text-campo-700 hover:border-campo-600 hover:bg-campo-50;
+    @apply border border-linha-forte bg-folha text-tinta hover:border-tinta-3;
   }
   .botao-texto {
-    @apply text-campo-700 hover:bg-campo-50;
+    @apply text-tinta-2 hover:bg-tinta/5 hover:text-tinta;
   }
   .botao-perigo {
-    @apply text-red-700 hover:bg-red-50;
+    @apply text-urgente hover:bg-urgente-claro;
   }
 
-  /* Bloco "carregando": a forma do conteúdo, antes do conteúdo. */
   .esqueleto {
-    @apply animate-brilho rounded-lg bg-stone-200/70;
+    @apply animate-brilho rounded-md bg-linha/70;
   }
 }
 
-/* Troca de página: a nova sobe um pouco ao entrar; a velha só some. Curto, para não
- * atrasar quem navega. */
+/* Troca de página: a nova sobe 4px ao aparecer; a velha só esmaece, mais depressa. */
 .pagina-enter-active {
   transition:
-    opacity 200ms ease-out,
-    transform 260ms var(--ease-chegada);
+    opacity 280ms var(--ease-chegar),
+    transform 280ms var(--ease-chegar);
 }
 .pagina-enter-from {
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateY(4px);
 }
 .pagina-leave-active {
-  transition: opacity 90ms ease-in;
+  transition: opacity 160ms var(--ease-sair);
 }
 .pagina-leave-to {
   opacity: 0;
 }
 
-/* Listas que mudam (filtro de alertas): quem fica desliza para o lugar novo, quem sai
- * esmaece, quem entra surge — o olho acompanha o que mudou. */
-.lista-move,
-.lista-enter-active,
-.lista-leave-active {
-  transition:
-    opacity 220ms ease-out,
-    transform 320ms var(--ease-chegada);
+/* Lista que muda (filtro de alertas): quem fica muda de lugar, quem sai esmaece, quem
+ * entra surge. Na primeira carga, em cascata (--i é a posição; só as dez primeiras
+ * esperam, para a lista não demorar a aparecer). */
+.lista-move {
+  transition: transform 320ms var(--ease-mover);
 }
-.lista-enter-from,
-.lista-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
-}
-/* Em cascata: cada item espera um pouco mais que o anterior (--i é a posição). */
 .lista-enter-active {
-  transition-delay: calc(var(--i, 0) * 45ms);
+  transition:
+    opacity 260ms var(--ease-chegar),
+    transform 260ms var(--ease-chegar);
+  transition-delay: calc(min(var(--i, 0), 10) * 30ms);
 }
 .lista-leave-active {
   position: absolute;
   width: 100%;
+  transition: opacity 160ms var(--ease-sair);
+}
+.lista-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.lista-leave-to {
+  opacity: 0;
 }
 
 /* Blocos que aparecem depois de uma ação (prévia, erro, sucesso). */
@@ -200,7 +193,7 @@
   animation: var(--animate-surgir);
 }
 .surgir-leave-active {
-  transition: opacity 120ms ease-in;
+  transition: opacity 150ms var(--ease-sair);
 }
 .surgir-leave-to {
   opacity: 0;

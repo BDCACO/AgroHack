@@ -239,7 +239,7 @@ def _aba_de_instrucoes(aba: Worksheet) -> None:
                 "• Lance também o estoque que já estava no galpão, como uma entrada: sem ela, "
                 "as saídas deixam o estoque negativo.",
                 "• Cada importação soma ao que já está no sistema. Importe cada período uma vez "
-                "só — o CampoCerto avisa se as linhas já estiverem lá.",
+                "só; o CampoCerto avisa se as linhas já estiverem lá.",
                 "• O Excel avisa na hora se a data, o tipo ou a quantidade estiverem fora do "
                 "esperado.",
             ],
