@@ -77,7 +77,10 @@ function opcoes(): EChartsCoreOption {
   }
 
   return {
-    animationDuration: 300,
+    // A linha se desenha da esquerda para a direita, no sentido em que o tempo passa.
+    animationDuration: 900,
+    animationEasing: 'cubicOut',
+    textStyle: { fontFamily: "'Plus Jakarta Sans Variable', system-ui, sans-serif" },
     grid: { left: 8, right: 24, top: 24, bottom: 8, containLabel: true },
     xAxis: {
       type: 'time',

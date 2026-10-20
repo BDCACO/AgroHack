@@ -68,7 +68,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
       <button
         v-if="estoque.insumos.length"
         type="button"
-        class="rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700"
+        class="botao-primario"
         @click="abrir()"
       >
         Novo insumo
@@ -78,10 +78,10 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
 
   <form
     v-if="aberto"
-    class="mt-6 grid gap-4 rounded-lg border border-stone-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4"
+    class="cartao mt-2 mb-6 grid animate-surgir gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4"
     @submit.prevent="salvar"
   >
-    <h2 class="font-semibold text-stone-800 sm:col-span-2 lg:col-span-4">
+    <h2 class="text-base font-semibold text-stone-900 sm:col-span-2 lg:col-span-4">
       {{ editandoId === undefined ? 'Novo insumo' : 'Alterar insumo' }}
     </h2>
     <label class="text-sm font-medium text-stone-700">
@@ -148,14 +148,14 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
     <div class="flex gap-2 sm:col-span-2 lg:col-span-4">
       <button
         type="submit"
-        class="rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700 disabled:opacity-50"
+        class="botao-primario"
         :disabled="salvando"
       >
         {{ salvando ? 'Salvando…' : 'Salvar' }}
       </button>
       <button
         type="button"
-        class="rounded-md px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-100"
+        class="botao-texto text-stone-700 hover:bg-stone-100"
         @click="aberto = false"
       >
         Cancelar
@@ -179,7 +179,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
   >
     <button
       type="button"
-      class="rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700"
+      class="botao-primario"
       @click="abrir()"
     >
       Cadastrar insumo
@@ -188,10 +188,10 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
 
   <div
     v-else-if="estoque.insumos.length"
-    class="mt-6 overflow-x-auto rounded-lg border border-stone-200 bg-white"
+    class="cartao animate-surgir overflow-x-auto"
   >
     <table class="w-full text-left text-sm">
-      <thead class="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
+      <thead class="bg-stone-50/80 text-xs tracking-wide text-stone-500 uppercase">
         <tr>
           <th class="px-4 py-3 font-semibold">
             Insumo
@@ -217,6 +217,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         <tr
           v-for="insumo in estoque.insumos"
           :key="insumo.id"
+          class="transition-colors hover:bg-stone-50/70"
         >
           <td class="px-4 py-3 font-medium text-stone-800">
             <RouterLink
@@ -245,7 +246,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
           <td class="px-4 py-3 text-right">
             <button
               type="button"
-              class="text-sm font-medium text-campo-700 hover:underline"
+              class="rounded-md px-2 py-1 text-sm font-medium text-campo-700 transition-colors hover:bg-campo-50"
               @click="abrir(insumo)"
             >
               Alterar

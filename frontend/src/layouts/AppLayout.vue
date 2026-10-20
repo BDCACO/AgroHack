@@ -54,7 +54,12 @@ const resumoStatus = {
 // O número no item "Painel" do menu: o que não pode esperar fica à vista em qualquer tela.
 const urgentes = computed(() => estoque.alertas.filter((a) => a.alerta.gravidade === 'alta').length)
 
-onMounted(() => status.verificar())
+onMounted(() => {
+  status.verificar()
+  // O contador do menu e o aviso de demonstração valem em qualquer tela. A página monta
+  // antes do layout: se ela já pediu os dados, não se pede de novo.
+  if (!estoque.carregado && !estoque.carregando) estoque.carregar()
+})
 </script>
 
 <template>

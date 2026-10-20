@@ -2,6 +2,8 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
+import IconeSvg from '@/components/IconeSvg.vue'
+
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
@@ -23,6 +25,8 @@ const form = reactive({
   validade: '',
 })
 const salvando = ref(false)
+// A linha recém-lançada acende na tabela e volta ao normal: mostra onde ela entrou.
+const destacada = ref<number | null>(null)
 const erroDoForm = ref<string | null>(null)
 
 // Validade é de lote, e lote só chega numa entrada.
@@ -38,13 +42,14 @@ async function lancar() {
   salvando.value = true
   erroDoForm.value = null
   try {
-    await estoque.registrarMovimentacao({
+    const criada = await estoque.registrarMovimentacao({
       insumo_id: form.insumoId,
       tipo: form.tipo,
       data: form.data,
       quantidade: form.quantidade,
       validade: form.validade || null,
     })
+    destacada.value = criada.id
     // Mantém tipo, insumo e data: lançamentos em sequência costumam repetir os três.
     form.quantidade = ''
     form.validade = ''
@@ -93,7 +98,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
   >
     <RouterLink
       :to="{ name: 'insumos' }"
-      class="inline-flex rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700"
+      class="botao-primario"
     >
       Ir para Insumos
     </RouterLink>
@@ -101,19 +106,25 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
 
   <template v-else-if="estoque.insumos.length">
     <form
-      class="mt-6 grid gap-4 rounded-lg border border-stone-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-6"
+      class="cartao mt-2 grid animate-surgir gap-4 p-5 sm:grid-cols-2 lg:grid-cols-6"
       @submit.prevent="lancar"
     >
       <fieldset class="sm:col-span-2 lg:col-span-6">
         <legend class="text-sm font-medium text-stone-700">
           Tipo
         </legend>
-        <div class="mt-1 inline-flex rounded-md border border-stone-300 p-0.5">
+        <!-- O fundo verde desliza para a opção escolhida: a troca fica visível. -->
+        <div class="relative mt-1.5 grid grid-cols-2 rounded-lg bg-stone-100 p-1 sm:inline-grid">
+          <span
+            class="absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-md bg-campo-600 shadow-sm transition-transform duration-300 ease-(--ease-chegada)"
+            :class="form.tipo === 'entrada' ? 'translate-x-full' : 'translate-x-0'"
+            aria-hidden="true"
+          />
           <label
             v-for="tipo in (['saida', 'entrada'] as const)"
             :key="tipo"
-            class="cursor-pointer rounded px-4 py-1.5 text-sm font-medium has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600 has-[:focus-visible]:ring-offset-1"
-            :class="form.tipo === tipo ? 'bg-campo-600 text-white' : 'text-stone-700 hover:bg-stone-100'"
+            class="relative z-10 cursor-pointer rounded-md px-4 py-1.5 text-center text-sm font-semibold transition-colors duration-200 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600 has-[:focus-visible]:ring-offset-1"
+            :class="form.tipo === tipo ? 'text-white' : 'text-stone-600 hover:text-stone-900'"
           >
             <input
               v-model="form.tipo"
@@ -190,7 +201,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
       <div class="sm:col-span-2 lg:col-span-6">
         <button
           type="submit"
-          class="rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700 disabled:opacity-50"
+          class="botao-primario"
           :disabled="salvando"
         >
           {{ salvando ? 'Lançando…' : 'Lançar' }}
@@ -207,13 +218,13 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
     </p>
     <div
       v-else
-      class="mt-6 overflow-x-auto rounded-lg border border-stone-200 bg-white"
+      class="cartao mt-6 animate-surgir overflow-x-auto [animation-delay:80ms]"
     >
       <table class="w-full text-left text-sm">
         <caption class="sr-only">
           Últimas movimentações
         </caption>
-        <thead class="bg-stone-50 text-xs uppercase tracking-wide text-stone-500">
+        <thead class="bg-stone-50/80 text-xs tracking-wide text-stone-500 uppercase">
           <tr>
             <th class="px-4 py-3 font-semibold">
               Data
@@ -239,18 +250,33 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
           <tr
             v-for="mov in estoque.movimentacoes"
             :key="mov.id"
+            class="transition-colors hover:bg-stone-50/70"
+            :class="mov.id === destacada ? 'animate-destaque' : ''"
           >
             <td class="px-4 py-3 tabular-nums">
               {{ dataBr(mov.data) }}
             </td>
             <td class="px-4 py-3 font-medium text-stone-800">
-              {{ estoque.insumoPorId.get(mov.insumo_id)?.nome }}
+              <RouterLink
+                :to="{ name: 'insumo', params: { id: mov.insumo_id } }"
+                class="hover:text-campo-700 hover:underline"
+              >
+                {{ estoque.insumoPorId.get(mov.insumo_id)?.nome }}
+              </RouterLink>
             </td>
-            <td
-              class="px-4 py-3"
-              :class="mov.tipo === 'entrada' ? 'text-campo-700' : 'text-terra-700'"
-            >
-              {{ rotulo[mov.tipo] }}
+            <td class="px-4 py-3">
+              <!-- Entrada aponta para o galpão (desce), saída para fora (sobe). -->
+              <span
+                class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset"
+                :class="mov.tipo === 'entrada' ? 'bg-campo-50 text-campo-700 ring-campo-600/20' : 'bg-terra-50 text-terra-700 ring-terra-500/25'"
+              >
+                <IconeSvg
+                  nome="seta"
+                  class="h-3.5 w-3.5"
+                  :class="mov.tipo === 'entrada' ? 'rotate-90' : '-rotate-90'"
+                />
+                {{ rotulo[mov.tipo] }}
+              </span>
             </td>
             <td class="px-4 py-3 text-right tabular-nums">
               {{ numero(mov.quantidade) }} {{ estoque.insumoPorId.get(mov.insumo_id)?.unidade }}
@@ -261,7 +287,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
             <td class="px-4 py-3 text-right">
               <button
                 type="button"
-                class="text-sm font-medium text-red-700 hover:underline"
+                class="rounded-md px-2 py-1 text-sm font-medium text-red-700 transition-colors hover:bg-red-50"
                 @click="remover(mov)"
               >
                 Remover

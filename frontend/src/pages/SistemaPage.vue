@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
+import IconeSvg from '@/components/IconeSvg.vue'
 import IndicadorDeStatus from '@/components/IndicadorDeStatus.vue'
 import { useStatusSistemaStore } from '@/stores/statusSistema'
 
@@ -14,16 +15,22 @@ const status = useStatusSistemaStore()
     <template #acoes>
       <button
         type="button"
-        class="rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700 disabled:opacity-50"
+        class="botao-primario"
         :disabled="status.verificando"
         @click="status.verificar()"
       >
+        <!-- Gira enquanto verifica: o pedido está andando. -->
+        <IconeSvg
+          nome="atualizar"
+          class="h-4 w-4"
+          :class="status.verificando ? 'animate-spin' : ''"
+        />
         {{ status.verificando ? 'Verificando…' : 'Verificar novamente' }}
       </button>
     </template>
   </CabecalhoDePagina>
 
-  <div class="mt-4 max-w-lg divide-y divide-stone-200 border-b border-stone-200">
+  <div class="cartao max-w-lg animate-surgir divide-y divide-stone-100 px-5">
     <IndicadorDeStatus
       rotulo="API"
       :estado="status.api"

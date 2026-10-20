@@ -70,9 +70,11 @@ export const useEstoqueStore = defineStore('estoque', {
       this.insumos = this.insumos.filter((insumo) => insumo.id !== id)
       this.movimentacoes = this.movimentacoes.filter((mov) => mov.insumo_id !== id)
     },
+    /** Devolve a movimentação criada, para a tela mostrar onde ela entrou. */
     async registrarMovimentacao(dados: MovimentacaoEntrada) {
-      await api.registrarMovimentacao(dados)
+      const criada = await api.registrarMovimentacao(dados)
       await this.carregar()
+      return criada
     },
     async removerMovimentacao(id: number) {
       await api.removerMovimentacao(id)
