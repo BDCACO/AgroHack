@@ -10,7 +10,8 @@ mostra a conta que o justifica e o que a conta não sabe.**
 2. Abrir http://localhost:5173 e conferir no Painel: 2 urgentes, 3 de atenção, 2 para observar.
 3. Para mostrar no celular, abrir `http://<IP do notebook>:5173` (a porta do front fica aberta na
    rede local). O botão do WhatsApp precisa do app no celular ou do WhatsApp Web logado.
-4. Ter à mão `docs/exemplos/planilha-com-erros.csv`.
+4. Ter à mão `docs/exemplos/planilha-com-erros.csv` e o Excel (ou o LibreOffice) instalado,
+   para abrir a planilha modelo.
 
 ## O que cada insumo da demonstração mostra
 
@@ -37,14 +38,16 @@ mostra a conta que o justifica e o que a conta não sabe.**
    Mostrar que o sistema é honesto sobre isso é diferencial.
 5. **Lista de compras.** Voltar ao Painel → "Enviar pelo WhatsApp": a lista sai pronta para a
    revenda.
-6. **Importar planilha.** Em Importar dados, escolher `planilha-com-erros.csv`: nada é gravado,
-   e cada erro diz a linha e o que corrigir (data que não existe, "dez" no lugar de 10, unidade
-   diferente da cadastrada, insumo novo sem unidade). Depois, baixar a planilha modelo e
-   importá-la: a prévia mostra o resumo e os insumos novos antes de gravar.
+6. **Importar planilha.** Em Importar dados, baixar a **planilha modelo (Excel)** e abri-la:
+   cabeçalho formatado, listas de escolha com os insumos da fazenda, aba de instruções e um
+   exemplo. Preencher duas linhas ao vivo (uma compra de um insumo novo e uma retirada) e
+   importar: a prévia mostra quanto entra e sai de cada insumo antes de gravar. Depois, escolher
+   `planilha-com-erros.csv`: nada é gravado, e cada erro diz a linha e o que corrigir (data que
+   não existe, "dez" no lugar de 10, unidade diferente da cadastrada, insumo novo sem unidade).
 7. **Lançar uma movimentação** (página da ureia → "Lançar movimentação"): uma entrada de 700 kg
    com a data de hoje, e os alertas da ureia somem do Painel na hora.
-8. **Fechamento.** O que vem depois: importação de `.xlsx`, acesso por usuário, sazonalidade da
-   safra no consumo.
+8. **Fechamento.** O que vem depois: acesso por usuário, sazonalidade da safra no consumo,
+   preço e pedido mínimo na sugestão de compra.
 
 Depois da apresentação, `make demo-limpar` apaga a fazenda fictícia. Os insumos que vieram da
 planilha modelo não são de demonstração: remova-os pela página de cada um.

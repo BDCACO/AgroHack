@@ -7,7 +7,7 @@ do mínimo, risco de falta, vencimento próximo, excesso, baixa movimentação, 
 reposição estimada — sempre com justificativa e limitações explícitas.
 
 > **Estado atual:** cadastro de insumos e lançamento de entradas e saídas pela tela ou por
-> planilha CSV (com prévia antes de gravar); o Painel mostra os alertas do motor de análise com a
+> planilha do Excel ou CSV (com planilha modelo formatada e prévia antes de gravar); o Painel mostra os alertas do motor de análise com a
 > justificativa de cada um, a reposição estimada (com lista de compras para o WhatsApp) e as
 > limitações. Cada insumo tem uma página com o gráfico do estoque e a projeção de quando acaba.
 
@@ -16,7 +16,7 @@ reposição estimada — sempre com justificativa e limitações explícitas.
 | Camada | Tecnologias |
 |---|---|
 | Frontend | Vue 3, TypeScript, Vite, Vue Router, Pinia, Tailwind CSS v4, Axios |
-| Backend | Python 3.14, FastAPI, Pydantic, SQLAlchemy 2, Alembic, Pytest |
+| Backend | Python 3.14, FastAPI, Pydantic, SQLAlchemy 2, Alembic, openpyxl, Pytest |
 | Banco | PostgreSQL 18 |
 | Infra | Docker, Docker Compose |
 
@@ -52,8 +52,9 @@ de movimentações, pensada para acender cada tipo de alerta, mais um insumo sau
 contraste. As datas são relativas ao dia da carga: rode no dia da apresentação. A tela avisa que
 são dados de demonstração, e `make demo-limpar` apaga só eles, preservando o que foi cadastrado.
 
-Para mostrar a importação, a tela **Importar dados** oferece uma planilha modelo
-(`frontend/public/modelo-movimentacoes.csv`) no formato que o Excel em português grava.
+Para mostrar a importação, a tela **Importar dados** oferece a planilha modelo do Excel, gerada
+na hora com os insumos cadastrados — como preencher está em
+[`docs/IMPORTACAO.md`](docs/IMPORTACAO.md).
 
 ## Comandos
 
@@ -103,6 +104,8 @@ Todas em `.env` na raiz — modelo comentado em [`.env.example`](.env.example).
 
 - [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) — estrutura, camadas, decisões e o que foi
   herdado do ArkoHub.
+- [`docs/IMPORTACAO.md`](docs/IMPORTACAO.md) — como preencher e importar a planilha de
+  movimentações (Excel ou CSV), formatos aceitos e erros comuns.
 - [`docs/TESTES.md`](docs/TESTES.md) — o que cada suíte cobre e como rodar.
 - [`docs/APRESENTACAO.md`](docs/APRESENTACAO.md) — roteiro da demonstração com a fazenda fictícia.
 

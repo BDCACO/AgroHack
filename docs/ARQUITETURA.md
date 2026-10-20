@@ -62,8 +62,11 @@ isso nas limitações. Quantidades são `NUMERIC(12, 3)` no banco e `float` no P
 
 ### Importação de planilha
 
-`POST /importacoes` recebe o texto do CSV (o navegador decodifica: UTF-8 ou, se falhar, o
-Windows-1252 do Excel antigo) e devolve um resumo. Decisões:
+`POST /importacoes` recebe a planilha do Excel (`.xlsx`, em base64 no JSON) ou o texto de um CSV
+(o navegador decodifica: UTF-8 ou, se falhar, o Windows-1252 do Excel antigo) e devolve um
+resumo. Os dois formatos viram cabeçalho + linhas de células e passam pelas mesmas regras
+(`app/services/importacao.py`). O guia para quem preenche está em
+[`IMPORTACAO.md`](IMPORTACAO.md). Decisões:
 
 - **Prévia antes de gravar.** Sem `confirmar`, só confere e resume — inclusive quanto entra e
   sai de cada insumo, que é onde um número lido errado salta aos olhos. A tela só então oferece
@@ -71,7 +74,12 @@ Windows-1252 do Excel antigo) e devolve um resumo. Decisões:
   ter gravado): confere de novo, e `ja_lancadas` mostra se as linhas já estão lá.
 - **Tudo ou nada.** Com um erro sequer, nada entra, e a resposta lista os erros por linha. Meia
   planilha importada deixaria o estoque errado sem ninguém perceber.
-- **Formato do Excel em português e o internacional.** Separador de colunas `;` ou `,`
+- **`.xlsx` é o formato principal.** Data e número chegam com tipo, sem a dúvida de vírgula ou
+  ponto, e o produtor não precisa converter nada. Lido com `openpyxl` em modo `read_only`
+  (linha a linha) e com `defusedxml` instalado, que o `openpyxl` usa sozinho contra XML
+  malicioso; teto de 5 MB e de 50 mil linhas, contra arquivo que se descompacta em milhões.
+  Só a primeira aba é lida, e o número da linha nos erros é o do Excel.
+- **CSV: o do Excel em português e o internacional.** Separador de colunas `;` ou `,`
   (decidido pelo cabeçalho), datas DD/MM/AAAA (e AAAA-MM-DD), BOM.
 - **O separador decimal é decidido pela planilha inteira**, não célula a célula: sozinho,
   `25.500` pode ser vinte e cinco e meio ou vinte e cinco mil. Células como `25,5`, `0.250` ou
@@ -86,7 +94,12 @@ Windows-1252 do Excel antigo) e devolve um resumo. Decisões:
   linha é erro: escolher um seria chute.
 - **Planilha importada duas vezes vira aviso, não erro** (`ja_lancadas`): duas retiradas iguais
   no mesmo dia existem de verdade.
-- Sem Excel (`.xlsx`): exigiria dependência nova; o "Salvar como CSV" resolve.
+- **Planilha modelo gerada na hora** (`GET /importacoes/modelo.xlsx`,
+  `app/services/planilha_modelo.py`), não um arquivo parado no repositório: vem com os insumos
+  cadastrados (aba própria, que alimenta a lista de escolha da coluna `insumo`) e com exemplos
+  de datas recentes. Formatada para preencher certo: cabeçalho nas cores da marca com a
+  explicação de cada coluna em comentário, datas DD/MM/AAAA e validação do próprio Excel (data
+  até hoje, tipo entrada/saída, quantidade maior que zero). O `.xls` antigo não é aceito.
 
 O fluxo é `rota → serviço → (domínio | análise) → ORM`. As setas só apontam para dentro:
 `domain` e `analysis` não importam FastAPI nem SQLAlchemy. A exceção é `POST /analises`, que não
@@ -105,7 +118,8 @@ tem banco a orquestrar e chama o motor direto.
 | `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (`insumo_id`, `limite`) |
 | `POST /api/v1/movimentacoes` | Lança entrada ou saída. `422` para data futura, validade em saída ou insumo inexistente |
 | `DELETE /api/v1/movimentacoes/{id}` | Remove lançamento errado |
-| `POST /api/v1/importacoes` | Movimentações de uma planilha CSV. Sem `confirmar`, só confere e resume; com erro, nada é gravado e a resposta lista os erros por linha |
+| `POST /api/v1/importacoes` | Movimentações de uma planilha — `xlsx` (base64) ou `conteudo` (texto do CSV). Sem `confirmar`, só confere e resume, com o total de cada insumo; com erro, nada é gravado e a resposta lista os erros por linha |
+| `GET /api/v1/importacoes/modelo.xlsx` | Planilha modelo formatada, com os insumos cadastrados para escolher da lista |
 | `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período) e devolve alertas, reposição e limitações. `422` para entrada inválida |
 | `GET /api/v1/docs` | Swagger UI (desligado em `production`) |
 | `GET /api/v1/openapi.json` | Schema OpenAPI (desligado em `production`) |
@@ -195,8 +209,7 @@ tecnologias que não se aplicam.
    um que alcance a tela lê e altera tudo (as portas da API e do banco ficam só em 127.0.0.1; a do
    front fica aberta na rede).
 2. **Geração de tipos TS a partir do OpenAPI** (`openapi-typescript`) quando a API crescer.
-3. **Importação de `.xlsx`**, se o "Salvar como CSV" do Excel atrapalhar quem testar.
 
-Decididas desde a versão anterior deste documento: a importação de planilha existe (CSV, seção
-2); o ECharts entrou com o gráfico do insumo; o Pandas não entrou — nem o motor de análise nem a
-importação precisaram.
+Decididas desde a versão anterior deste documento: a importação de planilha existe (Excel e
+CSV, seção 2); o ECharts entrou com o gráfico do insumo; o Pandas não entrou — nem o motor de
+análise nem a importação precisaram; o `openpyxl` entrou para ler e gerar `.xlsx`.
