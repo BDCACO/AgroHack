@@ -85,7 +85,7 @@ const semRitmo = computed(() =>
           <div
             class="absolute inset-y-0 left-0 origin-left animate-crescer rounded-full"
             :class="aparencia[linha.situacao].barra"
-            :style="{ width: porcento(linha.dias), animationDelay: `${indice * 70}ms` }"
+            :style="{ width: porcento(linha.dias), animationDelay: `${Math.min(indice, 8) * 60}ms` }"
           />
           <!-- A marca do prazo de entrega: barra que não passa dela acaba antes de o
                pedido chegar. -->

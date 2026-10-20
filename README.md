@@ -17,7 +17,7 @@ reposição estimada, sempre com justificativa e limitações explícitas.
 
 | Camada | Tecnologias |
 |---|---|
-| Frontend | Vue 3, TypeScript, Vite, Vue Router, Pinia, Tailwind CSS v4, Axios, Apache ECharts, Fraunces e IBM Plex Sans |
+| Frontend | Vue 3, TypeScript, Vite, Vue Router, Pinia, Tailwind CSS v4, Axios, Apache ECharts, Plus Jakarta Sans |
 | Backend | Python 3.14, FastAPI, Pydantic, SQLAlchemy 2, Alembic, openpyxl, Pytest |
 | Banco | PostgreSQL 18 |
 | Infra | Docker, Docker Compose |

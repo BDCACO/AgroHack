@@ -148,7 +148,7 @@ tem banco a orquestrar e chama o motor direto.
 | `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só |
 | `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, gaveta no celular, resumo de status |
 | `src/pages/` | Uma página por rota: Painel (alertas, reposição com lista de compras para o WhatsApp, limitações), Insumos (cadastro), página do insumo (`/insumos/:id`: resumo, gráfico, alertas, movimentações, remover), Movimentações (entradas e saídas), Importar dados (Excel ou CSV, com prévia), Sistema |
-| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (dias de estoque de cada insumo), `EstadoVazio`, `GraficoDeEstoque`, `IconeSvg`, `IndicadorDeStatus`, `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
+| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `EstadoVazio`, `GraficoDeEstoque`, `IconeSvg`, `IndicadorDeStatus`, `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
 | `src/stores/` | Pinia: estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração |
 | `src/services/http.ts` | **Cliente HTTP único** (Axios). Normaliza erro em `ApiError` |
 | `src/services/*.ts` | Uma função por endpoint |
@@ -162,50 +162,44 @@ negócio: mostra o que a API calculou.
 
 ### Design e movimento
 
-A referência é um caderno de campo: papel claro (`papel`, `folha`), tinta verde-escura
-(`tinta`, em três tons) e linhas finas (`linha`) separando as coisas, no lugar de cartões
-flutuantes com sombra. Títulos e números em **Fraunces** (serifa com tamanho óptico), o resto
-em **IBM Plex Sans**; as duas vêm de `@fontsource-variable` e ficam embutidas no app, então
-funcionam sem internet, como numa apresentação. O verde de lavoura (`campo`, de 50 a 950) é a
-marca e os botões principais.
+Visual calmo e terroso: verde de lavoura (`campo`, de 50 a 950) como cor da marca, terra e
+palha (`terra`) como acento quente, fundo de pedra clara, cartões brancos. Fonte **Plus Jakarta
+Sans** (`@fontsource-variable`), embutida no app: funciona sem internet, como numa apresentação.
+Tudo mora em `main.css`: as cores, a fonte, as curvas e durações de animação e os componentes
+base. Botão e cartão são classes (`.botao-primario`, `.cartao`...), não estilo repetido em cada
+tela.
 
-Cor só onde pede ação: `urgente` (tijolo), `atencao` (ocre) e `observar` (ardósia), tons de
-terra em vez das cores padrão do Tailwind. As barras de "Dias de estoque" são cinza-tinta e só
-ficam vermelhas ou ocres quando há algo a fazer. Selo de gravidade é texto colorido com um
-quadradinho, sem pílula; ícones são de traço.
-
-Tudo mora em `main.css`: cores, fontes, curvas, animações (`--animate-*`) e os componentes base
-(`.botao-primario`, `.cartao`, `.titulo-secao`...), para não repetir estilo em cada tela.
-
-**Animação só onde informa.** Só `transform` e `opacity`, com a curva certa para cada tipo de
-movimento:
+**Animação só onde informa.** Só `transform` e `opacity` (a placa de vídeo anima sem refazer a
+página), e uma curva para cada tipo de movimento:
 
 | Curva | Uso | Duração típica |
 |---|---|---|
-| `ease-chegar` (ease-out quint) | o que entra na tela | 200–300 ms |
-| `ease-sair` (ease-in cubic) | o que sai; mais rápido que a entrada | 150–200 ms |
-| `ease-mover` (ease-in-out cubic) | o que já está na tela e muda de lugar | 250–320 ms |
+| `ease-chegada` | o que entra na tela: desacelera ao chegar | 200 a 300 ms |
+| `ease-saida` | o que sai: acelera ao ir embora, mais rápido que a entrada | 90 a 200 ms |
+| `ease-movimento` | o que já está na tela e muda de lugar: acelera e freia | 250 a 300 ms |
 
-Hover e clique ficam em 100–150 ms (o botão afunda para 97% ao apertar). O que se repete o dia
-todo, como abrir uma página do menu, tem transição curta e só de opacidade na saída.
+Hover fica em 150 ms; o botão afunda para 97% em 100 ms ao ser apertado, que no celular é o que
+diz que o dedo pegou.
 
-- **O que mudou:** os números do Painel rolam dígito a dígito até o valor, como um contador
-  mecânico (`NumeroRolante`); a linha recém-lançada em Movimentações acende e esmaece.
-- **Onde você está:** um marcador só desliza no menu até a página ativa, em vez de um fundo que
-  some de um item e aparece no outro. O mesmo vale para o seletor Saída/Entrada.
-- **Ordem de leitura:** os alertas chegam em cascata curta (30 ms entre um e outro, no máximo
-  dez), os mais graves primeiro; as barras de "Dias de estoque" crescem da esquerda; a linha do
-  gráfico se desenha no sentido do tempo.
-- **Para onde foi:** ao filtrar alertas, quem fica desliza para o lugar e quem sai esmaece.
-- **Trabalho em andamento e resultado:** barra que vai e volta ao conferir a planilha, ícone que
-  gira ao verificar o sistema, sinal de concluído que se desenha, esqueleto no lugar do conteúdo
-  que está chegando.
-
-Nada pulsa, nada anima em loop sem motivo e nada levanta no hover.
+- **O que mudou:** os números de gravidade rolam dígito a dígito até o valor, como um contador
+  mecânico (`NumeroRolante`); parado, o número fica exatamente onde um texto comum ficaria. A
+  linha recém-lançada em Movimentações acende e esmaece.
+- **Onde você está:** o destaque da página atual no menu é um só e desliza até o item novo; o
+  fundo do seletor Saída/Entrada também desliza.
+- **Ordem de leitura:** alertas chegam em cascata (40 ms entre um e outro, até o oitavo), os mais
+  graves primeiro; as barras de "quanto tempo o estoque dura" crescem da esquerda, da mais
+  apertada à mais folgada; a linha do gráfico se desenha no sentido do tempo.
+- **Para onde foi:** ao filtrar alertas, quem fica desliza para o lugar e quem sai esmaece
+  encolhendo um pouco. A gaveta do celular entra em 300 ms e sai em 200 ms.
+- **Trabalho em andamento e resultado:** barra de "trabalhando" ao conferir a planilha, ícone
+  que gira ao verificar o sistema, sinal de concluído que se desenha, esqueleto no lugar do
+  conteúdo que está chegando.
+- **O que não pode esperar:** só o ponto do selo "Urgente" pulsa (uma cópia dele cresce e
+  some). Nada mais anima em loop.
 
 Quem pede **menos movimento** ao sistema operacional (`prefers-reduced-motion`) não recebe
-animação nenhuma: a regra global em `main.css` zera as durações e toda tela aparece já no
-estado final, números inclusive.
+animação nenhuma: a regra global em `main.css` zera as durações e toda tela aparece já no estado
+final, números inclusive.
 
 **Gráficos: Apache ECharts**, importado peça por peça (`echarts/core` + linha, grade, tooltip,
 linhas de referência e o renderizador SVG), na página do insumo, que é carregada sob demanda,

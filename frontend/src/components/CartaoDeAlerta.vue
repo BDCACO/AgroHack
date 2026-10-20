@@ -22,7 +22,7 @@ const faixa = { alta: 'bg-red-500', media: 'bg-amber-400', baixa: 'bg-sky-400' }
 
 <template>
   <li
-    class="group relative flex flex-col gap-2 overflow-hidden rounded-xl border border-stone-200/80 bg-white p-4 pl-5 shadow-xs transition duration-200 sm:flex-row sm:items-start sm:gap-4"
+    class="group relative flex flex-col gap-2 overflow-hidden rounded-xl border border-stone-200/80 bg-white p-4 pl-5 shadow-xs transition-[translate,box-shadow,border-color] duration-200 ease-chegada sm:flex-row sm:items-start sm:gap-4"
     :class="insumo ? 'hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md' : ''"
     data-teste="alerta"
   >
@@ -57,7 +57,7 @@ const faixa = { alta: 'bg-red-500', media: 'bg-amber-400', baixa: 'bg-sky-400' }
     <IconeSvg
       v-if="insumo"
       nome="seta"
-      class="hidden h-5 w-5 shrink-0 self-center text-stone-300 transition duration-200 group-hover:translate-x-1 group-hover:text-campo-600 sm:block"
+      class="hidden h-5 w-5 shrink-0 self-center text-stone-300 transition-[translate,color] duration-200 ease-chegada group-hover:translate-x-1 group-hover:text-campo-600 sm:block"
     />
   </li>
 </template>

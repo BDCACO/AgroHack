@@ -4,7 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import CartaoDeAlerta from '@/components/CartaoDeAlerta.vue'
 import CoberturaDoEstoque from '@/components/CoberturaDoEstoque.vue'
-import ContadorAnimado from '@/components/ContadorAnimado.vue'
+import NumeroRolante from '@/components/NumeroRolante.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import IconeSvg, { type NomeIcone } from '@/components/IconeSvg.vue'
 import { URL_DO_RELATORIO } from '@/services/estoque'
@@ -212,7 +212,7 @@ async function copiar() {
         v-for="(item, indice) in GRAVIDADES"
         :key="item.gravidade"
         type="button"
-        class="cartao group relative animate-surgir overflow-hidden p-3 text-left transition duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] disabled:pointer-events-none sm:p-4"
+        class="cartao group relative animate-surgir overflow-hidden p-3 text-left transition-[translate,scale,box-shadow] duration-200 ease-chegada hover:-translate-y-0.5 hover:shadow-md active:scale-[0.98] active:duration-100 disabled:pointer-events-none sm:p-4"
         :class="filtro === item.gravidade ? ['ring-2 ring-offset-2', item.cor.anel] : ''"
         :style="{ animationDelay: `${indice * 60}ms` }"
         :aria-pressed="filtro === item.gravidade"
@@ -230,7 +230,7 @@ async function copiar() {
             :class="item.cor.texto"
           >{{ item.titulo }}</span>
           <span
-            class="hidden rounded-lg p-1.5 transition-transform duration-200 group-hover:scale-110 sm:block"
+            class="hidden rounded-lg p-1.5 transition-transform duration-150 ease-chegada group-hover:scale-110 sm:block"
             :class="item.cor.icone"
             aria-hidden="true"
           >
@@ -244,7 +244,7 @@ async function copiar() {
           class="mt-1 block text-3xl font-bold text-stone-900 sm:mt-2 sm:text-4xl"
           :class="contagem[item.gravidade] ? '' : 'text-stone-300'"
         >
-          <ContadorAnimado :valor="contagem[item.gravidade]" />
+          <NumeroRolante :valor="contagem[item.gravidade]" />
         </span>
         <span class="mt-0.5 hidden text-xs text-stone-500 sm:block">{{ item.dica }}</span>
       </button>
@@ -411,7 +411,7 @@ async function copiar() {
             <!-- A seta gira ao abrir: mostra que o item abre e em que estado está. -->
             <IconeSvg
               nome="seta"
-              class="h-4 w-4 text-stone-400 transition-transform duration-200 group-open:rotate-90"
+              class="h-4 w-4 text-stone-400 transition-transform duration-200 ease-movimento group-open:rotate-90"
             />
             {{ insumo.nome }}
             <span class="font-normal text-stone-500">({{ insumo.analise.limitacoes.length }})</span>

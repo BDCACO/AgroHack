@@ -22,7 +22,7 @@ import IconeSvg from '@/components/IconeSvg.vue'
     >
       <IconeSvg
         nome="seta"
-        class="h-4 w-4 rotate-180 transition-transform duration-200 group-hover:-translate-x-0.5"
+        class="h-4 w-4 rotate-180 transition-transform duration-200 ease-chegada group-hover:-translate-x-0.5"
       />
       Voltar ao painel
     </RouterLink>

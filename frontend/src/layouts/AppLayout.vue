@@ -43,6 +43,7 @@ async function fecharGaveta() {
 }
 
 const ativo = (nome: string) => nome === (rota.meta.secao ?? rota.name)
+const indiceAtivo = computed(() => itensDeMenu.findIndex((item) => ativo(item.nome)))
 
 const resumoStatus = {
   verificando: { texto: 'Verificando sistema…', ponto: 'bg-stone-400 animate-pulse' },
@@ -102,8 +103,8 @@ onMounted(() => {
     <Transition
       enter-from-class="opacity-0"
       leave-to-class="opacity-0"
-      enter-active-class="transition-opacity duration-200"
-      leave-active-class="transition-opacity duration-200"
+      enter-active-class="transition-opacity duration-200 ease-out"
+      leave-active-class="transition-opacity duration-150 ease-in"
     >
       <div
         v-if="gavetaAberta"
@@ -115,8 +116,8 @@ onMounted(() => {
 
     <aside
       id="menu-lateral"
-      class="fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-linear-to-b from-campo-900 to-campo-950 text-campo-50 shadow-xl duration-300 ease-(--ease-chegada) lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-none"
-      :class="gavetaAberta ? 'translate-x-0 transition-[translate]' : '-translate-x-full transition-[translate,visibility] max-lg:invisible'"
+      class="fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-linear-to-b from-campo-900 to-campo-950 text-campo-50 shadow-xl lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-none"
+      :class="gavetaAberta ? 'translate-x-0 transition-[translate] duration-300 ease-chegada' : '-translate-x-full transition-[translate,visibility] duration-200 ease-saida max-lg:invisible'"
       @keydown.esc="fecharGaveta"
     >
       <!-- Fechada no celular, `invisible` a tira do Tab e do leitor de tela: sem isso, o
@@ -146,9 +147,20 @@ onMounted(() => {
       </div>
 
       <nav
-        class="flex-1 space-y-1 px-3 py-3"
+        class="relative flex-1 space-y-1 px-3 py-3"
         aria-label="Principal"
       >
+        <!-- O destaque da página atual é um só e desliza até o item novo ao navegar: o olho
+             vê de onde saiu e aonde chegou. Itens de altura fixa (h-10 + space-y-1), para
+             o deslocamento ser a posição vezes 2,75rem. -->
+        <span
+          class="pointer-events-none absolute inset-x-3 top-3 h-10 rounded-lg bg-white/15 transition-[translate,opacity] duration-300 ease-movimento"
+          :class="indiceAtivo < 0 ? 'opacity-0' : ''"
+          :style="{ translate: `0 calc(${Math.max(indiceAtivo, 0)} * 2.75rem)` }"
+          aria-hidden="true"
+        >
+          <span class="absolute inset-y-2 left-0 w-1 rounded-r-full bg-campo-300" />
+        </span>
         <RouterLink
           v-for="item in itensDeMenu"
           :key="item.nome"
@@ -158,20 +170,14 @@ onMounted(() => {
         >
           <a
             :href="href"
-            class="group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150"
-            :class="ativo(item.nome) ? 'bg-white/15 text-white' : 'text-campo-100/80 hover:bg-white/5 hover:text-white'"
+            class="group relative flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors duration-150"
+            :class="ativo(item.nome) ? 'text-white' : 'text-campo-100/80 hover:bg-white/5 hover:text-white'"
             :aria-current="ativo(item.nome) ? 'page' : undefined"
             @click="navigate"
           >
-            <!-- A barrinha da página atual cresce no item novo ao navegar: mostra onde se está. -->
-            <span
-              class="absolute inset-y-2 left-0 w-1 origin-center rounded-r-full bg-campo-300 transition-transform duration-300 ease-(--ease-chegada)"
-              :class="ativo(item.nome) ? 'scale-y-100' : 'scale-y-0'"
-              aria-hidden="true"
-            />
             <IconeSvg
               :nome="item.icone"
-              class="h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-110"
+              class="h-5 w-5 shrink-0 transition-transform duration-150 ease-chegada group-hover:scale-110"
             />
             <span data-teste="rotulo-menu">{{ item.rotulo }}</span>
             <span

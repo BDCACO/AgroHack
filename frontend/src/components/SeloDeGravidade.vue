@@ -22,10 +22,10 @@ const aparencia = computed(
     class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap ring-1 ring-inset"
     :class="aparencia.classes"
   >
-    <!-- Só o urgente pulsa: é o único que não pode esperar. -->
+    <!-- Só o urgente pulsa: é o único que não pode esperar. A onda é uma cópia do ponto. -->
     <span
-      class="h-1.5 w-1.5 rounded-full"
-      :class="[aparencia.ponto, gravidade === 'alta' ? 'animate-pulsar' : '']"
+      class="relative h-1.5 w-1.5 rounded-full"
+      :class="[aparencia.ponto, gravidade === 'alta' ? 'after:absolute after:inset-0 after:animate-pulsar after:rounded-full after:bg-red-600' : '']"
       aria-hidden="true"
     />
     {{ aparencia.texto }}

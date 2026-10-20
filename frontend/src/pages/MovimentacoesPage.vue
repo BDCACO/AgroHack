@@ -116,14 +116,14 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
         <!-- O fundo verde desliza para a opção escolhida: a troca fica visível. -->
         <div class="relative mt-1.5 grid grid-cols-2 rounded-lg bg-stone-100 p-1 sm:inline-grid">
           <span
-            class="absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-md bg-campo-600 shadow-sm transition-transform duration-300 ease-(--ease-chegada)"
+            class="absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-md bg-campo-600 shadow-sm transition-transform duration-250 ease-movimento"
             :class="form.tipo === 'entrada' ? 'translate-x-full' : 'translate-x-0'"
             aria-hidden="true"
           />
           <label
             v-for="tipo in (['saida', 'entrada'] as const)"
             :key="tipo"
-            class="relative z-10 cursor-pointer rounded-md px-4 py-1.5 text-center text-sm font-semibold transition-colors duration-200 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600 has-[:focus-visible]:ring-offset-1"
+            class="relative z-10 cursor-pointer rounded-md px-4 py-1.5 text-center text-sm font-semibold transition-colors duration-250 ease-movimento has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600 has-[:focus-visible]:ring-offset-1"
             :class="form.tipo === tipo ? 'text-white' : 'text-stone-600 hover:text-stone-900'"
           >
             <input

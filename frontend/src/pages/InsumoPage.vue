@@ -90,7 +90,7 @@ const descricao = computed(() => {
   >
     <IconeSvg
       nome="seta"
-      class="h-4 w-4 rotate-180 transition-transform duration-200 group-hover:-translate-x-1"
+      class="h-4 w-4 rotate-180 transition-transform duration-200 ease-chegada group-hover:-translate-x-1"
     />
     Insumos
   </RouterLink>
@@ -249,7 +249,7 @@ const descricao = computed(() => {
       <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-stone-800 [&::-webkit-details-marker]:hidden">
         <IconeSvg
           nome="seta"
-          class="h-4 w-4 text-stone-400 transition-transform duration-200 group-open:rotate-90"
+          class="h-4 w-4 text-stone-400 transition-transform duration-200 ease-movimento group-open:rotate-90"
         />
         Movimentações ({{ insumo.movimentacoes.length }})
       </summary>

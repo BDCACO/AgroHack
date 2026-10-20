@@ -231,7 +231,7 @@ const quantidade = (valor: number, unidade: string) =>
            aqui". Os filhos ignoram o ponteiro nessa hora; senão o dragleave dispara ao
            passar por cima deles e a área pisca. -->
       <label
-        class="group relative flex animate-surgir cursor-pointer flex-col items-center overflow-hidden rounded-xl border-2 border-dashed px-4 py-10 text-center transition duration-200 [animation-delay:80ms] has-[:focus-visible]:border-campo-600 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600/30"
+        class="group relative flex animate-surgir cursor-pointer flex-col items-center overflow-hidden rounded-xl border-2 border-dashed px-4 py-10 text-center transition duration-200 ease-chegada [animation-delay:80ms] has-[:focus-visible]:border-campo-600 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-campo-600/30"
         :class="[
           arrastando
             ? 'scale-[1.01] border-campo-600 bg-campo-50 [&_*]:pointer-events-none'
@@ -245,7 +245,7 @@ const quantidade = (valor: number, unidade: string) =>
         @drop.prevent="soltar"
       >
         <span
-          class="flex h-14 w-14 items-center justify-center rounded-full bg-campo-100 text-campo-700 transition duration-300 ease-(--ease-chegada)"
+          class="flex h-14 w-14 items-center justify-center rounded-full bg-campo-100 text-campo-700 transition duration-200 ease-chegada"
           :class="arrastando ? '-translate-y-1.5 scale-110 bg-campo-600 text-white' : 'group-hover:-translate-y-0.5'"
           aria-hidden="true"
         >
