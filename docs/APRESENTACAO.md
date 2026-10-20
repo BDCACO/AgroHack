@@ -36,8 +36,10 @@ mostra a conta que o justifica e o que a conta não sabe.**
    dias com entrega de 10 — por isso é urgente. A reposição diz quanto pedir e por quê.
 4. **Limitações.** Na mesma página: o que a conta não sabe (sazonalidade, embalagem, preço).
    Mostrar que o sistema é honesto sobre isso é diferencial.
-5. **Lista de compras.** Voltar ao Painel → "Enviar pelo WhatsApp": a lista sai pronta para a
-   revenda.
+5. **Lista de compras e relatório.** Voltar ao Painel → "Enviar pelo WhatsApp": a lista sai
+   pronta para a revenda. Depois, "Baixar relatório (Excel)" e abrir: os alertas nas cores da
+   tela, a reposição com o "pedir hoje" em destaque e a situação de cada insumo — para levar ao
+   agrônomo ou ao banco. A última aba é a cópia de segurança das movimentações.
 6. **Importar planilha.** Em Importar dados, baixar a **planilha modelo (Excel)** e abri-la:
    cabeçalho formatado, listas de escolha com os insumos da fazenda, aba de instruções e um
    exemplo. Preencher duas linhas ao vivo (uma compra de um insumo novo e uma retirada) e
