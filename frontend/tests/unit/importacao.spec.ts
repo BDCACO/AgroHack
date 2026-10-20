@@ -113,11 +113,16 @@ describe('ImportarPage', () => {
     )
   })
 
-  it('Excel antigo (.xls) nem é enviado: a tela diz como converter', async () => {
-    const wrapper = await montarEEscolher(new TextEncoder().encode('xls'), 'estoque.xls')
+  it.each([
+    ['estoque.xls', 'Pasta de Trabalho do Excel (.xlsx)'],
+    ['estoque.ods', 'salve como Excel 2007-365 (.xlsx)'],
+    ['estoque.numbers', 'Exportar para → Excel'],
+    ['foto.jpg', 'Formato não reconhecido'],
+  ])('%s nem é enviado: a tela diz o que fazer', async (nome, orientacao) => {
+    const wrapper = await montarEEscolher(new TextEncoder().encode('x'), nome)
 
     expect(api.importarPlanilha).not.toHaveBeenCalled()
-    expect(wrapper.text()).toContain('Pasta de Trabalho do Excel (.xlsx)')
+    expect(wrapper.text()).toContain(orientacao)
   })
 
   it('o link do modelo aponta para a planilha que a API gera', () => {

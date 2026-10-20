@@ -52,17 +52,25 @@ async function escolher(evento: Event) {
   nomeDoArquivo.value = arquivo.name
   importado.value = null
   previa.value = null
-  const nome = arquivo.name.toLowerCase()
-  if (nome.endsWith('.xls')) {
-    erro.value =
-      'Arquivo do Excel antigo (.xls). Abra no Excel e salve como Pasta de Trabalho do Excel (.xlsx).'
+  const extensao = arquivo.name.toLowerCase().split('.').pop() ?? ''
+  if (extensao in OUTROS_FORMATOS) {
+    erro.value = OUTROS_FORMATOS[extensao]!
   } else if (arquivo.size > TAMANHO_MAXIMO) {
     erro.value = 'Arquivo maior que 5 MB. Divida a planilha em partes e importe uma de cada vez.'
-  } else if (nome.endsWith('.xlsx')) {
+  } else if (extensao === 'xlsx' || extensao === 'xlsm') {
     await enviar({ xlsx: await lerXlsx(arquivo) }, false)
-  } else {
+  } else if (extensao === 'csv' || extensao === 'txt') {
     await enviar({ conteudo: await lerCsv(arquivo) }, false)
+  } else {
+    erro.value = 'Formato não reconhecido. Use a planilha do Excel (.xlsx) ou um CSV.'
   }
+}
+
+// Planilhas que a API não lê, cada uma com o caminho para virar .xlsx.
+const OUTROS_FORMATOS: Record<string, string> = {
+  xls: 'Arquivo do Excel antigo (.xls). Abra no Excel e salve como Pasta de Trabalho do Excel (.xlsx).',
+  ods: 'Planilha do LibreOffice (.ods). Abra no LibreOffice e salve como Excel 2007-365 (.xlsx).',
+  numbers: 'Planilha do Numbers. Use Arquivo → Exportar para → Excel (.xlsx).',
 }
 
 async function enviar(arquivo: PlanilhaParaImportar, confirmar: boolean) {
@@ -185,7 +193,7 @@ const quantidade = (valor: number, unidade: string) =>
         </span>
         <input
           type="file"
-          accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          accept=".xlsx,.xlsm,.csv,.txt,.xls,.ods,.numbers"
           class="sr-only"
           data-teste="arquivo"
           @change="escolher"
