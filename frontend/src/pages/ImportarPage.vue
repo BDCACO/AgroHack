@@ -14,6 +14,11 @@ const previa = ref<ResultadoImportacao | null>(null)
 const importado = ref<ResultadoImportacao | null>(null)
 const ocupado = ref(false)
 const erro = ref<string | null>(null)
+// O confirmar falhou sem resposta: o servidor pode ter gravado mesmo assim.
+const confirmacaoIncerta = ref(false)
+
+// O limite da API (5 MB de texto). Conferir antes poupa enviar o arquivo à toa.
+const TAMANHO_MAXIMO = 5_000_000
 
 async function lerArquivo(arquivo: File): Promise<string> {
   const bytes = await arquivo.arrayBuffer()
@@ -34,12 +39,20 @@ async function escolher(evento: Event) {
   if (!arquivo) return
   nomeDoArquivo.value = arquivo.name
   importado.value = null
-  await enviar(await lerArquivo(arquivo), false)
+  previa.value = null
+  if (/\.xlsx?$/i.test(arquivo.name)) {
+    erro.value = 'Este é um arquivo do Excel. Abra no Excel e use Arquivo → Salvar como → CSV.'
+  } else if (arquivo.size > TAMANHO_MAXIMO) {
+    erro.value = 'Arquivo maior que 5 MB. Divida a planilha em partes e importe uma de cada vez.'
+  } else {
+    await enviar(await lerArquivo(arquivo), false)
+  }
 }
 
 async function enviar(texto: string, confirmar: boolean) {
   ocupado.value = true
   erro.value = null
+  confirmacaoIncerta.value = false
   try {
     const resultado = await estoque.importarPlanilha(texto, confirmar)
     conteudo.value = texto
@@ -47,6 +60,12 @@ async function enviar(texto: string, confirmar: boolean) {
     importado.value = resultado.importado ? resultado : null
   } catch (falha) {
     erro.value = mensagemDeErro(falha)
+    if (confirmar) {
+      // Não oferece o mesmo botão de novo: se o servidor gravou, importaria tudo duas
+      // vezes. Conferir de novo mostra se as linhas já estão lá (`ja_lancadas`).
+      previa.value = null
+      confirmacaoIncerta.value = true
+    }
   } finally {
     ocupado.value = false
   }
@@ -64,6 +83,8 @@ const colunas = [
 const contar = (total: number, singular: string, plural: string) =>
   `${total.toLocaleString('pt-BR')} ${total === 1 ? singular : plural}`
 const dataBr = (data: string | null) => data?.split('-').reverse().join('/')
+const quantidade = (valor: number, unidade: string) =>
+  valor ? `${valor.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} ${unidade}` : '—'
 </script>
 
 <template>
@@ -140,13 +161,27 @@ const dataBr = (data: string | null) => data?.split('-').reverse().join('/')
         >
       </label>
 
-      <p
+      <div
         v-if="erro"
         role="alert"
         class="mt-4 text-sm text-red-700"
       >
-        {{ erro }}
-      </p>
+        <p>{{ erro }}</p>
+        <template v-if="confirmacaoIncerta">
+          <p class="mt-1">
+            Não dá para saber se a importação foi gravada. Confira de novo antes de importar: a
+            conferência avisa se as linhas já estão no sistema.
+          </p>
+          <button
+            type="button"
+            class="mt-2 rounded-md border border-campo-600 px-4 py-2 font-medium text-campo-700 hover:bg-campo-50"
+            data-teste="conferir-de-novo"
+            @click="enviar(conteudo, false)"
+          >
+            Conferir de novo
+          </button>
+        </template>
+      </div>
 
       <div
         v-if="previa?.erros.length"
@@ -178,12 +213,54 @@ const dataBr = (data: string | null) => data?.split('-').reverse().join('/')
           {{ contar(previa.saidas, 'saída', 'saídas') }}, de {{ dataBr(previa.primeira_data) }} a
           {{ dataBr(previa.ultima_data) }}.
         </p>
+        <!-- Os totais são o que denuncia um número lido errado (mil virando um). -->
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <caption class="sr-only">
+              Total por insumo
+            </caption>
+            <thead class="text-xs uppercase tracking-wide text-stone-500">
+              <tr>
+                <th class="py-1 pr-4 font-semibold">
+                  Insumo
+                </th>
+                <th class="py-1 pr-4 text-right font-semibold">
+                  Entra
+                </th>
+                <th class="py-1 text-right font-semibold">
+                  Sai
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-stone-100">
+              <tr
+                v-for="insumo in previa.insumos"
+                :key="insumo.nome"
+                data-teste="total-insumo"
+              >
+                <td class="py-1.5 pr-4 text-stone-800">
+                  {{ insumo.nome }}
+                  <span
+                    v-if="insumo.novo"
+                    class="ml-1 rounded-full bg-campo-100 px-2 py-0.5 text-xs font-medium text-campo-700"
+                  >novo</span>
+                </td>
+                <td class="py-1.5 pr-4 text-right tabular-nums">
+                  {{ quantidade(insumo.entradas, insumo.unidade) }}
+                </td>
+                <td class="py-1.5 text-right tabular-nums">
+                  {{ quantidade(insumo.saidas, insumo.unidade) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <p
-          v-if="previa.insumos_novos.length"
+          v-if="previa.insumos.some((insumo) => insumo.novo)"
           class="mt-2 text-sm text-stone-600"
         >
-          Insumos novos, que serão cadastrados: {{ previa.insumos_novos.join(', ') }}. Depois,
-          complete o mínimo e o prazo de entrega deles na tela de Insumos.
+          Os insumos novos serão cadastrados. Depois, complete o mínimo e o prazo de entrega deles
+          na tela de Insumos.
         </p>
         <p
           v-if="previa.ja_lancadas"
@@ -221,7 +298,7 @@ const dataBr = (data: string | null) => data?.split('-').reverse().join('/')
             Ver os alertas
           </RouterLink>
           <RouterLink
-            v-if="importado.insumos_novos.length"
+            v-if="importado.insumos.some((insumo) => insumo.novo)"
             :to="{ name: 'insumos' }"
             class="rounded-md px-4 py-2 text-sm font-medium text-campo-700 hover:bg-campo-100"
           >

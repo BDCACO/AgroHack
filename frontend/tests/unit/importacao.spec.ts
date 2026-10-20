@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import ImportarPage from '@/pages/ImportarPage.vue'
 import { routes } from '@/router'
 import * as api from '@/services/estoque'
+import { ApiError } from '@/services/http'
 import type { ResultadoImportacao } from '@/types/api'
 
 vi.mock('@/services/estoque', () => ({
@@ -18,7 +19,7 @@ const resumo: ResultadoImportacao = {
   linhas: 2,
   entradas: 1,
   saidas: 1,
-  insumos_novos: ['Ureia agrícola'],
+  insumos: [{ nome: 'Ureia agrícola', unidade: 'kg', novo: true, entradas: 1000, saidas: 25.5 }],
   primeira_data: '2026-03-02',
   ultima_data: '2026-03-09',
   ja_lancadas: 0,
@@ -26,11 +27,11 @@ const resumo: ResultadoImportacao = {
   importado: false,
 }
 
-async function montarEEscolher(bytes: Uint8Array<ArrayBuffer>) {
+async function montarEEscolher(bytes: Uint8Array<ArrayBuffer>, nome = 'estoque.csv') {
   const router = createRouter({ history: createMemoryHistory(), routes })
   const wrapper = mount(ImportarPage, { global: { plugins: [router] } })
   const campo = wrapper.find('[data-teste="arquivo"]')
-  const arquivo = new File([bytes], 'estoque.csv', { type: 'text/csv' })
+  const arquivo = new File([bytes], nome, { type: 'text/csv' })
   Object.defineProperty(campo.element, 'files', { value: [arquivo] })
   await campo.trigger('change')
   await flushPromises()
@@ -56,6 +57,8 @@ describe('ImportarPage', () => {
     expect(wrapper.find('[data-teste="previa"]').text()).toContain(
       '2 movimentações: 1 entrada e 1 saída, de 02/03/2026 a 09/03/2026.',
     )
+    const total = wrapper.find('[data-teste="total-insumo"]').findAll('td')
+    expect(total.map((td) => td.text())).toEqual(['Ureia agrícola novo', '1.000 kg', '25,5 kg'])
 
     await wrapper.find('[data-teste="previa"] button').trigger('click')
     await flushPromises()
@@ -77,5 +80,30 @@ describe('ImportarPage', () => {
 
     expect(wrapper.find('[data-teste="erros"]').text()).toContain('Linha 3: data no futuro.')
     expect(wrapper.find('[data-teste="previa"]').exists()).toBe(false)
+  })
+
+  it('se o confirmar falha, não oferece o mesmo botão: confere de novo', async () => {
+    vi.mocked(api.importarPlanilha)
+      .mockResolvedValueOnce(resumo)
+      .mockRejectedValueOnce(new ApiError(null))
+      .mockResolvedValueOnce({ ...resumo, ja_lancadas: 2 })
+    const wrapper = await montarEEscolher(new TextEncoder().encode('qualquer'))
+
+    await wrapper.find('[data-teste="previa"] button').trigger('click')
+    await flushPromises()
+
+    // Sem resposta, o servidor pode ter gravado: outro clique importaria em dobro.
+    expect(wrapper.find('[data-teste="previa"]').exists()).toBe(false)
+    await wrapper.find('[data-teste="conferir-de-novo"]').trigger('click')
+    await flushPromises()
+    expect(api.importarPlanilha).toHaveBeenLastCalledWith('qualquer', false)
+    expect(wrapper.find('[data-teste="ja-lancadas"]').exists()).toBe(true)
+  })
+
+  it('arquivo do Excel nem é enviado', async () => {
+    const wrapper = await montarEEscolher(new TextEncoder().encode('PK'), 'estoque.xlsx')
+
+    expect(api.importarPlanilha).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Salvar como → CSV')
   })
 })

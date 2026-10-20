@@ -52,6 +52,12 @@ export async function importarPlanilha(
   conteudo: string,
   confirmar: boolean,
 ): Promise<ResultadoImportacao> {
-  const { data } = await http.post<ResultadoImportacao>('/importacoes', { conteudo, confirmar })
+  // Planilha grande demora mais que os 10 s padrão. E, no confirmar, desistir antes do
+  // servidor terminar é pior que esperar: ele grava assim mesmo.
+  const { data } = await http.post<ResultadoImportacao>(
+    '/importacoes',
+    { conteudo, confirmar },
+    { timeout: 120_000 },
+  )
   return data
 }
