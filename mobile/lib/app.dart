@@ -1,0 +1,76 @@
+import 'package:flutter/material.dart';
+
+import 'core/api/cliente_api.dart';
+import 'core/servicos.dart';
+import 'core/tema.dart';
+import 'pages/importar_page.dart';
+import 'pages/insumos_page.dart';
+import 'pages/movimentacoes_page.dart';
+import 'pages/painel_page.dart';
+import 'pages/sistema_page.dart';
+
+class CampoCertoApp extends StatelessWidget {
+  const CampoCertoApp({super.key, required this.api});
+
+  final ClienteApi api;
+
+  @override
+  Widget build(BuildContext context) {
+    return Servicos(
+      api: api,
+      child: MaterialApp(
+        title: 'CampoCerto',
+        theme: temaDoApp(),
+        home: const Estrutura(),
+      ),
+    );
+  }
+}
+
+class _Tela {
+  const _Tela(this.titulo, this.icone, this.pagina);
+
+  final String titulo;
+  final IconData icone;
+  final Widget pagina;
+}
+
+// As telas da barra de baixo, na ordem do menu do site.
+const _telas = [
+  _Tela('Painel', Icons.dashboard_outlined, PainelPage()),
+  _Tela('Insumos', Icons.inventory_2_outlined, InsumosPage()),
+  _Tela('Movimentações', Icons.swap_vert, MovimentacoesPage()),
+  _Tela('Importar', Icons.upload_file_outlined, ImportarPage()),
+  _Tela('Sistema', Icons.monitor_heart_outlined, SistemaPage()),
+];
+
+/// A barra de navegação embaixo, ao alcance do polegar, como na versão para
+/// celular do site.
+class Estrutura extends StatefulWidget {
+  const Estrutura({super.key});
+
+  @override
+  State<Estrutura> createState() => _EstruturaState();
+}
+
+class _EstruturaState extends State<Estrutura> {
+  var _atual = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final tela = _telas[_atual];
+    return Scaffold(
+      appBar: AppBar(title: Text(tela.titulo)),
+      // Cada tela busca seus dados ao aparecer, e de novo ao voltar para ela.
+      body: KeyedSubtree(key: ValueKey(_atual), child: tela.pagina),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _atual,
+        onDestinationSelected: (i) => setState(() => _atual = i),
+        destinations: [
+          for (final t in _telas)
+            NavigationDestination(icon: Icon(t.icone), label: t.titulo),
+        ],
+      ),
+    );
+  }
+}

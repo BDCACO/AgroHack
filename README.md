@@ -19,6 +19,7 @@ reposição estimada, sempre com justificativa e limitações explícitas.
 |---|---|
 | Frontend | Vue 3, TypeScript, Vite, Vue Router, Pinia, Tailwind CSS v4, Axios, Apache ECharts, Plus Jakarta Sans |
 | Backend | Python 3.14, FastAPI, Pydantic, SQLAlchemy 2, Alembic, openpyxl, Pytest |
+| App | Flutter 3.47 (Dart 3.13), Android e iOS, pacote `http` |
 | Banco | PostgreSQL 18 |
 | Infra | Docker, Docker Compose |
 
@@ -91,6 +92,19 @@ npm install
 npm run dev
 ```
 
+## App para celular
+
+Além do site, há um app nativo para Android e iOS em Flutter, em [`mobile/`](mobile/README.md).
+Usa a mesma API; o endereço dela vem do build:
+
+```bash
+cd mobile
+flutter run                                                  # emulador do Android
+flutter run --dart-define=API_URL=http://192.168.0.10:8000/api/v1   # celular na rede
+```
+
+Hoje tem Painel, Insumos, Movimentações e Sistema; a importação de planilha ainda é só pelo site.
+
 ## Variáveis de ambiente
 
 Todas em `.env` na raiz; o modelo comentado está em [`.env.example`](.env.example).
@@ -136,5 +150,8 @@ CampoCerto/
 │   │   ├── types/
 │   │   └── styles/              # Tailwind
 │   └── tests/unit/
+├── mobile/                  # app Flutter (Android e iOS), ver mobile/README.md
+│   ├── lib/                 # core/ models/ services/ pages/ widgets/
+│   └── test/
 └── docs/
 ```
