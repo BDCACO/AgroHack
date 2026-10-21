@@ -146,7 +146,7 @@ tem banco a orquestrar e chama o motor direto.
 |---|---|
 | `src/main.ts` | Instala Pinia e Router, importa o CSS |
 | `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só |
-| `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, gaveta no celular, resumo de status |
+| `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, barra de baixo no celular e no tablet, resumo de status |
 | `src/pages/` | Uma página por rota: Painel (alertas, reposição com lista de compras para o WhatsApp, limitações), Insumos (cadastro), página do insumo (`/insumos/:id`: resumo, gráfico, alertas, movimentações, remover), Movimentações (entradas e saídas), Importar dados (Excel ou CSV, com prévia), Sistema |
 | `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `EstadoVazio`, `GraficoDeEstoque`, `IconeSvg`, `IndicadorDeStatus`, `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
 | `src/stores/` | Pinia: estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração |
@@ -190,12 +190,34 @@ diz que o dedo pegou.
   graves primeiro; as barras de "quanto tempo o estoque dura" crescem da esquerda, da mais
   apertada à mais folgada; a linha do gráfico se desenha no sentido do tempo.
 - **Para onde foi:** ao filtrar alertas, quem fica desliza para o lugar e quem sai esmaece
-  encolhendo um pouco. A gaveta do celular entra em 300 ms e sai em 200 ms.
+  encolhendo um pouco.
 - **Trabalho em andamento e resultado:** barra de "trabalhando" ao conferir a planilha, ícone
   que gira ao verificar o sistema, sinal de concluído que se desenha, esqueleto no lugar do
   conteúdo que está chegando.
 - **O que não pode esperar:** só o ponto do selo "Urgente" pulsa (uma cópia dele cresce e
   some). Nada mais anima em loop.
+
+### Celular
+
+O produtor usa o CampoCerto no galpão, com o celular na mão, muitas vezes um Android de
+entrada (360 px de largura). Abaixo de 1024 px:
+
+- **Barra de baixo** no lugar do menu lateral: as cinco telas ao alcance do polegar, com o
+  número de urgentes no Painel. O rótulo curto vem da rota (`meta.menu.curto`). Tocar de novo
+  na aba da tela atual sobe para o topo; trocar de tela começa do topo, e o "voltar" do
+  celular devolve a rolagem. Com o teclado aberto num campo de texto, a barra some para não
+  cobrir o campo.
+- **Listas no lugar de tabelas** (abaixo de 768 px): Insumos vira um cartão por insumo, com
+  "Alterar" à mão; Movimentações vira um extrato agrupado por dia ("Hoje", "Ontem", dia da
+  semana), com o dia preso no alto ao rolar.
+- **Toque:** em tela de toque, botões com pelo menos 44 px de altura; campos com letra de
+  16 px (abaixo disso o iPhone dá zoom); "Lançar" e "Enviar pelo WhatsApp" na largura toda.
+  Ao lançar, a confirmação aparece ao lado do botão, e o Android vibra de leve.
+- **Instalável** na tela inicial (`manifest.webmanifest`, ícones e metas da Apple): abre em
+  tela cheia, como um app, respeitando entalhe e barra de gestos (`env(safe-area-inset-*)`).
+  Sem modo offline: os dados vêm da API.
+
+No desktop nada disso aparece: a partir de 1024 px a tela é a mesma de antes, pixel a pixel.
 
 Quem pede **menos movimento** ao sistema operacional (`prefers-reduced-motion`) não recebe
 animação nenhuma: a regra global em `main.css` zera as durações e toda tela aparece já no estado

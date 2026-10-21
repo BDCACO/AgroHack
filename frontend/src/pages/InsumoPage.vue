@@ -61,7 +61,7 @@ const resumo = computed((): { rotulo: string; valor: string; icone: NomeIcone; a
   return [
     { rotulo: 'Estoque atual', valor: `${numero(estoque_atual)} ${unidade}`, icone: 'insumos' },
     { rotulo: 'Consumo médio', valor: consumo ? `${numero(consumo, 2)} ${unidade}/dia` : '—', icone: 'movimentacoes' },
-    { rotulo: 'Dura cerca de', valor: cobertura === null ? '—' : `${Math.round(cobertura)} dias`, icone: 'relogio' },
+    { rotulo: 'Dura cerca de', valor: cobertura === null ? '—' : `${numero(Math.round(cobertura))} dias`, icone: 'relogio' },
     {
       rotulo: 'Reposição',
       icone: 'calendario',
@@ -266,7 +266,8 @@ const descricao = computed(() => {
               <th class="px-4 py-2 text-right font-semibold">
                 Quantidade
               </th>
-              <th class="px-4 py-2 font-semibold">
+              <!-- No celular, a validade vai para baixo do tipo: quatro colunas não cabem. -->
+              <th class="px-4 py-2 font-semibold max-sm:hidden">
                 Validade
               </th>
             </tr>
@@ -284,11 +285,15 @@ const descricao = computed(() => {
                 :class="mov.tipo === 'entrada' ? 'text-campo-700' : 'text-terra-700'"
               >
                 {{ mov.tipo === 'entrada' ? 'Entrada' : 'Saída' }}
+                <span
+                  v-if="mov.validade"
+                  class="block text-xs text-stone-500 tabular-nums sm:hidden"
+                >val. {{ dataBr(mov.validade) }}</span>
               </td>
               <td class="px-4 py-2 text-right tabular-nums">
                 {{ numero(mov.quantidade) }} {{ insumo.unidade }}
               </td>
-              <td class="px-4 py-2 tabular-nums text-stone-600">
+              <td class="px-4 py-2 tabular-nums text-stone-600 max-sm:hidden">
                 {{ mov.validade ? dataBr(mov.validade) : '—' }}
               </td>
             </tr>

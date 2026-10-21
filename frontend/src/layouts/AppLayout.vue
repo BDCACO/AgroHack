@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onMounted, useTemplateRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import IconeSvg from '@/components/IconeSvg.vue'
@@ -13,37 +13,27 @@ const estoque = useEstoqueStore()
 const rota = useRoute()
 
 const conteudo = useTemplateRef<HTMLElement>('conteudo')
-const botaoAbrir = useTemplateRef<HTMLButtonElement>('botaoAbrir')
-const botaoFechar = useTemplateRef<HTMLButtonElement>('botaoFechar')
 
-// Gaveta do celular. No desktop (lg+) o menu é fixo e isto não tem efeito.
-const gavetaAberta = ref(false)
+// Numa página que troca sem recarregar, o leitor de tela não percebe a mudança: o foco vai
+// para o conteúdo novo, e o próximo Tab anda por ele, não pelo menu de novo.
 watch(
   () => rota.fullPath,
   async () => {
-    gavetaAberta.value = false
-    // Numa página que troca sem recarregar, o leitor de tela não percebe a mudança: o
-    // foco vai para o conteúdo novo, e o próximo Tab anda por ele, não pelo menu de novo.
     await nextTick()
-    conteudo.value?.focus()
+    conteudo.value?.focus({ preventScroll: true })
   },
 )
 
-// O foco entra na gaveta ao abrir e volta ao botão ao fechar: quem usa teclado ou leitor
-// de tela não fica perdido atrás do fundo escurecido.
-function abrirGaveta() {
-  gavetaAberta.value = true
-  nextTick(() => botaoFechar.value?.focus())
-}
-async function fecharGaveta() {
-  gavetaAberta.value = false
-  // Depois de a barra deixar de ser inerte: elemento inerte não recebe foco.
-  await nextTick()
-  botaoAbrir.value?.focus()
-}
-
 const ativo = (nome: string) => nome === (rota.meta.secao ?? rota.name)
 const indiceAtivo = computed(() => itensDeMenu.findIndex((item) => ativo(item.nome)))
+
+// Tocar de novo na aba da tela em que já se está sobe para o topo, como nos apps.
+function tocarNaAba(nome: string, navegar: (evento: MouseEvent) => void, evento: MouseEvent) {
+  if (rota.name !== nome) return navegar(evento)
+  evento.preventDefault()
+  const reduzir = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  window.scrollTo({ top: 0, behavior: reduzir ? 'auto' : 'smooth' })
+}
 
 const resumoStatus = {
   verificando: { texto: 'Verificando sistema…', ponto: 'bg-stone-400 animate-pulse' },
@@ -72,10 +62,10 @@ onMounted(() => {
       Pular para o conteúdo
     </a>
 
-    <!-- Barra superior: só no celular/tablet -->
+    <!-- Barra superior do celular e do tablet: só a marca. Rola junto com a página; quem
+         fica sempre à mão é a barra de baixo. No app instalado, desce abaixo do relógio. -->
     <header
-      class="sticky top-0 z-30 flex h-14 items-center justify-between bg-campo-900/95 px-4 text-white shadow-sm backdrop-blur lg:hidden"
-      :inert="gavetaAberta"
+      class="flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center bg-campo-900 px-4 pt-[env(safe-area-inset-top)] text-white lg:hidden"
     >
       <RouterLink
         :to="{ name: 'painel' }"
@@ -83,47 +73,10 @@ onMounted(() => {
       >
         <LogoCampoCerto com-nome />
       </RouterLink>
-      <button
-        ref="botaoAbrir"
-        type="button"
-        class="rounded-lg p-2 transition-colors hover:bg-white/10 active:scale-95"
-        :aria-expanded="gavetaAberta"
-        aria-controls="menu-lateral"
-        aria-label="Abrir menu"
-        @click="abrirGaveta"
-      >
-        <IconeSvg
-          nome="menu"
-          class="h-6 w-6"
-        />
-      </button>
     </header>
 
-    <!-- Fundo escurecido atrás da gaveta: esmaece junto com o deslize dela. -->
-    <Transition
-      enter-from-class="opacity-0"
-      leave-to-class="opacity-0"
-      enter-active-class="transition-opacity duration-200 ease-out"
-      leave-active-class="transition-opacity duration-150 ease-in"
-    >
-      <div
-        v-if="gavetaAberta"
-        class="fixed inset-0 z-40 bg-campo-950/50 backdrop-blur-[2px] lg:hidden"
-        aria-hidden="true"
-        @click="fecharGaveta"
-      />
-    </Transition>
-
-    <aside
-      id="menu-lateral"
-      class="fixed inset-y-0 left-0 z-50 flex w-64 flex-col bg-linear-to-b from-campo-900 to-campo-950 text-campo-50 shadow-xl lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 lg:shadow-none"
-      :class="gavetaAberta ? 'translate-x-0 transition-[translate] duration-300 ease-chegada' : '-translate-x-full transition-[translate,visibility] duration-200 ease-saida max-lg:invisible'"
-      @keydown.esc="fecharGaveta"
-    >
-      <!-- Fechada no celular, `invisible` a tira do Tab e do leitor de tela: sem isso, o
-           foco andava pelos links escondidos fora da tela. A visibilidade só entra na
-           animação ao fechar (some no fim do deslize); ao abrir, aparece na hora — senão o
-           foco não entra nela, que no primeiro instante ainda estaria escondida. -->
+    <!-- Menu lateral: só no desktop. -->
+    <aside class="inset-y-0 left-0 z-50 hidden w-64 flex-col bg-linear-to-b from-campo-900 to-campo-950 text-campo-50 lg:sticky lg:top-0 lg:flex lg:h-screen">
       <div class="flex h-18 items-center justify-between px-5">
         <RouterLink
           :to="{ name: 'painel' }"
@@ -132,18 +85,6 @@ onMounted(() => {
         >
           <LogoCampoCerto com-nome />
         </RouterLink>
-        <button
-          ref="botaoFechar"
-          type="button"
-          class="rounded-lg p-1.5 transition-colors hover:bg-white/10 active:scale-95 lg:hidden"
-          aria-label="Fechar menu"
-          @click="fecharGaveta"
-        >
-          <IconeSvg
-            nome="fechar"
-            class="h-5 w-5"
-          />
-        </button>
       </div>
 
       <nav
@@ -185,7 +126,7 @@ onMounted(() => {
               class="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white"
               data-teste="urgentes-menu"
             >
-              {{ urgentes }}<span class="sr-only"> {{ urgentes === 1 ? 'urgente' : 'urgentes' }}</span>
+              {{ urgentes }}<span class="sr-only">{{ urgentes === 1 ? ' urgente' : ' urgentes' }}</span>
             </span>
           </a>
         </RouterLink>
@@ -205,11 +146,8 @@ onMounted(() => {
       </RouterLink>
     </aside>
 
-    <!-- Com a gaveta aberta, o resto da tela fica inerte: o Tab não escapa para trás dela. -->
-    <div
-      class="flex min-w-0 flex-1 flex-col"
-      :inert="gavetaAberta"
-    >
+    <!-- No celular, a barra de baixo ocupa o fim da tela: o conteúdo termina antes dela. -->
+    <div class="flex min-w-0 flex-1 flex-col max-lg:pb-[calc(4rem+env(safe-area-inset-bottom))]">
       <main
         id="conteudo"
         ref="conteudo"
@@ -223,9 +161,12 @@ onMounted(() => {
           class="mb-6 animate-surgir rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
           data-teste="aviso-demonstracao"
         >
-          <strong>Dados de demonstração.</strong> Parte dos insumos e movimentações foi gerada
-          para apresentar o sistema e não vem de uma fazenda real. Para apagar:
-          <code>make demo-limpar</code>.
+          <!-- No celular, o curto: o comando de apagar é para quem roda o sistema. O espaço fica
+               dentro de cada versão, colado ao texto dela. -->
+          <strong>Dados de demonstração.</strong><span class="sm:hidden"> Fazenda fictícia, para apresentar o sistema.</span>
+          <span class="max-sm:hidden"> Parte dos insumos e movimentações foi gerada
+            para apresentar o sistema e não vem de uma fazenda real. Para apagar:
+            <code>make demo-limpar</code>.</span>
         </p>
         <!-- Páginas têm mais de um elemento na raiz: o div dá à transição um só a animar. -->
         <RouterView v-slot="{ Component, route: atual }">
@@ -243,5 +184,61 @@ onMounted(() => {
         CampoCerto · AGROHACK 2026/2 · IFRO Campus Ariquemes
       </footer>
     </div>
+
+    <!-- Barra de baixo, no celular e no tablet: as telas ao alcance do polegar, sem menu
+         escondido. Mesmas telas e mesma ordem do menu lateral. -->
+    <nav
+      class="barra-inferior fixed inset-x-0 bottom-0 z-40 bg-campo-900 pb-[env(safe-area-inset-bottom)] text-campo-100/75 shadow-[0_-1px_0_rgb(0_0_0/0.15)] lg:hidden"
+      aria-label="Principal"
+    >
+      <div class="relative mx-auto grid max-w-xl grid-cols-5">
+        <!-- Como no menu lateral: um destaque só, que desliza até a aba nova. -->
+        <span
+          class="pointer-events-none absolute top-2 left-0 flex w-1/5 justify-center transition-[translate,opacity] duration-300 ease-movimento"
+          :class="indiceAtivo < 0 ? 'opacity-0' : ''"
+          :style="{ translate: `calc(${Math.max(indiceAtivo, 0)} * 100%) 0` }"
+          aria-hidden="true"
+        >
+          <span class="h-8 w-14 rounded-full bg-white/15" />
+        </span>
+        <RouterLink
+          v-for="item in itensDeMenu"
+          :key="item.nome"
+          v-slot="{ href, navigate }"
+          :to="{ name: item.nome }"
+          custom
+        >
+          <a
+            :href="href"
+            class="group relative flex h-16 flex-col items-center justify-start gap-1 pt-2 text-[11px] leading-none font-medium transition-colors duration-150 [-webkit-tap-highlight-color:transparent]"
+            :class="ativo(item.nome) ? 'text-white' : 'active:text-white'"
+            :aria-current="ativo(item.nome) ? 'page' : undefined"
+            data-teste="aba"
+            @click="tocarNaAba(item.nome, navigate, $event)"
+          >
+            <span class="relative flex h-8 w-14 items-center justify-center">
+              <IconeSvg
+                :nome="item.icone"
+                class="h-6 w-6 transition-transform duration-150 ease-chegada group-active:scale-90"
+              />
+              <span
+                v-if="item.nome === 'painel' && urgentes"
+                class="absolute top-0 right-2.5 min-w-4 rounded-full bg-red-500 px-1 text-center text-[10px] leading-4 font-bold text-white ring-2 ring-campo-900"
+                data-teste="urgentes-aba"
+              >
+                {{ urgentes }}<span class="sr-only">{{ urgentes === 1 ? ' urgente' : ' urgentes' }}</span>
+              </span>
+              <span
+                v-if="item.nome === 'sistema' && status.situacao === 'problema'"
+                class="absolute top-0.5 right-3.5 size-2.5 rounded-full bg-red-400 ring-2 ring-campo-900"
+              >
+                <span class="sr-only">, com problema</span>
+              </span>
+            </span>
+            <span>{{ item.rotuloCurto }}</span>
+          </a>
+        </RouterLink>
+      </div>
+    </nav>
   </div>
 </template>

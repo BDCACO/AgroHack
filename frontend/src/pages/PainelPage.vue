@@ -321,7 +321,9 @@ async function copiar() {
             O que pedir e até quando, com a conta.
           </p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <!-- No celular, mandar a lista pelo WhatsApp é a ação principal: vem primeiro, na
+             largura toda. -->
+        <div class="flex flex-wrap gap-2 max-sm:w-full">
           <button
             v-if="podeCopiar"
             type="button"
@@ -339,7 +341,7 @@ async function copiar() {
             :href="linkWhatsApp"
             target="_blank"
             rel="noopener"
-            class="botao-primario"
+            class="botao-primario max-sm:order-first max-sm:w-full"
             data-teste="whatsapp"
           >
             <IconeSvg

@@ -34,10 +34,11 @@ Ambiente `jsdom`, configurado em `vite.config.ts`. Os serviços HTTP são substi
 
 | Arquivo | Cobre |
 |---|---|
-| `navegacao.spec.ts` | Cada rota renderiza a sua página (inclusive 404); menu lista as telas na ordem; gaveta abre e fecha ao navegar; resumo de status no menu |
+| `navegacao.spec.ts` | Cada rota renderiza a sua página (inclusive 404); menu lista as telas na ordem; barra de baixo do celular com as mesmas telas, rótulos curtos, aba acesa e número de urgentes; tocar na aba atual sobe ao topo sem navegar; na página de um insumo, a aba Insumos leva de volta à lista; resumo de status no menu |
 | `estoque.spec.ts` | Store: alertas de todos os insumos, os mais graves primeiro; recarga após lançar movimentação; mensagem legível sem API. Painel: alertas com justificativa, reposição, lista de compras do WhatsApp ("Pedir agora" separado dos próximos), cartões de gravidade que filtram a lista, barras de cobertura (falta, pedir hoje, folga) em ordem, estado vazio |
 | `importacao.spec.ts` | Tela de importação: CSV decodificado do Windows-1252, `.xlsx` enviado em base64, `.xls`, `.ods`, `.numbers` e formato desconhecido barrados com a instrução do que fazer; mostra o resumo e os totais, só grava ao confirmar e recarrega o estoque; com erros, lista-os e não oferece importar; se o confirmar falha, não oferece o mesmo botão e confere de novo; o link do modelo aponta para a planilha da API |
 | `insumo.spec.ts` | Página do insumo: resumo, alertas sem repetir o nome, "Insumos" aceso no menu, alertas mesmo sem movimentação, remover e voltar à lista. Gráfico (ECharts substituído por um mock que guarda a configuração): saldo mantido até hoje, projeção com a mesma cobertura do cartão, texto do usuário escapado no tooltip |
+| `movimentacoes.spec.ts` | Movimentações no celular: extrato agrupado por dia ("Hoje", "Ontem", dia da semana) com sinal e unidade; confirmação em palavras do que acabou de ser lançado |
 | `statusSistema.spec.ts` | Store: API e banco ok; banco indisponível; API fora do ar não afirma nada sobre o banco; getter `situacao` |
 | `IndicadorDeStatus.spec.ts` | Componente mostra o texto de cada estado |
 
