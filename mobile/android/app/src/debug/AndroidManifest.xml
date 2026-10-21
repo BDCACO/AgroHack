@@ -4,4 +4,7 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Só no debug: a API de desenvolvimento roda em http://, sem TLS
+         (http://10.0.2.2:8000 no emulador). O release continua exigindo https. -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>
