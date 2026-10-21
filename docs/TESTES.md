@@ -46,6 +46,20 @@ make test-frontend                # no container
 cd frontend && npm test           # no host (exige Node 24)
 ```
 
+## App: flutter test (`mobile/test/`)
+
+Sem celular nem emulador. A API é substituída por um `MockClient` do pacote `http`, que responde
+no formato da API de verdade (`test/dados.dart`).
+
+| Arquivo | Cobre |
+|---|---|
+| `api_test.dart` | Modelos leem o JSON da API e mandam datas em AAAA-MM-DD; o `ClienteApi` usa a frase da API no erro, trata "sem resposta" e aceita o 503 do `/ready`; acentos em UTF-8; formatação brasileira de quantidade e data |
+| `app_test.dart` | O app inteiro: Painel com alertas e justificativa, Insumos com separador de milhar, Movimentações com o nome do insumo, Sistema, e o aviso com "Tentar de novo" sem API |
+
+```bash
+cd mobile && flutter analyze && flutter test   # exige Flutter 3.47.7
+```
+
 ## Integração real (API ↔ PostgreSQL)
 
 Com o stack no ar (`make up`):
@@ -61,8 +75,9 @@ tabela `alembic_version` do PostgreSQL (deve ser a última migration de
 ## No GitHub (CI)
 
 `.github/workflows/verificacao.yml` roda o mesmo que o `make verify` (ruff, pytest, vue-tsc,
-eslint e vitest) em todo PR e em todo push na `main`, direto com uv e Node (sem Docker). PR com
-a verificação vermelha não deve ser mergeado.
+eslint e vitest), mais `dart format`, `flutter analyze` e `flutter test` do app, em todo PR e
+em todo push na `main`, direto com uv, Node e Flutter (sem Docker). PR com a verificação
+vermelha não deve ser mergeado.
 
 ## Lint e tipos
 

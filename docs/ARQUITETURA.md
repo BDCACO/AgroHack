@@ -210,7 +210,36 @@ tooltip (HTML) é escapado; a tabela de movimentações ao lado é a versão ace
 A projeção usa a `cobertura_dias` da API com o mesmo arredondamento do cartão "Dura cerca de":
 a página não pode dizer 8 dias num lugar e 9 no outro.
 
-## 4. Infraestrutura
+## 4. App para celular (`mobile/`)
+
+App nativo em Flutter para Android e iOS, além do site. Fala com a mesma API e segue a mesma
+regra: **exibe e coleta**, a análise fica no backend. O app espelha o desenho do frontend:
+
+| Caminho | Responsabilidade | No site |
+|---|---|---|
+| `lib/core/api/cliente_api.dart` | Cliente HTTP único; devolve `ApiError` com a frase para a tela | `services/http.ts` |
+| `lib/models/api.dart` | Espelho dos schemas da API, escrito à mão | `types/api.ts` |
+| `lib/services/estoque.dart` | Rotas de insumos, movimentações e `/ready` | `services/estoque.ts`, `health.ts` |
+| `lib/pages/` | Painel, Insumos, Movimentações, Importar, Sistema | `pages/` |
+| `lib/core/tema.dart` | Cores da marca, rótulos de alerta e de gravidade | `main.css`, `SeloDeGravidade.vue`, `CartaoDeAlerta.vue` |
+
+Decisões:
+
+- **Endereço da API no build** (`--dart-define=API_URL=...`). O app não vive na mesma origem
+  da API como o site. O padrão é `http://10.0.2.2:8000/api/v1`, o `localhost` do computador
+  visto do emulador do Android.
+- **`http://` só em desenvolvimento.** O Android aceita tráfego sem TLS só no build de debug; o
+  iOS, só na rede local. O release exige `https://`.
+- **Sem gerenciador de estado nem roteador de pacote.** Cinco telas numa barra embaixo e um
+  `InheritedWidget` (`Servicos`) com os serviços bastam hoje; nos testes, troca-se o cliente
+  HTTP por um falso num lugar só. Entra Riverpod ou go_router quando a navegação pedir.
+- **Mudou um schema na API, muda em três lugares**: `backend/app/schemas/`, `types/api.ts` e
+  `models/api.dart`. Gerar a partir do OpenAPI resolveria os dois últimos (seção 7).
+
+Ainda não há no app: página do insumo com o gráfico, cadastro, lançamento de movimentação e
+importação de planilha (falta escolher o arquivo no celular). Para esses, use o site.
+
+## 5. Infraestrutura
 
 `compose.yaml` na raiz sobe `db` (PostgreSQL 18), `api` (imagem `backend/Dockerfile`, alvo `dev`,
 com `--reload`) e `web` (Node 24 rodando o Vite). A API aplica `alembic upgrade head` ao subir
@@ -223,7 +252,7 @@ dentro do container, e sem isso o Vite serve a versão antiga até reiniciar.
 Configuração por `.env` na raiz (modelo em `.env.example`). Variáveis obrigatórias sem default:
 `ENVIRONMENT` e `DATABASE_URL` (montada pelo compose a partir de `POSTGRES_*`).
 
-## 5. Herdado do ArkoHub × decidido diferente
+## 6. Herdado do ArkoHub × decidido diferente
 
 O ArkoHub é um SaaS multi-tenant de ferramentas para escritórios (FastAPI + Vue 3/Vuetify +
 PostgreSQL com RLS + MinIO + Redis + worker). O CampoCerto aproveita os **padrões**, não as
@@ -260,12 +289,15 @@ tecnologias que não se aplicam.
 | MinIO, Redis, worker, ClamAV, rate-limit, auth com sessão | Não entrou | Nenhum requisito do CampoCerto pede, por ora |
 | mypy strict, import-linter, dependency-cruiser, cobertura 90% | ruff + vue-tsc + eslint | Proporcional ao tamanho; os gates entram se as regras de camada começarem a ser violadas |
 
-## 6. Próximas decisões (pendentes)
+## 7. Próximas decisões (pendentes)
 
 1. **Autenticação.** O desafio não exige; decidir se a demonstração é monousuário. Hoje qualquer
    um que alcance a tela lê e altera tudo (as portas da API e do banco ficam só em 127.0.0.1; a do
    front fica aberta na rede).
-2. **Geração de tipos TS a partir do OpenAPI** (`openapi-typescript`) quando a API crescer.
+2. **Geração de tipos TS a partir do OpenAPI** (`openapi-typescript`) quando a API crescer. Com o
+   app, os modelos em Dart entram na mesma conta.
+3. **App nas lojas.** Ícone, assinatura do Android, conta de desenvolvedor da Apple e a API em
+   `https://` em algum endereço público.
 
 Decididas desde a versão anterior deste documento: a importação de planilha existe (Excel e
 CSV, seção 2); o ECharts entrou com o gráfico do insumo; o Pandas não entrou, porque nem o motor de
