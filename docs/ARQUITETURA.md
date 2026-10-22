@@ -24,7 +24,7 @@ navegador ──► Vite (:5173) ──/api──► FastAPI (:8000) ──► P
 | `app/main.py` | Fábrica `create_app(settings)`: os testes criam a sua com configuração própria |
 | `app/core/config.py` | `Settings` (pydantic-settings). Única fonte de variáveis de ambiente |
 | `app/core/database.py` | Engine, sessão e a dependência `get_db` |
-| `app/core/senha.py` | Hash scrypt da senha (biblioteca padrão), com o sal e os parâmetros gravados junto |
+| `app/core/senha.py` | Hash Argon2id da senha (`argon2-cffi`), com o sal e os parâmetros gravados junto; confere também as senhas antigas em scrypt |
 | `app/api/router.py` | Agrega as rotas da v1 (`/api/v1`), cada grupo com o seu nível de permissão |
 | `app/api/permissoes.py` | As dependências de cada nível (sessão, funcionário, dono) e quem fez o pedido |
 | `app/api/routes/` | Rotas HTTP, finas: validam entrada, chamam serviço, devolvem schema |
@@ -228,17 +228,19 @@ dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Dec
   o login contra a API de desenvolvimento sem precisar ligá-la. As rotas da própria sessão e a
   gestão de usuários exigem login **sempre**: desligada, sem isso, qualquer um na rede criaria
   um dono para si.
-- **Senha:** `hashlib.scrypt` da biblioteca padrão (sem dependência nova), N=2^14, r=8, p=1
-  (16 MiB, uns 0,2 s), sal aleatório de 16 bytes por senha, gravado como
-  `scrypt$n$r$p$sal$hash`: com os parâmetros no hash, o custo pode subir depois, e o login
-  refaz o hash de quem entrar. Comparação com `hmac.compare_digest`, acento normalizado (NFC),
+- **Senha:** **Argon2id** (`argon2-cffi`), a primeira escolha da OWASP para senhas, no
+  perfil de baixa memória da RFC 9106: 64 MiB, 3 passadas, paralelismo 4 (uns 0,1 s por
+  tentativa), sal aleatório por senha, gravado como `$argon2id$v=19$m=…,t=…,p=…$sal$hash`.
+  Com os parâmetros no hash, o custo pode subir depois, e o login refaz o hash de quem
+  entrar. As senhas gravadas antes em scrypt (`scrypt$n$r$p$sal$hash`) seguem conferindo e
+  viram Argon2id no próximo login: ninguém fica trancado pela troca de algoritmo. Comparação com `hmac.compare_digest`, acento normalizado (NFC),
   mínimo de 8 caracteres. Usuário não se apaga, **desativa**: as movimentações dizem quem as
   lançou.
 - **Login** sem diferenciar maiúsculas: guardado em minúsculas (o banco confere com
   `login = lower(login)`), com o `UNIQUE` simples. Só letras sem acento, números, ponto, hífen
   e sublinhado: "zé" num teclado sem acento seria outro login.
 - **Token opaco, e não JWT.** `secrets.token_urlsafe(32)`, devolvido **uma vez** no login; o
-  banco guarda só o SHA-256 (sem sal nem scrypt: são 256 bits aleatórios, e a conferência de
+  banco guarda só o SHA-256 (sem sal nem Argon2id: são 256 bits aleatórios, e a conferência de
   cada pedido precisa ser rápida). O servidor procura a sessão a cada pedido, então sair,
   trocar a senha e desativar o usuário valem **na hora**, sem lista de revogação. Vai no
   cabeçalho `Authorization: Bearer <token>`.
@@ -255,7 +257,7 @@ dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Dec
   dez chutes simultâneos entram um de cada vez e não passam todos antes de o primeiro contar.
   A senha atual errada em `PUT /auth/senha` também conta. A resposta é **sempre a mesma**
   ("Login ou senha incorretos.", com a regra do bloqueio), para login inexistente, senha
-  errada, usuário desativado e login bloqueado, e o login inexistente gasta o mesmo scrypt:
+  errada, usuário desativado e login bloqueado, e o login inexistente gasta o mesmo hash lento:
   nem o texto nem o tempo contam que o login existe. O dono vê `bloqueado_ate` em
   `GET /usuarios`, e redefinir a senha desbloqueia.
 - **O último dono ativo** não se desativa nem vira funcionário (`409`), com `FOR UPDATE` nos
