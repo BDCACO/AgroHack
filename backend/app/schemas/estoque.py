@@ -113,6 +113,41 @@ class InsumoDetalhe(InsumoResposta):
     movimentacoes: list[MovimentacaoResposta]  # as mais recentes primeiro
 
 
+class AlertasPorGravidade(BaseModel):
+    alta: int
+    media: int
+    baixa: int
+
+
+class Perdas(BaseModel):
+    """Descartes e faltas da contagem do galpão, em R$, pelo custo médio do insumo. Insumo
+    sem preço fica de fora (as limitações do resumo dizem quantos)."""
+
+    ultimos_30_dias: float
+    total: float
+
+
+class ComprasSugeridas(BaseModel):
+    # Soma do custo estimado das reposições a pedir nos próximos 30 dias; None se
+    # nenhuma delas tem preço.
+    valor: float | None
+    pedidos: int  # quantas reposições caem nos próximos 30 dias
+    pedir_hoje: int
+
+
+class Resumo(BaseModel):
+    """A visão geral em reais, para o Painel e o app."""
+
+    insumos: int
+    valor_em_estoque: float | None  # None se nenhum insumo tem custo médio
+    insumos_sem_preco: int  # sem nenhuma compra com preço
+    perdas: Perdas
+    compras_sugeridas: ComprasSugeridas
+    alertas: AlertasPorGravidade
+    # O que as somas não sabem, como a análise de cada insumo.
+    limitacoes: list[str]
+
+
 class PedidoDeImportacao(BaseModel):
     """Um dos dois: a planilha do Excel ou o texto do CSV (que o navegador decodifica). 5 MB
     passam de dezenas de milhares de linhas: anos de registro de uma propriedade."""

@@ -12,9 +12,10 @@ from app.schemas.estoque import (
     MovimentacaoEntrada,
     MovimentacaoResposta,
     PedidoDeImportacao,
+    Resumo,
 )
 from app.services import estoque as servico
-from app.services import planilha_modelo, relatorio
+from app.services import planilha_modelo, relatorio, resumo
 from app.services.importacao import ResultadoImportacao, importar
 
 router = APIRouter(tags=["estoque"])
@@ -28,6 +29,13 @@ _XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 def listar_insumos(db: Session = Depends(get_db)) -> list[InsumoResposta]:
     """Cada insumo com o estoque atual e a análise na data de hoje (Rondônia)."""
     return servico.listar_insumos(db)
+
+
+@router.get("/resumo", response_model=Resumo)
+def resumir_estoque(db: Session = Depends(get_db)) -> Resumo:
+    """A visão geral em reais: valor em estoque, perdas (descartes e faltas da contagem),
+    custo das compras dos próximos 30 dias e alertas por gravidade, com as limitações."""
+    return resumo.gerar(db)
 
 
 @router.post("/insumos", response_model=InsumoResposta, status_code=status.HTTP_201_CREATED)
