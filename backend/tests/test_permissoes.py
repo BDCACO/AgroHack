@@ -26,6 +26,9 @@ SESSAO = "sessão"
 FUNCIONARIO = "funcionário"
 # Só o dono: cadastro, remoção, planilhas, relatório, análise avulsa.
 DONO = "dono"
+# Gestão de usuários: só o dono, e sempre com login, mesmo com a autenticação desligada.
+# Sem isso, desligada, qualquer um na rede criaria um dono para si.
+GESTAO = "dono, sempre com login"
 
 MATRIZ = {
     ("GET", "/api/v1/health"): PUBLICA,
@@ -57,6 +60,10 @@ MATRIZ = {
     ("PUT", "/api/v1/talhoes/{talhao_id}"): DONO,
     ("DELETE", "/api/v1/talhoes/{talhao_id}"): DONO,
     ("POST", "/api/v1/analises"): DONO,
+    ("GET", "/api/v1/usuarios"): GESTAO,
+    ("POST", "/api/v1/usuarios"): GESTAO,
+    ("PUT", "/api/v1/usuarios/{usuario_id}"): GESTAO,
+    ("PUT", "/api/v1/usuarios/{usuario_id}/senha"): GESTAO,
 }
 
 # A dependência que marca cada nível (aplicada no include_router, em app/api/router.py).
@@ -64,6 +71,7 @@ _DEPENDENCIA_DO_NIVEL = {
     permissoes.exigir_sessao: SESSAO,
     permissoes.exigir_funcionario: FUNCIONARIO,
     permissoes.exigir_dono: DONO,
+    permissoes.exigir_dono_com_login: GESTAO,
 }
 
 
@@ -120,7 +128,7 @@ def test_ligada_a_matriz_vale_para_cada_papel(
     com_token_falso = _pedir(cliente_autenticado, metodo, caminho, "token-inventado")
     assert (com_token_falso == 401) == (nivel != PUBLICA), com_token_falso
     do_funcionario = _pedir(cliente_autenticado, metodo, caminho, funcionario)
-    assert (do_funcionario == 403) == (nivel == DONO), do_funcionario
+    assert (do_funcionario == 403) == (nivel in {DONO, GESTAO}), do_funcionario
     assert do_funcionario != 401
     assert _pedir(cliente_autenticado, metodo, caminho, dono) not in {401, 403}
 
@@ -133,6 +141,6 @@ def test_desligada_sem_token_passa_mas_o_papel_do_token_vale(
     funcionario = _token(db, criar_usuario("ze"))
 
     sem_token = _pedir(client, metodo, caminho)
-    assert (sem_token == 401) == (nivel == SESSAO), sem_token
+    assert (sem_token == 401) == (nivel in {SESSAO, GESTAO}), sem_token
     assert (_pedir(client, metodo, caminho, "token-inventado") == 401) == (nivel != PUBLICA)
-    assert (_pedir(client, metodo, caminho, funcionario) == 403) == (nivel == DONO)
+    assert (_pedir(client, metodo, caminho, funcionario) == 403) == (nivel in {DONO, GESTAO})

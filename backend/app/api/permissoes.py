@@ -59,10 +59,17 @@ def exigir_dono(request: Request, usuario: Usuario | None = Depends(usuario_atua
     if usuario is None and _ligada(request):
         raise _nao_autenticado(_FALTA_O_LOGIN)
     if usuario is not None and usuario.papel != "dono":
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "Só o dono da fazenda pode fazer isto: peça a ele.",
-        )
+        raise _SO_O_DONO
+
+
+def exigir_dono_com_login(usuario: Usuario | None = Depends(usuario_atual)) -> None:
+    """Gestão de usuários: o dono, e sempre com login, mesmo com a autenticação desligada.
+    Desligada, pedido sem token tem os poderes do dono; aqui, isso deixaria qualquer um na
+    rede criar um dono para si e entrar depois que a autenticação fosse ligada."""
+    if usuario is None:
+        raise _nao_autenticado(_FALTA_O_LOGIN)
+    if usuario.papel != "dono":
+        raise _SO_O_DONO
 
 
 def _ligada(request: Request) -> bool:
@@ -76,3 +83,6 @@ def _nao_autenticado(frase: str) -> HTTPException:
 
 
 _FALTA_O_LOGIN = "Entre com o seu login e senha para continuar."
+_SO_O_DONO = HTTPException(
+    status.HTTP_403_FORBIDDEN, "Só o dono da fazenda pode fazer isto: peça a ele."
+)
