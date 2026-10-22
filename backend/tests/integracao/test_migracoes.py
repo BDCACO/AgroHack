@@ -11,8 +11,18 @@ from tests.integracao.conftest import alembic
 
 
 def test_migrations_descem_e_sobem_e_batem_com_os_modelos(banco: Engine) -> None:
-    # O banco da sessão pode ter preços de outro teste: descartá-los é o pedido aqui.
-    alembic("-x", "descartar_precos=sim", "-x", "descartar_uuids=sim", "downgrade", "base")
+    # O banco da sessão pode ter preços, uuids e talhões de outro teste: descartá-los é o
+    # pedido aqui.
+    alembic(
+        "-x",
+        "descartar_precos=sim",
+        "-x",
+        "descartar_uuids=sim",
+        "-x",
+        "descartar_talhoes=sim",
+        "downgrade",
+        "base",
+    )
     alembic("upgrade", "head")
 
     assert "No new upgrade operations detected" in alembic("check").stdout
@@ -59,6 +69,23 @@ def test_downgrade_nao_descarta_o_uuid_do_app_sem_pedir(banco: Engine) -> None:
     alembic("-x", "descartar_uuids=sim", "downgrade", "0006")
     with banco.connect() as conexao:
         assert conexao.scalar(text("SELECT quantidade FROM movimentacoes")) == 5
+    alembic("upgrade", "head")
+
+
+def test_downgrade_nao_descarta_talhoes_sem_pedir(banco: Engine) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, talhoes RESTART IDENTITY CASCADE"))
+        conexao.execute(text("INSERT INTO talhoes (nome, area_ha) VALUES ('Talhão Norte', 120)"))
+
+    with pytest.raises(subprocess.CalledProcessError) as recusa:
+        alembic("downgrade", "0007")
+    assert "descartar_talhoes=sim" in recusa.value.stderr
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT area_ha FROM talhoes")) == 120
+
+    alembic("-x", "descartar_talhoes=sim", "downgrade", "0007")
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT to_regclass('talhoes')")) is None
     alembic("upgrade", "head")
 
 

@@ -15,6 +15,8 @@ from app.models.base import Base
 # Exata no banco, com 3 casas (grama no kg, mililitro no litro); float no Python,
 # que é o que o motor de análise usa.
 Quantidade = Numeric(12, 3, asdecimal=False)
+# Hectares, com duas casas, como na escritura e no CAR.
+Area = Numeric(10, 2, asdecimal=False)
 # R$ por unidade do insumo. Quatro casas: o preço por grama ou por mililitro de um
 # defensivo caro tem centavos depois da vírgula.
 ValorUnitario = Numeric(14, 4, asdecimal=False)
@@ -82,3 +84,19 @@ class Movimentacao(Base):
     # sinal é reconhecido por ele e não vira duplicata. Vazio no que veio do site, da
     # importação e da contagem do galpão.
     uuid: Mapped[UUID | None] = mapped_column(Uuid, unique=True)
+
+
+class Talhao(Base):
+    """Onde o insumo foi aplicado: a área de lavoura ou o pasto. A retirada lançada num
+    talhão diz para onde o produto foi, e com isso o custo por hectare e a carência."""
+
+    __tablename__ = "talhoes"
+    __table_args__ = (CheckConstraint("area_ha > 0", name="area_positiva"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nome: Mapped[str] = mapped_column(String(120), unique=True)
+    # O divisor do custo por hectare: por isso obrigatória e maior que zero.
+    area_ha: Mapped[float] = mapped_column(Area)
+    cultura: Mapped[str | None] = mapped_column(String(60))  # "Soja", "Pasto"...
+    # Como no insumo: gerado por `python -m app.demo`, e `limpar` apaga só estes.
+    demonstracao: Mapped[bool] = mapped_column(default=False, server_default=false())
