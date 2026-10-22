@@ -12,6 +12,7 @@ from app.core import senha
 from app.models import Sessao
 from app.services import autenticacao
 from tests.conftest import SENHA, CriarUsuario, entrar
+from tests.test_senha import scrypt_de_antes
 
 ENTRAR = "/api/v1/auth/entrar"
 EU = "/api/v1/auth/eu"
@@ -89,7 +90,26 @@ def test_login_inexistente_gasta_o_mesmo_hash_que_o_existente(
     cliente_autenticado.post(ENTRAR, json={"login": "ze", "senha": "senha-errada"})
 
     assert len(conferidas) == 2
-    assert [c.split("$")[:4] for c in conferidas] == [["scrypt", "16384", "8", "1"]] * 2
+    custo = f"m={senha.MEMORIA_KIB},t={senha.ITERACOES},p={senha.PARALELISMO}"
+    assert [c.split("$")[1:4] for c in conferidas] == [["argon2id", "v=19", custo]] * 2
+
+
+def test_senha_gravada_em_scrypt_entra_e_passa_a_argon2id(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario, db: Session
+) -> None:
+    # Quem cadastrou a senha antes da troca de algoritmo não fica trancado: o login
+    # confere pelo scrypt e grava o hash novo, e daí em diante só Argon2id.
+    usuario = criar_usuario("ze")
+    usuario.senha_hash = scrypt_de_antes(SENHA)
+    db.commit()
+
+    resposta = cliente_autenticado.post(ENTRAR, json={"login": "ze", "senha": SENHA})
+
+    assert resposta.status_code == 200
+    db.refresh(usuario)
+    assert usuario.senha_hash.startswith("$argon2id$")
+    assert senha.conferir(SENHA, usuario.senha_hash)
+    assert cliente_autenticado.post(ENTRAR, json={"login": "ze", "senha": SENHA}).status_code == 200
 
 
 def test_sem_token_ou_com_token_falso_e_401_com_www_authenticate(

@@ -7,7 +7,7 @@ from app.schemas.estoque import SEM_CARACTERE_DE_CONTROLE
 
 # Menos que isto, uma senha cai em minutos para quem tenta todas.
 SENHA_MINIMA = 8
-# Teto só contra pedido absurdo: o scrypt aceita senha longa sem problema.
+# Teto só contra pedido absurdo: o Argon2id aceita senha longa sem problema.
 SENHA_MAXIMA = 200
 
 Papel = Literal["dono", "funcionario"]

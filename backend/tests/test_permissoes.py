@@ -104,7 +104,7 @@ def _pedir(cliente: TestClient, metodo: str, caminho: str, token: str | None = N
 
 
 def _token(db: Session, usuario: Usuario) -> str:
-    # Sem passar pelo login: o scrypt de cada um somaria segundos à matriz inteira.
+    # Sem passar pelo login: o Argon2id de cada um somaria segundos à matriz inteira.
     return autenticacao.abrir_sessao(db, usuario, None)[0]
 
 

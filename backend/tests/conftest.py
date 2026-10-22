@@ -68,7 +68,7 @@ def cliente_autenticado(db: Session) -> Iterator[TestClient]:
 
 @cache
 def _hash_da_senha_do_teste() -> str:
-    # O scrypt leva uns 0,2 s de propósito: um hash só para a suíte inteira.
+    # O Argon2id leva uns 0,1 s de propósito: um hash só para a suíte inteira.
     return senha.gerar_hash(SENHA)
 
 

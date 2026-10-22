@@ -15,6 +15,7 @@ from sqlalchemy import Engine, text
 
 from app.core.relogio import hoje
 from tests.integracao.conftest import BACKEND, URL_DO_BANCO, subir_uvicorn
+from tests.test_senha import scrypt_de_antes
 
 HOJE = str(hoje())
 SENHA_DO_DONO = "dona-maria-2026"
@@ -256,3 +257,30 @@ def test_producao_com_autenticacao_sobe_sem_docs(banco: Engine) -> None:
         assert httpx.get(f"{base}/ready").json() == {"status": "pronto", "database": "ok"}
         assert httpx.get(f"{base}/docs").status_code == 404
         assert httpx.get(f"{base}/insumos").status_code == 401
+
+
+def test_senha_antiga_em_scrypt_entra_e_vira_argon2id_no_postgres(
+    api_autenticada: httpx.Client, banco: Engine
+) -> None:
+    """Quem tinha senha antes da troca para Argon2id entra normalmente, e o hash gravado
+    no PostgreSQL passa a Argon2id no mesmo login, sem ninguém redefinir senha."""
+    with banco.begin() as conexao:
+        conexao.execute(
+            text(
+                "INSERT INTO usuarios (nome, login, senha_hash, papel, ativo, criado_em,"
+                " falhas_seguidas) VALUES ('Zé Antigo', 'ze', :hash, 'funcionario', true,"
+                " now(), 0)"
+            ),
+            {"hash": scrypt_de_antes(SENHA_DO_ZE)},
+        )
+
+    errada = api_autenticada.post("/auth/entrar", json={"login": "ze", "senha": "nao-e-essa"})
+    entrou = ok(api_autenticada.post("/auth/entrar", json={"login": "ze", "senha": SENHA_DO_ZE}))
+
+    assert errada.status_code == 401
+    assert entrou["usuario"]["login"] == "ze"
+    with banco.connect() as conexao:
+        gravado = conexao.scalar(text("SELECT senha_hash FROM usuarios WHERE login = 'ze'"))
+    assert gravado.startswith("$argon2id$v=19$")
+    # E entra de novo, agora conferido pelo Argon2id.
+    assert ok(api_autenticada.get("/auth/eu", headers=entrar(api_autenticada, "ze", SENHA_DO_ZE)))

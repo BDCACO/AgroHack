@@ -1,16 +1,28 @@
-"""O hash da senha (scrypt da biblioteca padrão), sem banco."""
+"""O hash da senha (Argon2id), sem banco. E as senhas gravadas antes, em scrypt, que
+continuam valendo até o próximo login refazê-las."""
 
+import base64
+import hashlib
+import secrets
 import unicodedata
 
 from app.core import senha
 
 
-def test_hash_guarda_os_parametros_e_nao_a_senha() -> None:
+def scrypt_de_antes(texto: str) -> str:
+    """Um hash como a versão anterior gravava (`scrypt$n$r$p$sal$hash`)."""
+    sal = secrets.token_bytes(16)
+    calculado = hashlib.scrypt(texto.encode(), salt=sal, n=2**14, r=8, p=1, dklen=32)
+    b64 = base64.b64encode
+    return f"scrypt${2**14}$8$1${b64(sal).decode()}${b64(calculado).decode()}"
+
+
+def test_hash_e_argon2id_com_os_parametros_e_sem_a_senha() -> None:
     guardado = senha.gerar_hash("milho-safrinha")
 
-    algoritmo, n, r, p, sal, _ = guardado.split("$")
-    assert (algoritmo, n, r, p) == ("scrypt", str(senha.N), str(senha.R), str(senha.P))
-    assert sal
+    assert guardado.startswith("$argon2id$v=19$")
+    custo = f"m={senha.MEMORIA_KIB},t={senha.ITERACOES},p={senha.PARALELISMO}$"
+    assert custo in guardado
     assert "milho-safrinha" not in guardado
 
 
@@ -37,17 +49,32 @@ def test_acento_digitado_no_celular_ou_no_computador_e_a_mesma_senha() -> None:
     assert senha.conferir(decomposta, senha.gerar_hash(composta))
 
 
-def test_hash_com_outro_custo_ainda_confere_e_pede_para_refazer() -> None:
-    # Subir o custo depois não pode trancar quem já tem senha: o hash diz com que custo foi
-    # feito, e o login refaz com o custo novo.
-    antigo = senha.gerar_hash("milho-safrinha", n=2**10)
+def test_senha_gravada_em_scrypt_ainda_confere_e_pede_para_refazer() -> None:
+    # Trocar o algoritmo não pode trancar quem já tem senha: o login confere pelo hash
+    # antigo e o refaz em Argon2id.
+    antigo = scrypt_de_antes("milho-safrinha")
 
     assert senha.conferir("milho-safrinha", antigo)
+    assert not senha.conferir("milho-safrinh", antigo)
     assert senha.precisa_refazer(antigo)
     assert not senha.precisa_refazer(senha.gerar_hash("milho-safrinha"))
 
 
+def test_argon2_com_outro_custo_ainda_confere_e_pede_para_refazer() -> None:
+    antigo = senha.gerar_hash("milho-safrinha", memoria_kib=8 * 1024, iteracoes=1)
+
+    assert senha.conferir("milho-safrinha", antigo)
+    assert senha.precisa_refazer(antigo)
+
+
 def test_hash_ilegivel_nao_confere_nem_derruba() -> None:
-    for guardado in ["", "scrypt$1$2", "bcrypt$x$y$z$a$b", "scrypt$x$8$1$AAAA$AAAA"]:
+    for guardado in [
+        "",
+        "scrypt$1$2",
+        "bcrypt$x$y$z$a$b",
+        "scrypt$x$8$1$AAAA$AAAA",
+        "$argon2id$v=19$m=65536,t=3,p=4$quebrado",
+        "$argon2i$lixo",
+    ]:
         assert not senha.conferir("milho-safrinha", guardado)
         assert senha.precisa_refazer(guardado)

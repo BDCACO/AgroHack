@@ -3,7 +3,7 @@
 O token é opaco (`secrets.token_urlsafe`), e não um JWT: o servidor o procura no banco a
 cada pedido, então sair, trocar a senha e desativar alguém valem na hora, sem lista de
 revogação à parte. No banco fica só o SHA-256 dele; o próprio token sai uma vez, na
-resposta do login. SHA-256 simples, sem sal nem scrypt, basta: são 256 bits aleatórios,
+resposta do login. SHA-256 simples, sem sal nem Argon2id, basta: são 256 bits aleatórios,
 ninguém os adivinha, e a conferência de cada pedido precisa ser rápida.
 """
 
@@ -71,7 +71,7 @@ def entrar(
     if "\x00" not in login:
         usuario = db.scalar(select(Usuario).where(Usuario.login == login).with_for_update())
     if usuario is None:
-        # O mesmo scrypt de um login que existe: sem ele, a resposta rápida denunciaria
+        # O mesmo hash lento de um login que existe: sem ele, a resposta rápida denunciaria
         # quais logins existem.
         senha.conferir(senha_digitada, _hash_de_mentira())
         raise LoginRecusado
@@ -146,7 +146,7 @@ def _conferir_contando_erros(db: Session, usuario: Usuario, senha_digitada: str)
     """Confere a senha respeitando o bloqueio: o erro conta, o acerto zera, e bloqueado
     nada confere (nem a senha certa). Não grava: quem chama faz o commit."""
     momento = agora()
-    # Sempre o scrypt, mesmo bloqueado: o tempo da resposta não denuncia o bloqueio.
+    # Sempre o hash lento, mesmo bloqueado: o tempo da resposta não denuncia o bloqueio.
     confere = senha.conferir(senha_digitada, usuario.senha_hash)
     if usuario.bloqueado_ate is not None and usuario.bloqueado_ate > momento:
         # Sem contar o erro nem estender o prazo: senão, quem tenta sem parar empurraria o
