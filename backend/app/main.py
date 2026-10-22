@@ -15,6 +15,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """Fábrica da aplicação — os testes criam a sua com Settings próprios."""
     settings = settings or get_settings()
     logging.basicConfig(level=settings.log_level)
+    if not settings.autenticacao:
+        logging.getLogger(__name__).warning(
+            "AUTENTICACAO desligada: qualquer um que alcance a API lê e altera tudo. "
+            "Só para desenvolvimento; em produção a API nem sobe assim."
+        )
 
     docs = settings.docs_habilitadas
     prefixo = settings.api_v1_prefix

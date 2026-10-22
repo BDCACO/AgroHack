@@ -10,6 +10,10 @@ import os
 
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("DATABASE_URL", "sqlite://")
+# Forçada, e não setdefault: os testes de antes do login rodam com ela desligada, e os
+# de autenticação pedem a sua (`cliente_autenticado`). Um AUTENTICACAO=true no .env do
+# desenvolvedor não pode mudar o resultado da suíte.
+os.environ["AUTENTICACAO"] = "false"
 
 from collections.abc import Callable, Iterator
 from functools import cache
