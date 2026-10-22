@@ -31,6 +31,8 @@ VERDE_ESCURO = "1F3B17"  # campo-900
 CINZA = "57534E"  # stone-600
 CINZA_CLARO = "E7E5E4"  # stone-200
 FORMATO_DATA = "DD/MM/YYYY"  # o Excel em português mostra como DD/MM/AAAA
+# Os separadores do formato são os do Excel de quem abre: no português, R$ 1.234,56.
+FORMATO_DINHEIRO = '"R$" #,##0.00'
 UNIDADES = ("kg", "L", "t", "sc", "dose", "un")
 
 
@@ -84,6 +86,14 @@ COLUNAS = (
         "Não",
         "Validade do lote, só em entradas. Deixe em branco se o produto não vence.",
     ),
+    Coluna(
+        "valor",
+        14,
+        "Não",
+        "Preço pago por unidade do insumo (R$ por kg, por litro, por saca...), só em "
+        "entradas. Decimais com vírgula: 3,20. Em branco se não souber: tudo funciona sem "
+        "preço, só os alertas e a reposição não falam em reais.",
+    ),
 )
 
 
@@ -125,12 +135,14 @@ def aba_de_movimentacoes(
     for letra in ("A", "F"):
         aba.column_dimensions[letra].number_format = FORMATO_DATA
         aba.column_dimensions[letra].alignment = Alignment(horizontal="center")
+    aba.column_dimensions["G"].number_format = FORMATO_DINHEIRO
     for linha in linhas or []:
         aba.append(linha)
     for linha in aba.iter_rows(min_row=2, max_col=len(COLUNAS)):
-        data, *_, validade = linha
+        data, *_, validade, valor = linha
         data.number_format = validade.number_format = FORMATO_DATA
         data.alignment = validade.alignment = Alignment(horizontal="center")
+        valor.number_format = FORMATO_DINHEIRO
         for celula in linha:
             if isinstance(celula.value, str):
                 celula.data_type = "s"  # nome começando com "=" não vira fórmula
@@ -199,6 +211,14 @@ def aba_de_movimentacoes(
         errorTitle="Validade inválida",
         error="Use uma data como 30/06/2027.",
     )
+    validar(
+        "valor",
+        type="decimal",
+        operator="greaterThan",
+        formula1="0",
+        errorTitle="Valor inválido",
+        error="O valor é o preço por unidade, um número maior que zero, como 3,20.",
+    )
 
 
 def _exemplos(referencia: date) -> list[tuple]:
@@ -208,9 +228,17 @@ def _exemplos(referencia: date) -> list[tuple]:
         return referencia - timedelta(days=dias_atras)
 
     return [
-        (dia(20), "Adubo NPK 20-05-20", "kg", "entrada", 1000, None),
-        (dia(13), "Adubo NPK 20-05-20", None, "saída", 25.5, None),
-        (dia(6), "Vacina contra aftosa", "dose", "entrada", 50, referencia + timedelta(days=250)),
+        (dia(20), "Adubo NPK 20-05-20", "kg", "entrada", 1000, None, 3.2),
+        (dia(13), "Adubo NPK 20-05-20", None, "saída", 25.5, None, None),
+        (
+            dia(6),
+            "Vacina contra aftosa",
+            "dose",
+            "entrada",
+            50,
+            referencia + timedelta(days=250),
+            2.9,
+        ),
     ]
 
 
@@ -247,8 +275,8 @@ def _aba_de_instrucoes(aba: Worksheet) -> None:
                 "as saídas deixam o estoque negativo.",
                 "• Cada importação soma ao que já está no sistema. Importe cada período uma vez "
                 "só; o CampoCerto avisa se as linhas já estiverem lá.",
-                "• O Excel avisa na hora se a data, o tipo ou a quantidade estiverem fora do "
-                "esperado.",
+                "• O Excel avisa na hora se a data, o tipo, a quantidade ou o valor estiverem "
+                "fora do esperado.",
             ],
         ),
         (

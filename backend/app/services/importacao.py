@@ -25,9 +25,16 @@ from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
 from app.models import Insumo, Movimentacao
-from app.schemas.estoque import QUANTIDADE_MAXIMA, SEM_CARACTERE_DE_CONTROLE
+from app.schemas.estoque import (
+    QUANTIDADE_MAXIMA,
+    SEM_CARACTERE_DE_CONTROLE,
+    VALOR_UNITARIO_MAXIMO,
+)
 
 COLUNAS_OBRIGATORIAS = ("data", "insumo", "tipo", "quantidade")
+# Colunas de número, que decidem juntas se a vírgula é decimal ou milhar. `valor` (o preço
+# por unidade, só em compras) é opcional.
+COLUNAS_DE_NUMERO = ("quantidade", "valor")
 # Tipo escrito → (tipo, motivo). Descarte é saída que não é consumo: uma palavra na
 # mesma coluna, em vez de uma coluna a mais para preencher.
 TIPOS = {
@@ -104,6 +111,7 @@ class _Linha:
     quantidade: float
     validade: date | None
     motivo: str | None
+    valor_unitario: float | None
 
 
 # (número da linha no arquivo, células) — ou, no lugar das células, o erro de forma da
@@ -157,6 +165,7 @@ def importar(db: Session, arquivo: str | bytes, *, confirmar: bool) -> Resultado
             quantidade=linha.quantidade,
             validade=linha.validade,
             motivo=linha.motivo,
+            valor_unitario=linha.valor_unitario,
         )
         if linha.insumo.id is None:
             linha.insumo.movimentacoes.append(movimentacao)
@@ -339,25 +348,40 @@ def _cabecalho(valores: list[str], erros: list[str]) -> list[str] | None:
 
 def _separador_decimal(lidas: _Lidas, cabecalho: list[str], padrao: str) -> str:
     """Vírgula ou ponto, decidido pela planilha inteira: sozinha, a célula "25.500" não diz
-    se é vinte e cinco e meio ou vinte e cinco mil. Só olha número escrito como texto."""
-    coluna = cabecalho.index("quantidade")
-    pistas: dict[str, tuple[int, str]] = {}
+    se é vinte e cinco e meio ou vinte e cinco mil. Só olha número escrito como texto, na
+    quantidade e no valor: quem escreve "3,20" no preço escreve "1.000" na quantidade."""
+    colunas = [(nome, cabecalho.index(nome)) for nome in COLUNAS_DE_NUMERO if nome in cabecalho]
+    pistas: dict[str, tuple[int, str, str]] = {}
     for numero, celulas in lidas:
         if isinstance(celulas, str):
             continue  # linha com erro de forma
-        valor = celulas[coluna] if coluna < len(celulas) else ""
-        if not isinstance(valor, str):
-            continue
-        texto = valor.replace(" ", "")
-        if (separador := _pista(texto)) is not None:
-            pistas.setdefault(separador, (numero, texto))
+        for nome, coluna in colunas:
+            valor = celulas[coluna] if coluna < len(celulas) else ""
+            if not isinstance(valor, str):
+                continue
+            texto = _sem_moeda(valor)
+            if (separador := _pista(texto)) is not None:
+                pistas.setdefault(separador, (numero, nome, texto))
     if len(pistas) > 1:
-        (linha_v, virgula), (linha_p, ponto) = pistas[","], pistas["."]
+        virgula, ponto = pistas[","], pistas["."]
+        assunto = "Quantidades" if virgula[1] == ponto[1] == "quantidade" else "Números"
         raise ValueError(
-            f"Quantidades com vírgula decimal (linha {linha_v}: {virgula}) e com ponto decimal "
-            f"(linha {linha_p}: {ponto}) na mesma planilha: use um formato só."
+            f"{assunto} com vírgula decimal ({_onde(*virgula)}) e com ponto decimal "
+            f"({_onde(*ponto)}) na mesma planilha: use um formato só."
         )
     return next(iter(pistas)) if pistas else padrao
+
+
+def _onde(numero: int, coluna: str, texto: str) -> str:
+    # A quantidade é a coluna de sempre; as outras se dizem pelo nome.
+    if coluna == "quantidade":
+        return f"linha {numero}: {texto}"
+    return f"linha {numero}, {coluna}: {texto}"
+
+
+def _sem_moeda(texto: str) -> str:
+    """O preço pode vir como "R$ 3,20": o símbolo e os espaços não fazem parte do número."""
+    return texto.replace("R$", "").replace(" ", "")
 
 
 def _pista(texto: str) -> str | None:
@@ -406,7 +430,7 @@ def _ler(
     if data > hoje():
         raise ValueError("data no futuro.")
 
-    quantidade = _quantidade(campos.get("quantidade", ""), decimal)
+    quantidade = _numero(campos.get("quantidade", ""), decimal, "quantidade", casas=3)
     # `not >` em vez de `<=`: pega também o NaN, que float("nan") aceita.
     if not quantidade > 0:
         raise ValueError("quantidade deve ser maior que zero.")
@@ -418,19 +442,32 @@ def _ler(
         if tipo != "entrada":
             raise ValueError("validade só se informa numa entrada.")
         validade = _data(valor_validade, "validade")
+
+    valor_unitario = None
+    if _texto(celula_valor := campos.get("valor", "")):
+        # Preço é o que se pagou numa compra: descarte, falta e sobra não têm.
+        if tipo != "entrada" or motivo is not None:
+            raise ValueError("valor só se informa numa entrada (compra): é o preço pago.")
+        # Quatro casas, como a coluna: o preço por grama de um defensivo tem centavos
+        # depois da vírgula.
+        valor_unitario = _numero(celula_valor, decimal, "valor", casas=4)
+        if not valor_unitario > 0:
+            raise ValueError("valor deve ser maior que zero.")
+        if valor_unitario > VALOR_UNITARIO_MAXIMO:
+            raise ValueError("valor grande demais.")
     insumo = _insumo(nome, unidade, cadastrados, novos)
-    return _Linha(insumo, tipo, data, quantidade, validade, motivo)
+    return _Linha(insumo, tipo, data, quantidade, validade, motivo, valor_unitario)
 
 
-def _quantidade(celula: Celula, decimal: str) -> float:
+def _numero(celula: Celula, decimal: str, coluna: str, *, casas: int) -> float:
     if isinstance(celula, float):
-        return round(celula, 3)
+        return round(celula, casas)
     texto = _texto(celula)
     milhar = "." if decimal == "," else ","
     try:
-        return round(float(texto.replace(" ", "").replace(milhar, "").replace(decimal, ".")), 3)
+        return round(float(_sem_moeda(texto).replace(milhar, "").replace(decimal, ".")), casas)
     except ValueError:
-        raise ValueError(f'quantidade "{texto}" não é um número.') from None
+        raise ValueError(f'{coluna} "{texto}" não é um número.') from None
 
 
 def _insumo(
@@ -501,7 +538,7 @@ def _ja_lancadas(db: Session, linhas: list[_Linha]) -> int:
     if not ids:
         return 0
     no_banco = Counter(
-        (m.insumo_id, m.tipo, m.data, m.quantidade, m.validade, m.motivo)
+        (m.insumo_id, m.tipo, m.data, m.quantidade, m.validade, m.motivo, m.valor_unitario)
         for m in db.scalars(select(Movimentacao).where(Movimentacao.insumo_id.in_(ids)))
     )
     repetidas = 0
@@ -513,6 +550,7 @@ def _ja_lancadas(db: Session, linhas: list[_Linha]) -> int:
             linha.quantidade,
             linha.validade,
             linha.motivo,
+            linha.valor_unitario,
         )
         if no_banco[chave] > 0:
             no_banco[chave] -= 1
