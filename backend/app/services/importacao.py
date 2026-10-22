@@ -13,7 +13,7 @@ import _csv
 import csv
 import io
 import re
-from collections import Counter
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from zipfile import ZipFile
@@ -574,19 +574,13 @@ def _ja_lancadas(db: Session, linhas: list[_Linha]) -> int:
     ids = {linha.insumo.id for linha in linhas if linha.insumo.id is not None}
     if not ids:
         return 0
-    no_banco = Counter(
-        (
-            m.insumo_id,
-            m.tipo,
-            m.data,
-            m.quantidade,
-            m.validade,
-            m.motivo,
-            m.valor_unitario,
-            m.talhao_id,
-        )
-        for m in db.scalars(select(Movimentacao).where(Movimentacao.insumo_id.in_(ids)))
-    )
+    # Preço e talhão contam só quando os dois lados os têm: preço diferente é outra
+    # compra, mas o preço (ou o talhão) que faltava antes completa o lançamento, não faz
+    # dele outro. A mesma compra reimportada, agora com o preço, tem de ser avisada.
+    no_banco: dict[tuple, list[tuple]] = defaultdict(list)
+    for m in db.scalars(select(Movimentacao).where(Movimentacao.insumo_id.in_(ids))):
+        chave = (m.insumo_id, m.tipo, m.data, m.quantidade, m.validade, m.motivo)
+        no_banco[chave].append((m.valor_unitario, m.talhao_id))
     repetidas = 0
     for linha in linhas:
         chave = (
@@ -596,10 +590,14 @@ def _ja_lancadas(db: Session, linhas: list[_Linha]) -> int:
             linha.quantidade,
             linha.validade,
             linha.motivo,
-            linha.valor_unitario,
-            linha.talhao and linha.talhao.id,
         )
-        if no_banco[chave] > 0:
-            no_banco[chave] -= 1
-            repetidas += 1
+        completa = (linha.valor_unitario, linha.talhao and linha.talhao.id)
+        candidatos = no_banco[chave]
+        for indice, gravada in enumerate(candidatos):
+            if all(
+                a is None or b is None or a == b for a, b in zip(completa, gravada, strict=True)
+            ):
+                del candidatos[indice]  # cada gravada casa com uma linha só
+                repetidas += 1
+                break
     return repetidas

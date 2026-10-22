@@ -584,3 +584,24 @@ def test_pedido_grande_demais_e_recusado_antes_de_ler(client: TestClient) -> Non
     )
 
     assert resposta.status_code == 413
+
+
+def test_reimportar_so_com_o_preco_ou_o_talhao_avisa_que_ja_foi_lancada(
+    client: TestClient,
+) -> None:
+    # Preço e talhão completam o lançamento, não fazem dele outro: a mesma compra
+    # importada de novo, agora com o preço, dobraria o estoque sem aviso.
+    client.post("/api/v1/talhoes", json={"nome": "Norte", "area_ha": 10})
+    sem = (
+        "data;insumo;unidade;tipo;quantidade\n"
+        f"{br(9)};Ureia;kg;entrada;100\n"
+        f"{br(5)};Ureia;kg;saída;10\n"
+    )
+    importar(client, sem, confirmar=True)
+    com = (
+        "data;insumo;unidade;tipo;quantidade;valor;talhao\n"
+        f"{br(9)};Ureia;kg;entrada;100;3,20;\n"
+        f"{br(5)};Ureia;kg;saída;10;;Norte\n"
+    )
+
+    assert importar(client, com)["ja_lancadas"] == 2
