@@ -577,3 +577,23 @@ def test_so_nome_repetido_de_talhao_vira_nome_duplicado(db: Session) -> None:
 
     with pytest.raises(IntegrityError):
         servico_de_talhoes.criar_talhao(db, sem_validacao)
+
+
+def test_insumo_aplicado_em_talhao_nao_se_remove(client: TestClient) -> None:
+    # O CASCADE levaria as aplicações junto, e o talhão sairia da carência calado: o
+    # mesmo motivo que impede remover o talhão (rastreabilidade de onde foi aplicado).
+    talhao = criar_talhao(client)
+    glifosato = criar_insumo(client, carencia_dias=7)
+    lancar(client, insumo_id=glifosato, tipo="entrada", data=dia(10), quantidade=100)
+    aplicacao = lancar(
+        client, insumo_id=glifosato, tipo="saida", data=dia(2), quantidade=5, talhao_id=talhao["id"]
+    ).json()
+
+    recusa = client.delete(f"/api/v1/insumos/{glifosato}")
+
+    assert recusa.status_code == 409
+    assert "Talhão Norte" in recusa.json()["detail"]
+    assert client.get(f"/api/v1/talhoes/{talhao['id']}").json()["colheita_liberada_em"]
+    # Lançado por engano: remove-se a aplicação, e então o insumo.
+    assert client.delete(f"/api/v1/movimentacoes/{aplicacao['id']}").status_code == 204
+    assert client.delete(f"/api/v1/insumos/{glifosato}").status_code == 204

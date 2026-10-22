@@ -76,11 +76,14 @@ def detalhar_insumo(insumo_id: int, db: Session = Depends(get_db)) -> InsumoDeta
 
 @gestao.delete("/insumos/{insumo_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remover_insumo(insumo_id: int, db: Session = Depends(get_db)) -> Response:
-    """Remove o insumo e todas as movimentações dele."""
+    """Remove o insumo e todas as movimentações dele. 409 se ele foi aplicado em algum
+    talhão: a rastreabilidade e a carência não somem com ele."""
     try:
         servico.remover_insumo(db, insumo_id)
     except servico.InsumoInexistente:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
+    except servico.InsumoAplicadoEmTalhao as erro:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(erro)) from None
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

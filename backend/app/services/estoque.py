@@ -55,6 +55,18 @@ class TalhaoInexistente(Exception):
     pass
 
 
+class InsumoAplicadoEmTalhao(Exception):
+    """Remover o insumo levaria as aplicações junto (CASCADE), e o talhão sairia da
+    carência calado. Mesma regra que impede remover talhão com aplicação."""
+
+    def __init__(self, nome: str, talhoes: list[str]) -> None:
+        super().__init__(
+            f'"{nome}" foi aplicado em {", ".join(talhoes)}: removê-lo apagaria onde foi '
+            "aplicado e a carência do talhão. Se foi lançado por engano, remova antes as "
+            "aplicações dele."
+        )
+
+
 class LancamentoDiferente(Exception):
     """O uuid já está num lançamento com outro conteúdo: não é reenvio, é o app usando o
     mesmo identificador para dois lançamentos. Gravar seria perder um deles em silêncio."""
@@ -114,8 +126,18 @@ def detalhar_insumo(db: Session, insumo_id: int) -> InsumoDetalhe:
 
 
 def remover_insumo(db: Session, insumo_id: int) -> None:
-    # As movimentações vão junto pelo ON DELETE CASCADE.
-    db.delete(_buscar_insumo(db, insumo_id))
+    insumo = _buscar_insumo(db, insumo_id)
+    talhoes = db.scalars(
+        select(Talhao.nome)
+        .join(Movimentacao, Movimentacao.talhao_id == Talhao.id)
+        .where(Movimentacao.insumo_id == insumo_id)
+        .distinct()
+        .order_by(Talhao.nome)
+    ).all()
+    if talhoes:
+        raise InsumoAplicadoEmTalhao(insumo.nome, list(talhoes))
+    # As outras movimentações vão junto pelo ON DELETE CASCADE.
+    db.delete(insumo)
     db.commit()
 
 
