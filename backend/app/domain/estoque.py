@@ -48,6 +48,14 @@ class Retirada:
 
 
 @dataclass(frozen=True)
+class Descarte:
+    """Saída que não é consumo: lote vencido jogado fora ou devolvido, produto estragado."""
+
+    data: date
+    quantidade: float
+
+
+@dataclass(frozen=True)
 class Entrada:
     data: date
     quantidade: float
@@ -100,7 +108,11 @@ def alertas_de_validade(lotes: Iterable[Lote], referencia: date, unidade: str) -
     return alertas
 
 
-def lotes_em_estoque(entradas: Iterable[Entrada], retiradas: Iterable[Retirada]) -> list[Lote]:
+def lotes_em_estoque(
+    entradas: Iterable[Entrada],
+    retiradas: Iterable[Retirada],
+    descartes: Iterable[Descarte] = (),
+) -> list[Lote]:
     """O que resta de cada lote com validade.
 
     A retirada não diz de qual lote saiu, então se supõe a boa prática: usa-se
@@ -110,9 +122,13 @@ def lotes_em_estoque(entradas: Iterable[Entrada], retiradas: Iterable[Retirada])
     Lote vencido na data da retirada fica por último: ninguém aplica produto vencido,
     e ele segue na prateleira (e no alerta) até ser descartado. Só sai dele o que os
     lotes bons não cobrem, para a soma dos lotes continuar igual ao estoque.
+
+    O descarte é o contrário: sai primeiro do que venceu (ou vence) antes.
     """
     eventos = sorted(
-        [(e.data, 0, e) for e in entradas] + [(r.data, 1, r) for r in retiradas],
+        [(e.data, 0, e) for e in entradas]
+        + [(r.data, 1, r) for r in retiradas]
+        + [(d.data, 1, d) for d in descartes],
         key=lambda evento: evento[:2],
     )
     # [validade, saldo]; sem validade vai para o fim da fila (date.max) e não vira lote.
@@ -123,7 +139,11 @@ def lotes_em_estoque(entradas: Iterable[Entrada], retiradas: Iterable[Retirada])
             continue
         falta = evento.quantidade
         dia = evento.data
-        for lote in sorted(disponiveis, key=lambda lote: (lote[0] < dia, lote[0])):
+        if isinstance(evento, Descarte):
+            ordem = sorted(disponiveis, key=lambda lote: lote[0])
+        else:
+            ordem = sorted(disponiveis, key=lambda lote: (lote[0] < dia, lote[0]))
+        for lote in ordem:
             usado = min(lote[1], falta)
             lote[1] -= usado
             falta -= usado

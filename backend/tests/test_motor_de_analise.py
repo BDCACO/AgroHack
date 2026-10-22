@@ -7,6 +7,7 @@ import pytest
 
 from app.analysis.consumo import analisar
 from app.domain.estoque import (
+    Descarte,
     Entrada,
     Insumo,
     Lote,
@@ -218,3 +219,14 @@ def test_sem_lote_valido_a_retirada_sai_do_vencido() -> None:
     lotes = lotes_em_estoque([Entrada(antes(120), 10, vencido)], [Retirada(antes(30), 4)])
 
     assert lotes == [Lote(6, vencido)]
+
+
+def test_descarte_sai_primeiro_do_lote_vencido() -> None:
+    vencido, novo = antes(60), REF + timedelta(days=300)
+    entradas = [Entrada(antes(120), 10, vencido), Entrada(antes(70), 10, novo)]
+    retiradas = [Retirada(antes(40), 3)]
+
+    lotes = lotes_em_estoque(entradas, retiradas, descartes=[Descarte(antes(5), 10)])
+
+    # A retirada saiu do novo (o outro já tinha vencido); o descarte levou o vencido.
+    assert lotes == [Lote(7, novo)]
