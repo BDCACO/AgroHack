@@ -249,3 +249,50 @@ def test_lote_cabe_500_lancamentos_e_recusa_mais(client: TestClient) -> None:
     assert resultado["resumo"]["gravadas"] == 500
     # Pedido malformado como um todo, não um item: o app divide a fila em lotes de 500.
     assert demais.status_code == 422
+
+
+def test_avisos_pedem_para_conferir_sem_impedir_a_gravacao(client: TestClient) -> None:
+    ureia = criar_insumo(client)
+    sal = criar_insumo(client, "Sal mineral")
+    # Lançado no site, sem uuid; o mesmo lançamento vem depois da fila do app.
+    no_site = lancamento(sal, uuid=None, tipo="entrada", quantidade=30)
+    assert client.post("/api/v1/movimentacoes", json=no_site).status_code == 201
+    fila = [
+        lancamento(ureia, tipo="entrada", data=dia(5), quantidade=10),
+        lancamento(ureia, data=dia(4), quantidade=8),
+        lancamento(ureia, data=dia(3), quantidade=5),
+        lancamento(ureia, data=dia(45), quantidade=1, tipo="entrada"),
+        no_site | {"uuid": str(uuid4())},
+        lancamento(sal, quantidade=5),
+    ]
+
+    resultado = sincronizar(client, fila)
+
+    avisos = [r["avisos"] for r in resultado["resultados"]]
+    assert all(r["situacao"] == "gravada" for r in resultado["resultados"])
+    data_antiga = (HOJE - timedelta(days=45)).strftime("%d/%m/%Y")
+    assert avisos == [
+        [],
+        [],
+        # O saldo do fim do lote, uma vez por insumo: na última saída dele.
+        ["O estoque de Ureia fica em -2 kg com este envio: falta lançar uma entrada?"],
+        [f"Lançamento atrasado: a data é {data_antiga}, 45 dias atrás. Confira a data."],
+        [
+            "Já existe um lançamento igual neste dia, feito sem o app (no site ou pela "
+            "planilha). Se for o mesmo, remova um dos dois."
+        ],
+        [],
+    ]
+    # Reenviado, o lote devolve os mesmos avisos: a primeira resposta pode ter se perdido.
+    assert [r["avisos"] for r in sincronizar(client, fila)["resultados"]] == avisos
+
+
+def test_entrada_mais_adiante_no_lote_cobre_a_saida(client: TestClient) -> None:
+    # A ordem da fila é a dos lançamentos no celular, não a das datas: o que vale é o
+    # estoque depois do lote inteiro.
+    ureia = criar_insumo(client)
+    fila = [lancamento(ureia, quantidade=8), lancamento(ureia, tipo="entrada", quantidade=10)]
+
+    resultado = sincronizar(client, fila)
+
+    assert [r["avisos"] for r in resultado["resultados"]] == [[], []]
