@@ -5,8 +5,12 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
+from app.schemas.estoque import InsumoCadastro
+from app.services import estoque as servico
 
 HOJE = hoje()
 
@@ -401,3 +405,19 @@ def test_cadastro_com_numero_que_vira_zero(client: TestClient, campo: str) -> No
         assert resposta.status_code == 422
     else:
         assert (resposta.status_code, resposta.json()[campo]) == (201, 0)
+
+
+def test_so_nome_repetido_vira_nome_duplicado(db: Session) -> None:
+    # Outra regra do banco violada não pode virar "já existe um insumo com esse nome".
+    sem_validacao = InsumoCadastro.model_construct(
+        nome="Ureia",
+        unidade="kg",
+        estoque_minimo=-1,
+        prazo_reposicao_dias=None,
+        embalagem=None,
+        pedido_minimo=None,
+        carencia_dias=None,
+    )
+
+    with pytest.raises(IntegrityError):
+        servico.criar_insumo(db, sem_validacao)

@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
@@ -296,3 +297,26 @@ def test_entrada_mais_adiante_no_lote_cobre_a_saida(client: TestClient) -> None:
     resultado = sincronizar(client, fila)
 
     assert [r["avisos"] for r in resultado["resultados"]] == [[], []]
+
+
+def test_violacao_do_banco_num_item_recusa_so_ele(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Uma regra do banco que o schema não previu (ou uma corrida com o site) não pode
+    derrubar o lote com 500: a fila do app ficaria travada para sempre."""
+    insumo = criar_insumo(client)
+    registrar = servico.registrar_movimentacao
+    fila = [lancamento(insumo, quantidade=q) for q in (5, 6, 7)]
+
+    def falha_no_segundo(db: Session, dados: Any, *args: Any) -> Any:
+        if dados.quantidade == 6:
+            raise IntegrityError("INSERT", {}, Exception("ck_movimentacoes_qualquer"))
+        return registrar(db, dados, *args)
+
+    monkeypatch.setattr(servico, "registrar_movimentacao", falha_no_segundo)
+    resposta = client.post("/api/v1/movimentacoes/lote", json={"movimentacoes": fila})
+
+    assert resposta.status_code == 200
+    resultados = resposta.json()["resultados"]
+    assert [r["situacao"] for r in resultados] == ["gravada", "recusada", "gravada"]
+    assert "não foi gravado" in resultados[1]["erros"][0]

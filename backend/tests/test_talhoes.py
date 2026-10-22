@@ -9,8 +9,12 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
+from app.schemas.talhao import TalhaoCadastro
+from app.services import talhoes as servico_de_talhoes
 
 HOJE = hoje()
 
@@ -566,3 +570,10 @@ def test_area_que_o_banco_arredondaria_para_zero_e_422(client: TestClient) -> No
 
     assert resposta.status_code == 422
     assert criar_talhao(client, nome="Canteiro", area_ha=0.005)["area_ha"] == 0.01
+
+
+def test_so_nome_repetido_de_talhao_vira_nome_duplicado(db: Session) -> None:
+    sem_validacao = TalhaoCadastro.model_construct(nome="Norte", area_ha=-1, cultura=None)
+
+    with pytest.raises(IntegrityError):
+        servico_de_talhoes.criar_talhao(db, sem_validacao)

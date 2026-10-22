@@ -92,3 +92,13 @@ def test_cadastros_com_numero_que_o_banco_zeraria_dao_422(api: httpx.Client) -> 
     assert (
         api.post("/talhoes", json={"nome": "Canteiro", "area_ha": 0.005}).json()["area_ha"] == 0.01
     )
+
+
+def test_nome_repetido_continua_409_no_postgres(api: httpx.Client) -> None:
+    # A mensagem do PostgreSQL traz o nome da constraint (uq_..._nome): é por ela que só o
+    # nome repetido vira 409.
+    insumo(api)
+    api.post("/talhoes", json={"nome": "Norte", "area_ha": 10})
+
+    assert api.post("/insumos", json={"nome": "Ureia", "unidade": "kg"}).status_code == 409
+    assert api.post("/talhoes", json={"nome": "Norte", "area_ha": 5}).status_code == 409

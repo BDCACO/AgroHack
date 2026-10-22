@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.database import violou_nome_unico
 from app.core.relogio import hoje
 from app.domain import estoque as dominio
 from app.domain import talhao as regras
@@ -127,8 +128,11 @@ def _salvar(db: Session) -> None:
         db.commit()
     except IntegrityError as erro:
         db.rollback()
-        # A única restrição que a validação do schema não cobre é o nome único.
-        raise NomeDuplicado from erro
+        # Só o nome único vira "já existe": outra regra violada é defeito, não do usuário,
+        # e dizer "nome repetido" mandaria o produtor procurar o problema no lugar errado.
+        if violou_nome_unico(erro, "talhoes"):
+            raise NomeDuplicado from erro
+        raise
 
 
 type _Aplicacoes = list[tuple[Movimentacao, regras.Aplicacao]]
