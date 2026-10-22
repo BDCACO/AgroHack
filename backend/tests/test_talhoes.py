@@ -1,7 +1,8 @@
 """Talhões (/talhoes): o cadastro de onde os insumos são aplicados, as aplicações, a
 carência e o custo de cada um."""
 
-from datetime import timedelta
+import base64
+from datetime import datetime, timedelta
 from io import BytesIO
 from typing import Any
 
@@ -496,3 +497,65 @@ def test_planilha_modelo_sem_talhao_cadastrado(client: TestClient) -> None:
     validadas = {str(v.sqref)[0] for v in livro["Movimentações"].data_validations.dataValidation}
     assert "H" not in validadas
     assert livro["Talhões cadastrados"]["A2"].value.startswith("Nenhum talhão cadastrado")
+
+
+def test_relatorio_traz_os_talhoes_e_a_copia_leva_o_talhao(client: TestClient) -> None:
+    norte = criar_talhao(client, area_ha=40)
+    criar_talhao(client, nome="Pasto 1", area_ha=10, cultura=None)
+    fungicida = criar_insumo(client, "Fungicida X", carencia_dias=15)
+    lancar(
+        client, insumo_id=fungicida, tipo="entrada", data=dia(30), quantidade=10, valor_unitario=100
+    )
+    aplicar(client, fungicida, norte["id"], 6, 2)
+    lancar(client, insumo_id=fungicida, tipo="saida", data=dia(1), quantidade=1)
+
+    resposta = client.get("/api/v1/relatorio.xlsx")
+    livro = load_workbook(BytesIO(resposta.content))
+
+    assert livro.sheetnames == [
+        "Resumo",
+        "Alertas",
+        "Reposição",
+        "Estoque",
+        "Talhões",
+        "Movimentações",
+    ]
+    talhoes = list(livro["Talhões"].iter_rows(values_only=True))
+    assert talhoes[0] == (
+        "talhão",
+        "área (ha)",
+        "cultura",
+        "situação",
+        "colheita liberada em",
+        "custo total (R$)",
+        "custo por ha (R$)",
+        "carência",
+        "limitações",
+    )
+    pasto, norte_no_relatorio = talhoes[1:]
+    assert pasto[:8] == ("Pasto 1", 10, None, "Sem alertas", None, 0, 0, None)
+    assert norte_no_relatorio[:7] == (
+        "Talhão Norte",
+        40,
+        "Soja",
+        "Urgente",
+        datetime.combine(HOJE + timedelta(days=9), datetime.min.time()),
+        200,
+        5,
+    )
+    assert norte_no_relatorio[7].startswith("Talhão Norte: não colher nem abater antes de")
+    assert livro["Talhões"]["E3"].number_format == "DD/MM/YYYY"
+    assert livro["Talhões"]["F3"].number_format == '"R$" #,##0.00'
+    resumo = {
+        linha[0]: linha[1] for linha in livro["Resumo"].iter_rows(values_only=True) if linha[0]
+    }
+    assert resumo["Talhões em carência"] == 1
+
+    movimentacoes = list(livro["Movimentações"].iter_rows(values_only=True))
+    assert movimentacoes[0][7] == "talhao"
+    assert [linha[7] for linha in movimentacoes[1:]] == [None, "Talhão Norte", None]
+    previa = client.post(
+        "/api/v1/importacoes", json={"xlsx": base64.b64encode(resposta.content).decode()}
+    ).json()
+    # A cópia de segurança volta igual: a aplicação, no mesmo talhão, já está lá.
+    assert (previa["erros"], previa["linhas"], previa["ja_lancadas"]) == ([], 3, 3)

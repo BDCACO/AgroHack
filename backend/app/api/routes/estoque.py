@@ -176,8 +176,9 @@ def baixar_planilha_modelo(db: Session = Depends(get_db)) -> Response:
     responses={200: {"content": {_XLSX: {}}, "description": "Relatório do estoque"}},
 )
 def baixar_relatorio(db: Session = Depends(get_db)) -> Response:
-    """Alertas, reposição, situação de cada insumo e todas as movimentações, em Excel. A
-    aba Movimentações tem o formato da importação: serve de cópia de segurança."""
+    """Alertas, reposição, situação de cada insumo, talhões (carência e custo) e todas as
+    movimentações, em Excel. A aba Movimentações tem o formato da importação: serve de cópia
+    de segurança, com o talhão de cada aplicação."""
     return Response(
         relatorio.gerar(db),
         media_type=_XLSX,

@@ -25,7 +25,14 @@ def test_relatorio_traz_alertas_reposicao_e_estoque(client: TestClient, db: Sess
 
     _, livro = baixar(client)
 
-    assert livro.sheetnames == ["Resumo", "Alertas", "Reposição", "Estoque", "Movimentações"]
+    assert livro.sheetnames == [
+        "Resumo",
+        "Alertas",
+        "Reposição",
+        "Estoque",
+        "Talhões",
+        "Movimentações",
+    ]
     alertas = list(livro["Alertas"].iter_rows(min_row=2, values_only=True))
     # Os mais graves primeiro, cada um com a conta que o justifica.
     assert [a[0] for a in alertas] == ["Urgente"] * 2 + ["Atenção"] * 3 + ["Observar"] * 2
