@@ -51,3 +51,16 @@ def test_retirada_negativa_e_recusada(client: TestClient) -> None:
     )
 
     assert resposta.status_code == 422
+
+
+def test_custo_medio_opcional_poe_reais_nos_alertas(client: TestClient) -> None:
+    corpo = pedido(lotes=[{"quantidade": 5, "validade": str(REF - timedelta(days=3))}])
+    corpo["insumo"] |= {"custo_medio": 3}
+
+    alertas = client.post("/api/v1/analises", json=corpo).json()["alertas"]
+
+    vencido = next(a for a in alertas if a["tipo"] == "vencido")
+    assert vencido["valor"] == 15
+    assert vencido["justificativa"].endswith("são cerca de R$ 15,00.")
+    corpo["insumo"]["custo_medio"] = 0
+    assert client.post("/api/v1/analises", json=corpo).status_code == 422

@@ -70,6 +70,9 @@ class Alerta:
     tipo: TipoAlerta
     gravidade: Gravidade
     justificativa: str
+    # R$ envolvidos (o lote que vence, o capital parado), quando há custo médio. A conta
+    # está no fim da justificativa; o número à parte serve para somar e ordenar.
+    valor: float | None = None
 
 
 def alerta_estoque_minimo(insumo: Insumo) -> Alerta | None:
@@ -84,7 +87,9 @@ def alerta_estoque_minimo(insumo: Insumo) -> Alerta | None:
     )
 
 
-def alertas_de_validade(lotes: Iterable[Lote], referencia: date, unidade: str) -> list[Alerta]:
+def alertas_de_validade(
+    lotes: Iterable[Lote], referencia: date, unidade: str, custo_medio: float | None = None
+) -> list[Alerta]:
     alertas = []
     for lote in sorted(lotes, key=lambda lote: lote.validade):
         if lote.quantidade <= 0:
@@ -92,22 +97,20 @@ def alertas_de_validade(lotes: Iterable[Lote], referencia: date, unidade: str) -
         dias = (lote.validade - referencia).days
         quantidade = quantidade_legivel(lote.quantidade, unidade)
         if dias < 0:
-            alertas.append(
-                Alerta(
-                    "vencido",
-                    "alta",
-                    f"{quantidade} vencidos em {lote.validade:%d/%m/%Y}, há {dias_legivel(-dias)}.",
-                )
-            )
+            tipo, gravidade = "vencido", "alta"
+            texto = f"{quantidade} vencidos em {lote.validade:%d/%m/%Y}, há {dias_legivel(-dias)}."
         elif dias <= DIAS_AVISO_VENCIMENTO:
             quando = "hoje" if dias == 0 else f"em {dias_legivel(dias)}"
-            alertas.append(
-                Alerta(
-                    "vencimento_proximo",
-                    "media",
-                    f"{quantidade} vencem em {lote.validade:%d/%m/%Y} ({quando}).",
-                )
-            )
+            tipo, gravidade = "vencimento_proximo", "media"
+            texto = f"{quantidade} vencem em {lote.validade:%d/%m/%Y} ({quando})."
+        else:
+            continue
+        valor = None
+        if custo_medio is not None:
+            valor = round(lote.quantidade * custo_medio, 2)
+            preco = valor_pelo_custo_medio(custo_medio, unidade)
+            texto += f" {preco}, são cerca de {dinheiro_legivel(valor)}."
+        alertas.append(Alerta(tipo, gravidade, texto, valor))
     return alertas
 
 
@@ -180,6 +183,11 @@ def quantidade_legivel(valor: float, unidade: str) -> str:
     """1234.5, "kg" → "1.234,5 kg". Duas casas porque defensivo se usa em frações de litro."""
     numero = f"{valor:,.2f}".translate(_PADRAO_BR).rstrip("0").rstrip(",")
     return f"{numero} {unidade}"
+
+
+def valor_pelo_custo_medio(custo_medio: float, unidade: str) -> str:
+    """O começo da frase que põe preço numa quantidade: a conta fica à vista."""
+    return f"Pelo custo médio de {dinheiro_legivel(custo_medio)}/{unidade}"
 
 
 def dinheiro_legivel(valor: float) -> str:

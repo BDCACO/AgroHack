@@ -19,7 +19,9 @@ from app.domain.estoque import (
     alerta_estoque_minimo,
     alertas_de_validade,
     dias_legivel,
+    dinheiro_legivel,
     quantidade_legivel,
+    valor_pelo_custo_medio,
 )
 
 JANELA_CONSUMO_DIAS = 90
@@ -62,13 +64,15 @@ def analisar(
     registros_desde: date,
     referencia: date,
     lotes: Iterable[Lote] = (),
+    custo_medio: float | None = None,
 ) -> Analise:
     """Analisa o insumo na data de referência.
 
     `registros_desde` é a data a partir da qual as retiradas estão completas: é o que
-    separa "não houve consumo" de "não havia registro".
+    separa "não houve consumo" de "não havia registro". `custo_medio` (R$ por unidade) é
+    opcional: com ele, os alertas e a reposição dizem também quanto dinheiro está em jogo.
     """
-    alertas = alertas_de_validade(lotes, referencia, insumo.unidade)
+    alertas = alertas_de_validade(lotes, referencia, insumo.unidade, custo_medio)
     if (alerta := alerta_estoque_minimo(insumo)) is not None:
         alertas.append(alerta)
     limitacoes = []
@@ -129,14 +133,22 @@ def analisar(
             )
         )
     elif cobertura > COBERTURA_EXCESSO_DIAS:
-        alertas.append(
-            Alerta(
-                "excesso",
-                "baixa",
-                f"No ritmo atual ({ritmo}), o estoque dura cerca de {dias_legivel(cobertura)}"
-                f"; acima de {COBERTURA_EXCESSO_DIAS} dias, é capital parado.",
-            )
+        texto = (
+            f"No ritmo atual ({ritmo}), o estoque dura cerca de {dias_legivel(cobertura)}"
+            f"; acima de {COBERTURA_EXCESSO_DIAS} dias, é capital parado."
         )
+        valor = None
+        if custo_medio is not None:
+            # Parado é só o que passa da cobertura aceitável; o resto vai ser usado.
+            sobra = insumo.estoque_atual - consumo * COBERTURA_EXCESSO_DIAS
+            valor = round(sobra * custo_medio, 2)
+            texto += (
+                f" {valor_pelo_custo_medio(custo_medio, insumo.unidade)}, os "
+                f"{quantidade_legivel(sobra, insumo.unidade)} além de "
+                f"{COBERTURA_EXCESSO_DIAS} dias de consumo são cerca de "
+                f"{dinheiro_legivel(valor)}."
+            )
+        alertas.append(Alerta("excesso", "baixa", texto, valor))
         # Com excesso não há compra a sugerir — e isso limita a data do pedido a
         # COBERTURA_EXCESSO_DIAS, em vez de séculos à frente com consumo ínfimo.
         return resultado(consumo=consumo, cobertura=cobertura)

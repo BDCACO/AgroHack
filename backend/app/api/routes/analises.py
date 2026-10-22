@@ -14,10 +14,13 @@ def analisar_insumo(pedido: PedidoDeAnalise) -> Analise:
     Chama o motor direto, sem `services/`: não há repositório a orquestrar. Quando
     a importação existir, o painel lê do banco e devolve este mesmo `Analise`.
     """
+    insumo = pedido.insumo.model_dump()
+    custo_medio = insumo.pop("custo_medio")
     return analisar(
-        Insumo(**pedido.insumo.model_dump()),
+        Insumo(**insumo),
         [Retirada(**r.model_dump()) for r in pedido.retiradas],
         lotes=[Lote(**lote.model_dump()) for lote in pedido.lotes],
         registros_desde=pedido.registros_desde,
         referencia=pedido.referencia,
+        custo_medio=custo_medio,
     )

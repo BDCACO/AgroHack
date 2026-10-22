@@ -9,6 +9,8 @@ from app.schemas.estoque import InsumoCadastro
 class InsumoEntrada(InsumoCadastro):
     # Negativo é aceito: o motor o aponta como inconsistência nos registros.
     estoque_atual: float
+    # R$ por unidade. Opcional: sem ele, a análise é a mesma, só não fala em reais.
+    custo_medio: float | None = Field(default=None, gt=0)
 
 
 class RetiradaEntrada(BaseModel):

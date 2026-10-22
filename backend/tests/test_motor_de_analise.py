@@ -251,3 +251,54 @@ def test_custo_medio_pondera_pela_quantidade_e_ignora_compra_sem_preco() -> None
     assert custo_medio(entradas) == pytest.approx(3.2)
     assert custo_medio([Entrada(antes(5), 10)]) is None
     assert custo_medio([]) is None
+
+
+def test_validade_com_custo_medio_diz_quanto_dinheiro_esta_em_jogo() -> None:
+    lotes = [Lote(20, REF + timedelta(days=10)), Lote(10, antes(5))]
+
+    alertas = alertas_de_validade(lotes, REF, "kg", custo_medio=3.2)
+
+    # O começo é o mesmo de sem preço; o valor vem no fim: 10 × 3,20 e 20 × 3,20.
+    assert [(a.tipo, a.justificativa, a.valor) for a in alertas] == [
+        (
+            "vencido",
+            "10 kg vencidos em 25/06/2026, há 5 dias. Pelo custo médio de R$ 3,20/kg, são "
+            "cerca de R$ 32,00.",
+            pytest.approx(32),
+        ),
+        (
+            "vencimento_proximo",
+            "20 kg vencem em 10/07/2026 (em 10 dias). Pelo custo médio de R$ 3,20/kg, são "
+            "cerca de R$ 64,00.",
+            pytest.approx(64),
+        ),
+    ]
+    assert all(a.valor is None for a in alertas_de_validade(lotes, REF, "kg"))
+
+
+def test_excesso_com_custo_medio_mostra_o_capital_parado() -> None:
+    insumo = Insumo("Herbicida", "L", estoque_atual=500, estoque_minimo=10)
+
+    analise = analisar(
+        insumo, diarias(1, 120), registros_desde=DESDE_120_DIAS, referencia=REF, custo_medio=25
+    )
+
+    # 1 L/dia: 180 dias de consumo são 180 L; os 320 L além disso, a R$ 25,00, são R$ 8.000.
+    [excesso] = analise.alertas
+    assert excesso.valor == pytest.approx(8000)
+    assert excesso.justificativa == (
+        "No ritmo atual (1 L/dia), o estoque dura cerca de 500 dias; acima de 180 dias, é "
+        "capital parado. Pelo custo médio de R$ 25,00/L, os 320 L além de 180 dias de consumo "
+        "são cerca de R$ 8.000,00."
+    )
+
+
+def test_alertas_sem_dinheiro_envolvido_nao_tem_valor() -> None:
+    insumo = Insumo("Ureia", "kg", estoque_atual=20, estoque_minimo=30, prazo_reposicao_dias=15)
+
+    analise = analisar(
+        insumo, diarias(2, 120), registros_desde=DESDE_120_DIAS, referencia=REF, custo_medio=3
+    )
+
+    assert {a.tipo for a in analise.alertas} == {"risco_de_falta", "abaixo_do_minimo"}
+    assert all(a.valor is None for a in analise.alertas)
