@@ -18,6 +18,8 @@ TipoAlerta = Literal[
     "excesso",
     "baixa_movimentacao",
     "consumo_incomum",
+    # Do talhão, não do insumo: até a carência do defensivo aplicado acabar, não se colhe.
+    "carencia",
 ]
 
 # Lote a 30 dias da validade ainda dá tempo de planejar o uso ou negociar troca.
