@@ -13,7 +13,7 @@ import _csv
 import csv
 import io
 import re
-from collections import Counter
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from zipfile import ZipFile
@@ -24,17 +24,33 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
-from app.models import Insumo, Movimentacao
-from app.schemas.estoque import QUANTIDADE_MAXIMA, SEM_CARACTERE_DE_CONTROLE
+from app.models import Insumo, Movimentacao, Talhao
+from app.schemas.estoque import (
+    QUANTIDADE_MAXIMA,
+    SEM_CARACTERE_DE_CONTROLE,
+    VALOR_UNITARIO_MAXIMO,
+)
 
 COLUNAS_OBRIGATORIAS = ("data", "insumo", "tipo", "quantidade")
+# Colunas de número, que decidem juntas se a vírgula é decimal ou milhar. `valor` (o preço
+# por unidade, só em compras) é opcional.
+COLUNAS_DE_NUMERO = ("quantidade", "valor")
+# Tipo escrito → (tipo, motivo). Descarte é saída que não é consumo: uma palavra na
+# mesma coluna, em vez de uma coluna a mais para preencher.
 TIPOS = {
-    "entrada": "entrada",
-    "compra": "entrada",
-    "saida": "saida",
-    "saída": "saida",
-    "retirada": "saida",
+    "entrada": ("entrada", None),
+    "compra": ("entrada", None),
+    "saida": ("saida", None),
+    "saída": ("saida", None),
+    "retirada": ("saida", None),
+    "descarte": ("saida", "descarte"),
+    # Ajustes de inventário, como o relatório (a cópia de segurança) os escreve.
+    "sobra": ("entrada", "inventario"),
+    "falta": ("saida", "inventario"),
 }
+# Título escrito com acento → o nome da coluna. Sem acento é o do modelo; com acento é o que
+# o produtor escreve à mão.
+SINONIMOS_DE_COLUNA = {"talhão": "talhao"}
 # O Excel em português grava DD/MM/AAAA (ou DD/MM/AA, se a célula estiver assim).
 FORMATOS_DE_DATA = ("%d/%m/%Y", "%Y-%m-%d", "%d/%m/%y")
 # Anos de registro de uma propriedade cabem com folga. O teto protege a API de um
@@ -97,6 +113,9 @@ class _Linha:
     data: date
     quantidade: float
     validade: date | None
+    motivo: str | None
+    valor_unitario: float | None
+    talhao: Talhao | None  # onde a retirada foi aplicada; só cadastrado
 
 
 # (número da linha no arquivo, células) — ou, no lugar das células, o erro de forma da
@@ -104,9 +123,11 @@ class _Linha:
 type _Lidas = list[tuple[int, list[Celula] | str]]
 
 
-def importar(db: Session, arquivo: str | bytes, *, confirmar: bool) -> ResultadoImportacao:
+def importar(
+    db: Session, arquivo: str | bytes, *, confirmar: bool, usuario_id: int | None = None
+) -> ResultadoImportacao:
     """Confere a planilha — texto = CSV, bytes = .xlsx — e devolve o resumo. Com
-    `confirmar` e sem erros, grava."""
+    `confirmar` e sem erros, grava em nome de `usuario_id` (quem importou)."""
     resultado = ResultadoImportacao()
     if isinstance(arquivo, bytes):
         lido = _ler_xlsx(arquivo, resultado.erros)
@@ -125,6 +146,9 @@ def importar(db: Session, arquivo: str | bytes, *, confirmar: bool) -> Resultado
     for insumo in db.scalars(select(Insumo).order_by(Insumo.nome)):
         cadastrados.setdefault(insumo.nome.casefold(), []).append(insumo)
     novos: dict[str, Insumo] = {}
+    talhoes: dict[str, list[Talhao]] = {}
+    for talhao in db.scalars(select(Talhao).order_by(Talhao.nome)):
+        talhoes.setdefault(talhao.nome.casefold(), []).append(talhao)
     linhas: list[_Linha] = []
     for numero, celulas in lidas:
         if isinstance(celulas, str):
@@ -132,7 +156,7 @@ def importar(db: Session, arquivo: str | bytes, *, confirmar: bool) -> Resultado
             continue
         campos = dict(zip(cabecalho, celulas, strict=False))
         try:
-            linhas.append(_ler(campos, decimal, cadastrados, novos))
+            linhas.append(_ler(campos, decimal, cadastrados, novos, talhoes))
         except ValueError as erro:
             resultado.erros.append(f"Linha {numero}: {erro}")
 
@@ -145,7 +169,14 @@ def importar(db: Session, arquivo: str | bytes, *, confirmar: bool) -> Resultado
 
     for linha in linhas:
         movimentacao = Movimentacao(
-            tipo=linha.tipo, data=linha.data, quantidade=linha.quantidade, validade=linha.validade
+            tipo=linha.tipo,
+            data=linha.data,
+            quantidade=linha.quantidade,
+            validade=linha.validade,
+            motivo=linha.motivo,
+            valor_unitario=linha.valor_unitario,
+            talhao_id=linha.talhao and linha.talhao.id,
+            usuario_id=usuario_id,
         )
         if linha.insumo.id is None:
             linha.insumo.movimentacoes.append(movimentacao)
@@ -317,6 +348,7 @@ def _sem_titulo(letra: str) -> str:
 
 def _cabecalho(valores: list[str], erros: list[str]) -> list[str] | None:
     cabecalho = [valor.strip().lower() for valor in valores]
+    cabecalho = [SINONIMOS_DE_COLUNA.get(titulo, titulo) for titulo in cabecalho]
     if faltando := [c for c in COLUNAS_OBRIGATORIAS if c not in cabecalho]:
         erros.append(
             f"Faltam as colunas: {', '.join(faltando)}. A primeira linha precisa ter os "
@@ -328,25 +360,40 @@ def _cabecalho(valores: list[str], erros: list[str]) -> list[str] | None:
 
 def _separador_decimal(lidas: _Lidas, cabecalho: list[str], padrao: str) -> str:
     """Vírgula ou ponto, decidido pela planilha inteira: sozinha, a célula "25.500" não diz
-    se é vinte e cinco e meio ou vinte e cinco mil. Só olha número escrito como texto."""
-    coluna = cabecalho.index("quantidade")
-    pistas: dict[str, tuple[int, str]] = {}
+    se é vinte e cinco e meio ou vinte e cinco mil. Só olha número escrito como texto, na
+    quantidade e no valor: quem escreve "3,20" no preço escreve "1.000" na quantidade."""
+    colunas = [(nome, cabecalho.index(nome)) for nome in COLUNAS_DE_NUMERO if nome in cabecalho]
+    pistas: dict[str, tuple[int, str, str]] = {}
     for numero, celulas in lidas:
         if isinstance(celulas, str):
             continue  # linha com erro de forma
-        valor = celulas[coluna] if coluna < len(celulas) else ""
-        if not isinstance(valor, str):
-            continue
-        texto = valor.replace(" ", "")
-        if (separador := _pista(texto)) is not None:
-            pistas.setdefault(separador, (numero, texto))
+        for nome, coluna in colunas:
+            valor = celulas[coluna] if coluna < len(celulas) else ""
+            if not isinstance(valor, str):
+                continue
+            texto = _sem_moeda(valor)
+            if (separador := _pista(texto)) is not None:
+                pistas.setdefault(separador, (numero, nome, texto))
     if len(pistas) > 1:
-        (linha_v, virgula), (linha_p, ponto) = pistas[","], pistas["."]
+        virgula, ponto = pistas[","], pistas["."]
+        assunto = "Quantidades" if virgula[1] == ponto[1] == "quantidade" else "Números"
         raise ValueError(
-            f"Quantidades com vírgula decimal (linha {linha_v}: {virgula}) e com ponto decimal "
-            f"(linha {linha_p}: {ponto}) na mesma planilha: use um formato só."
+            f"{assunto} com vírgula decimal ({_onde(*virgula)}) e com ponto decimal "
+            f"({_onde(*ponto)}) na mesma planilha: use um formato só."
         )
     return next(iter(pistas)) if pistas else padrao
+
+
+def _onde(numero: int, coluna: str, texto: str) -> str:
+    # A quantidade é a coluna de sempre; as outras se dizem pelo nome.
+    if coluna == "quantidade":
+        return f"linha {numero}: {texto}"
+    return f"linha {numero}, {coluna}: {texto}"
+
+
+def _sem_moeda(texto: str) -> str:
+    """O preço pode vir como "R$ 3,20": o símbolo e os espaços não fazem parte do número."""
+    return texto.replace("R$", "").replace(" ", "")
 
 
 def _pista(texto: str) -> str | None:
@@ -372,6 +419,7 @@ def _ler(
     decimal: str,
     cadastrados: dict[str, list[Insumo]],
     novos: dict[str, Insumo],
+    talhoes: dict[str, list[Talhao]],
 ) -> _Linha:
     nome = _texto(campos.get("insumo", ""))
     if not nome:
@@ -387,15 +435,15 @@ def _ler(
         raise ValueError("a unidade tem um caractere inválido.")
 
     tipo_escrito = _texto(campos.get("tipo", ""))
-    tipo = TIPOS.get(tipo_escrito.casefold())
-    if tipo is None:
-        raise ValueError(f'tipo "{tipo_escrito}" desconhecido; use entrada ou saída.')
+    if (tipo_e_motivo := TIPOS.get(tipo_escrito.casefold())) is None:
+        raise ValueError(f'tipo "{tipo_escrito}" desconhecido; use entrada, saída ou descarte.')
+    tipo, motivo = tipo_e_motivo
 
     data = _data(campos.get("data", ""), "data")
     if data > hoje():
         raise ValueError("data no futuro.")
 
-    quantidade = _quantidade(campos.get("quantidade", ""), decimal)
+    quantidade = _numero(campos.get("quantidade", ""), decimal, "quantidade", casas=3)
     # `not >` em vez de `<=`: pega também o NaN, que float("nan") aceita.
     if not quantidade > 0:
         raise ValueError("quantidade deve ser maior que zero.")
@@ -407,19 +455,40 @@ def _ler(
         if tipo != "entrada":
             raise ValueError("validade só se informa numa entrada.")
         validade = _data(valor_validade, "validade")
+
+    valor_unitario = None
+    if _texto(celula_valor := campos.get("valor", "")):
+        # Preço é o que se pagou numa compra: descarte, falta e sobra não têm.
+        if tipo != "entrada" or motivo is not None:
+            raise ValueError("valor só se informa numa entrada (compra): é o preço pago.")
+        # Quatro casas, como a coluna: o preço por grama de um defensivo tem centavos
+        # depois da vírgula.
+        valor_unitario = _numero(celula_valor, decimal, "valor", casas=4)
+        if not valor_unitario > 0:
+            raise ValueError("valor deve ser maior que zero.")
+        if valor_unitario > VALOR_UNITARIO_MAXIMO:
+            raise ValueError("valor grande demais.")
+    talhao = None
+    if nome_do_talhao := _texto(campos.get("talhao", "")):
+        # Para onde o insumo foi aplicado: compra, descarte, sobra e falta não vão à lavoura.
+        if tipo != "saida" or motivo is not None:
+            raise ValueError(
+                "talhão só se informa numa saída (retirada para uso): é onde o insumo foi aplicado."
+            )
+        talhao = _talhao(nome_do_talhao, talhoes)
     insumo = _insumo(nome, unidade, cadastrados, novos)
-    return _Linha(insumo, tipo, data, quantidade, validade)
+    return _Linha(insumo, tipo, data, quantidade, validade, motivo, valor_unitario, talhao)
 
 
-def _quantidade(celula: Celula, decimal: str) -> float:
+def _numero(celula: Celula, decimal: str, coluna: str, *, casas: int) -> float:
     if isinstance(celula, float):
-        return round(celula, 3)
+        return round(celula, casas)
     texto = _texto(celula)
     milhar = "." if decimal == "," else ","
     try:
-        return round(float(texto.replace(" ", "").replace(milhar, "").replace(decimal, ".")), 3)
+        return round(float(_sem_moeda(texto).replace(milhar, "").replace(decimal, ".")), casas)
     except ValueError:
-        raise ValueError(f'quantidade "{texto}" não é um número.') from None
+        raise ValueError(f'{coluna} "{texto}" não é um número.') from None
 
 
 def _insumo(
@@ -449,6 +518,22 @@ def _insumo(
         # Somar kg com saca daria um estoque sem sentido.
         raise ValueError(f'"{nome}" já está cadastrado em {insumo.unidade}, não em {unidade}.')
     return insumo
+
+
+def _talhao(nome: str, talhoes: dict[str, list[Talhao]]) -> Talhao:
+    """Casa o nome com o cadastro, sem diferenciar maiúsculas, como o insumo. Ao contrário
+    dele, talhão novo não nasce da planilha: falta a área, sem a qual não há custo por
+    hectare."""
+    match talhoes.get(nome.casefold(), []):
+        case [talhao]:
+            return talhao
+        case []:
+            raise ValueError(f'talhão "{nome}" não cadastrado; cadastre na tela de Talhões.')
+        case varios:
+            raise ValueError(
+                f'há mais de um talhão cadastrado como "{nome}" '
+                f"({', '.join(t.nome for t in varios)}); renomeie um deles na tela de Talhões."
+            )
 
 
 def _data(celula: Celula, coluna: str) -> date:
@@ -489,14 +574,30 @@ def _ja_lancadas(db: Session, linhas: list[_Linha]) -> int:
     ids = {linha.insumo.id for linha in linhas if linha.insumo.id is not None}
     if not ids:
         return 0
-    no_banco = Counter(
-        (m.insumo_id, m.tipo, m.data, m.quantidade, m.validade)
-        for m in db.scalars(select(Movimentacao).where(Movimentacao.insumo_id.in_(ids)))
-    )
+    # Preço e talhão contam só quando os dois lados os têm: preço diferente é outra
+    # compra, mas o preço (ou o talhão) que faltava antes completa o lançamento, não faz
+    # dele outro. A mesma compra reimportada, agora com o preço, tem de ser avisada.
+    no_banco: dict[tuple, list[tuple]] = defaultdict(list)
+    for m in db.scalars(select(Movimentacao).where(Movimentacao.insumo_id.in_(ids))):
+        chave = (m.insumo_id, m.tipo, m.data, m.quantidade, m.validade, m.motivo)
+        no_banco[chave].append((m.valor_unitario, m.talhao_id))
     repetidas = 0
     for linha in linhas:
-        chave = (linha.insumo.id, linha.tipo, linha.data, linha.quantidade, linha.validade)
-        if no_banco[chave] > 0:
-            no_banco[chave] -= 1
-            repetidas += 1
+        chave = (
+            linha.insumo.id,
+            linha.tipo,
+            linha.data,
+            linha.quantidade,
+            linha.validade,
+            linha.motivo,
+        )
+        completa = (linha.valor_unitario, linha.talhao and linha.talhao.id)
+        candidatos = no_banco[chave]
+        for indice, gravada in enumerate(candidatos):
+            if all(
+                a is None or b is None or a == b for a, b in zip(completa, gravada, strict=True)
+            ):
+                del candidatos[indice]  # cada gravada casa com uma linha só
+                repetidas += 1
+                break
     return repetidas

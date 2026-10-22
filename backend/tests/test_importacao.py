@@ -91,6 +91,38 @@ def test_reimportar_avisa_que_ja_foi_lancada(client: TestClient) -> None:
     assert [i["novo"] for i in previa["insumos"]] == [False, False]
 
 
+def test_descarte_entra_como_saida_que_nao_e_consumo(client: TestClient) -> None:
+    planilha = (
+        "data;insumo;unidade;tipo;quantidade;validade\n"
+        f"{br(30)};Ivermectina;L;entrada;10;\n"
+        f"{br(20)};Ivermectina;;saída;2;\n"
+        f"{br(10)};Ivermectina;;Descarte;3;\n"
+    )
+
+    previa = importar(client, planilha)
+    importar(client, planilha, confirmar=True)
+
+    assert (previa["entradas"], previa["saidas"]) == (1, 2)
+    assert previa["insumos"][0]["saidas"] == 5
+    movimentacoes = client.get("/api/v1/movimentacoes").json()
+    assert [(m["tipo"], m["motivo"]) for m in movimentacoes] == [
+        ("saida", "descarte"),
+        ("saida", None),
+        ("entrada", None),
+    ]
+    [insumo] = client.get("/api/v1/insumos").json()
+    assert insumo["estoque_atual"] == 5
+
+
+def test_reimportar_nao_confunde_descarte_com_retirada(client: TestClient) -> None:
+    planilha = f"data;insumo;unidade;tipo;quantidade\n{br(9)};Sal;kg;entrada;10\n"
+    importar(client, planilha + f"{br(5)};Sal;kg;descarte;3\n", confirmar=True)
+
+    previa = importar(client, planilha + f"{br(5)};Sal;kg;saída;3\n")
+
+    assert previa["ja_lancadas"] == 1  # só a entrada
+
+
 def test_insumo_existente_com_outra_unidade_e_erro(client: TestClient) -> None:
     client.post("/api/v1/insumos", json={"nome": "Calcário", "unidade": "t"})
     planilha = f"data,insumo,unidade,tipo,quantidade\n{br(1)},CALCÁRIO,kg,entrada,2.5\n"
@@ -120,7 +152,7 @@ def test_com_um_erro_nada_e_gravado(client: TestClient) -> None:
     assert resultado["erros"] == [
         'Linha 3: data "31/02/2026" inválida; use DD/MM/AAAA.',
         "Linha 4: data no futuro.",
-        'Linha 5: tipo "devolução" desconhecido; use entrada ou saída.',
+        'Linha 5: tipo "devolução" desconhecido; use entrada, saída ou descarte.',
         "Linha 6: quantidade deve ser maior que zero.",
         'Linha 7: quantidade "dez" não é um número.',
         "Linha 8: validade só se informa numa entrada.",
@@ -128,6 +160,75 @@ def test_com_um_erro_nada_e_gravado(client: TestClient) -> None:
         "Linha 10: falta o nome do insumo.",
     ]
     assert client.get("/api/v1/insumos").json() == []
+
+
+def test_coluna_valor_traz_o_preco_da_compra(client: TestClient) -> None:
+    planilha = (
+        "data;insumo;unidade;tipo;quantidade;validade;valor\n"
+        f"{br(30)};Ureia;kg;entrada;1.000;;3,20\n"
+        f"{br(20)};Ureia;kg;compra;500;;R$ 3,80\n"
+        f"{br(15)};Ureia;kg;entrada;100;;\n"  # sem preço: vale, fica fora do custo
+        f"{br(10)};Ureia;kg;saída;25,5;;\n"
+    )
+
+    resultado = importar(client, planilha, confirmar=True)
+
+    assert (resultado["erros"], resultado["importado"]) == ([], True)
+    precos = [m["valor_unitario"] for m in client.get("/api/v1/movimentacoes").json()]
+    assert precos == [None, None, 3.8, 3.2]
+    # (1000 × 3,20 + 500 × 3,80) / 1500 = 3,40
+    assert client.get("/api/v1/insumos").json()[0]["custo_medio"] == pytest.approx(3.4)
+
+
+def test_valor_errado_ou_fora_de_uma_compra_e_erro_na_linha(client: TestClient) -> None:
+    planilha = (
+        "data;insumo;unidade;tipo;quantidade;valor\n"
+        f"{br(9)};Sal;kg;entrada;100;2,50\n"
+        f"{br(8)};Sal;kg;saída;10;2,50\n"
+        f"{br(7)};Sal;kg;descarte;1;2,50\n"
+        f"{br(6)};Sal;kg;falta;1;2,50\n"
+        f"{br(5)};Sal;kg;sobra;1;2,50\n"
+        f"{br(4)};Sal;kg;entrada;1;caro\n"
+        f"{br(3)};Sal;kg;entrada;1;0\n"
+        f"{br(2)};Sal;kg;entrada;1;-2,5\n"
+    )
+
+    assert importar(client, planilha)["erros"] == [
+        "Linha 3: valor só se informa numa entrada (compra): é o preço pago.",
+        "Linha 4: valor só se informa numa entrada (compra): é o preço pago.",
+        "Linha 5: valor só se informa numa entrada (compra): é o preço pago.",
+        "Linha 6: valor só se informa numa entrada (compra): é o preço pago.",
+        'Linha 7: valor "caro" não é um número.',
+        "Linha 8: valor deve ser maior que zero.",
+        "Linha 9: valor deve ser maior que zero.",
+    ]
+
+
+def test_valor_tambem_decide_o_separador_decimal(client: TestClient) -> None:
+    # Separada por vírgula, "1.000" sozinho seria um (o costume internacional); o valor
+    # "3,20" mostra que a vírgula é o decimal, e o ponto, o milhar.
+    planilha = f'data,insumo,unidade,tipo,quantidade,valor\n{br(1)},Ureia,kg,entrada,1.000,"3,20"\n'
+
+    previa = importar(client, planilha)
+
+    assert previa["erros"] == []
+    assert previa["insumos"][0]["entradas"] == 1000
+    misturado = (
+        "data;insumo;unidade;tipo;quantidade;valor\n"
+        f"{br(2)};A;kg;entrada;25,5;\n{br(1)};A;kg;entrada;2;3.20\n"
+    )
+    assert importar(client, misturado)["erros"] == [
+        "Números com vírgula decimal (linha 2: 25,5) e com ponto decimal (linha 3, valor: "
+        "3.20) na mesma planilha: use um formato só."
+    ]
+
+
+def test_reimportar_com_outro_preco_nao_e_a_mesma_compra(client: TestClient) -> None:
+    planilha = "data;insumo;unidade;tipo;quantidade;valor\n"
+    importar(client, planilha + f"{br(5)};Sal;kg;entrada;10;2,50\n", confirmar=True)
+
+    assert importar(client, planilha + f"{br(5)};Sal;kg;entrada;10;2,50\n")["ja_lancadas"] == 1
+    assert importar(client, planilha + f"{br(5)};Sal;kg;entrada;10;2,60\n")["ja_lancadas"] == 0
 
 
 def test_planilha_sem_as_colunas_do_modelo(client: TestClient) -> None:
@@ -245,7 +346,13 @@ def test_planilha_modelo_vem_formatada_e_com_os_insumos(client: TestClient) -> N
 
     livro = baixar_modelo(client)
 
-    assert livro.sheetnames == ["Movimentações", "Como preencher", "Exemplo", "Insumos cadastrados"]
+    assert livro.sheetnames == [
+        "Movimentações",
+        "Como preencher",
+        "Exemplo",
+        "Insumos cadastrados",
+        "Talhões cadastrados",
+    ]
     aba = livro["Movimentações"]
     assert [c.value for c in aba[1]] == [
         "data",
@@ -254,6 +361,8 @@ def test_planilha_modelo_vem_formatada_e_com_os_insumos(client: TestClient) -> N
         "tipo",
         "quantidade",
         "validade",
+        "valor",
+        "talhao",
     ]
     assert aba["A1"].font.bold
     assert aba["A1"].comment.text.startswith("Dia em que a compra chegou")
@@ -261,13 +370,16 @@ def test_planilha_modelo_vem_formatada_e_com_os_insumos(client: TestClient) -> N
     # Formato da coluna inteira: vale também para a linha 30.000.
     assert aba.column_dimensions["A"].number_format == "DD/MM/YYYY"
     assert aba.column_dimensions["F"].number_format == "DD/MM/YYYY"
+    assert aba.column_dimensions["G"].number_format == '"R$" #,##0.00'
+    assert aba["G1"].comment.text.startswith("Preço pago por unidade")
     # Validação até a última linha que a importação aceita. Data, tipo e quantidade
     # barram valor errado na hora; insumo e unidade só sugerem (insumo novo vale).
     validacoes = {str(v.sqref): v for v in aba.data_validations.dataValidation}
     assert validacoes["B2:B50001"].formula1 == "'Insumos cadastrados'!$A$2:$A$2"
-    assert validacoes["D2:D50001"].formula1 == '"entrada,saída"'
+    assert validacoes["D2:D50001"].formula1 == '"entrada,saída,descarte"'
     barram = {faixa[0] for faixa, v in validacoes.items() if v.showErrorMessage}
-    assert barram == {"A", "D", "E", "F"}
+    assert barram == {"A", "D", "E", "F", "G"}
+    assert (validacoes["G2:G50001"].type, validacoes["G2:G50001"].formula1) == ("decimal", "0")
     assert livro["Insumos cadastrados"]["A2"].value == "Ureia"
 
 
@@ -307,7 +419,7 @@ def test_modelo_preenchido_volta_pela_importacao(client: TestClient) -> None:
         livro["Movimentações"],
         [
             # Data e número com tipo, como o Excel grava a célula formatada...
-            (em_datetime(10), "Ureia", None, "entrada", 1000, None),
+            (em_datetime(10), "Ureia", None, "entrada", 1000, None, 3.2),
             (em_datetime(5), "ureia", "kg", "saída", 25.5, None),
             # ...e digitados como texto, que também valem.
             (br(3), "Vacina contra aftosa", "dose", "entrada", "12,5", br(-100)),
@@ -328,6 +440,7 @@ def test_modelo_preenchido_volta_pela_importacao(client: TestClient) -> None:
         },
     ]
     assert importar_xlsx(client, livro, confirmar=True)["importado"] is True
+    assert client.get("/api/v1/insumos").json()[0]["custo_medio"] == 3.2
 
 
 def test_o_exemplo_do_modelo_importa_sem_erro(client: TestClient) -> None:
@@ -362,7 +475,7 @@ def test_erros_do_xlsx_apontam_a_linha_do_excel(client: TestClient) -> None:
     )
 
     assert importar_xlsx(client, livro)["erros"] == [
-        'Linha 4: tipo "devolução" desconhecido; use entrada ou saída.',
+        'Linha 4: tipo "devolução" desconhecido; use entrada, saída ou descarte.',
         'Linha 5: data "46000" inválida; use DD/MM/AAAA.',
         "Linha 6: há valores na coluna H, que não tem título na linha 1; apague-os ou dê um "
         "título à coluna.",
@@ -471,3 +584,24 @@ def test_pedido_grande_demais_e_recusado_antes_de_ler(client: TestClient) -> Non
     )
 
     assert resposta.status_code == 413
+
+
+def test_reimportar_so_com_o_preco_ou_o_talhao_avisa_que_ja_foi_lancada(
+    client: TestClient,
+) -> None:
+    # Preço e talhão completam o lançamento, não fazem dele outro: a mesma compra
+    # importada de novo, agora com o preço, dobraria o estoque sem aviso.
+    client.post("/api/v1/talhoes", json={"nome": "Norte", "area_ha": 10})
+    sem = (
+        "data;insumo;unidade;tipo;quantidade\n"
+        f"{br(9)};Ureia;kg;entrada;100\n"
+        f"{br(5)};Ureia;kg;saída;10\n"
+    )
+    importar(client, sem, confirmar=True)
+    com = (
+        "data;insumo;unidade;tipo;quantidade;valor;talhao\n"
+        f"{br(9)};Ureia;kg;entrada;100;3,20;\n"
+        f"{br(5)};Ureia;kg;saída;10;;Norte\n"
+    )
+
+    assert importar(client, com)["ja_lancadas"] == 2

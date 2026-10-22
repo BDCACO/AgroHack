@@ -15,14 +15,15 @@ diz a linha e o que corrigir.
 
 ## A planilha modelo
 
-É gerada na hora do download, com quatro abas:
+É gerada na hora do download, com cinco abas:
 
 | Aba | Para quê |
 |---|---|
-| **Movimentações** | A que você preenche, e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade e tipo. O próprio Excel avisa se a data for futura, se o tipo não for entrada ou saída e se a quantidade não for maior que zero. |
+| **Movimentações** | A que você preenche, e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade, tipo e talhão. O próprio Excel avisa se a data for futura, se o tipo não for entrada, saída ou descarte e se a quantidade ou o valor não forem maiores que zero. |
 | **Como preencher** | As instruções, resumidas. |
 | **Exemplo** | Três linhas preenchidas do jeito certo. |
 | **Insumos cadastrados** | Os insumos que já estão no CampoCerto, com a unidade de cada um. É de onde vem a lista de escolha da coluna `insumo`: depois de cadastrar outros, baixe o modelo de novo. |
+| **Talhões cadastrados** | Os talhões cadastrados na tela de Talhões, com a área e a cultura. Alimenta a lista de escolha da coluna `talhao`. |
 
 Passe o mouse sobre o título de uma coluna para ver a explicação dela.
 
@@ -33,12 +34,25 @@ Passe o mouse sobre o título de uma coluna para ver a explicação dela.
 | `data` | Sim | Dia em que a compra chegou ou em que o produto saiu do galpão. Não pode ser futura. | 05/03/2026 |
 | `insumo` | Sim | Nome do produto. Maiúsculas não importam: "ureia agrícola" é o mesmo que "Ureia agrícola". Um nome que não existe vira insumo novo. | Ureia agrícola |
 | `unidade` | Só para insumo novo | kg, L, t, sc, dose, un… Para um insumo já cadastrado, deixe em branco ou repita a do cadastro. | kg |
-| `tipo` | Sim | `entrada` (compra que chegou) ou `saída` (retirada do galpão); no modelo, escolha da lista. Em outras planilhas também valem `compra`, `retirada` e `saida` sem acento. | saída |
+| `tipo` | Sim | `entrada` (compra que chegou), `saída` (retirada do galpão) ou `descarte`; no modelo, escolha da lista. `descarte` é a saída que não é consumo: lote vencido ou estragado, jogado fora ou devolvido. Em outras planilhas também valem `compra`, `retirada` e `saida` sem acento; `sobra` e `falta` são ajustes de inventário, como o relatório os escreve. | saída |
 | `quantidade` | Sim | Maior que zero, na unidade do insumo. | 25,5 |
 | `validade` | Não | Validade do lote, só em entradas. Em branco se o produto não vence. | 30/06/2027 |
+| `talhao` | Não | Onde o insumo foi aplicado, **só em saídas** (retirada para uso). O talhão precisa estar cadastrado na tela de Talhões (com a área); maiúsculas não importam. `talhão`, com acento, também vale como título. Em branco se não quiser dizer. | Talhão Norte |
+| `valor` | Não | Preço pago **por unidade** do insumo (R$ por kg, por litro, por saca), só em entradas (compras). Não é o total da nota: 1.000 kg a R$ 3,20 o quilo é `3,20`. `R$ 3,20` também vale. Em branco se não souber. | 3,20 |
 
 Pode haver outras colunas (observação, fornecedor, nota fiscal), desde que tenham título na
 linha 1: a importação ignora as que não conhece.
+
+**Para que serve o valor.** Com o preço das compras, o CampoCerto calcula o custo médio de cada
+insumo (a média do que se pagou, ponderada pela quantidade) e passa a falar em reais: quanto vale
+o estoque, quanto vale o lote que vence, quanto custa a compra sugerida e quanto se perdeu em
+descartes e faltas. Sem preço, tudo funciona igual, só sem reais. Compras sem preço ficam fora do
+custo médio, e a análise diz quantas ficaram.
+
+**Para que serve o talhão.** Com o talhão de cada retirada, o CampoCerto calcula quanto custou o
+que foi aplicado em cada talhão, no total e por hectare, e avisa até quando não colher: a
+carência do defensivo (cadastrada no insumo) conta a partir do dia da aplicação. Sem talhão, a
+retirada vale para o estoque como sempre.
 
 ## Excel ou CSV
 
@@ -53,7 +67,8 @@ linha 1: a importação ignora as que não conhece.
 ### Números escritos como texto
 
 No CSV, e numa célula de texto do Excel, `25.500` tanto pode ser vinte e cinco e meio quanto
-vinte e cinco mil. O CampoCerto decide olhando a planilha inteira, não célula a célula:
+vinte e cinco mil. O CampoCerto decide olhando a planilha inteira (as colunas `quantidade` e
+`valor` juntas), não célula a célula:
 
 | Na planilha | Lido como | Por quê |
 |---|---|---|
@@ -70,12 +85,16 @@ prévia**: um número lido errado aparece ali, antes de gravar.
 ## Cópia de segurança
 
 O **relatório em Excel** (botão *Baixar relatório* no Painel) traz, na aba **Movimentações**,
-todas as entradas e saídas no formato da importação. Guarde-o: num CampoCerto novo, importá-lo
-traz de volta os insumos e as movimentações.
+todas as entradas e saídas no formato da importação, inclusive descartes, ajustes de inventário
+e o preço de cada compra, com o talhão de cada aplicação. Guarde-o: num CampoCerto novo,
+importá-lo traz de volta os insumos e as movimentações, e com elas o custo médio. **Cadastre os talhões
+antes** (a aba **Talhões** do relatório tem a área e a cultura de cada um): sem eles, a importação
+diz quais faltam e não grava nada.
 
-O que **não** volta: o estoque mínimo e o prazo de entrega de cada insumo (estão na aba
-**Estoque** do relatório; lance-os de novo na tela de Insumos, porque sem eles os alertas e a
-reposição mudam), os insumos sem nenhuma movimentação e a marca de dados de demonstração.
+O que **não** volta: o estoque mínimo, o prazo de entrega, a embalagem, o pedido mínimo e a
+carência de cada insumo (o mínimo e o prazo estão na aba **Estoque** do relatório; lance-os de novo na tela de
+Insumos, porque sem eles os alertas e a reposição mudam), os insumos sem nenhuma movimentação e a
+marca de dados de demonstração.
 Importado no mesmo sistema, a prévia avisa que todas as linhas já estão lá e não oferece o botão
 de importar, só um "importar mesmo assim", que pede confirmação.
 
@@ -85,7 +104,12 @@ de importar, só um "importar mesmo assim", que pede confirmação.
   errado sem ninguém perceber.
 - **Soma, não substitui.** Cada importação acrescenta ao que já está no sistema. Importar a mesma
   planilha duas vezes duplica o consumo; por isso a prévia avisa quando há linhas iguais a
-  movimentações já lançadas.
+  movimentações já lançadas. A mesma planilha reimportada só com o preço ou o talhão
+  preenchidos também é avisada: eles completam o lançamento, não fazem dele outro (já preço
+  diferente, R$ 2,50 contra R$ 2,60, é outra compra).
+- **Uma coluna chamada `valor` é lida como preço por unidade.** Numa planilha sua que já tenha
+  uma coluna `valor` com o total da nota, renomeie-a antes de importar: senão o total vira o
+  preço de cada quilo e o custo médio sai errado.
 - **Insumo novo entra sem mínimo nem prazo de entrega.** Complete os dois na tela de Insumos: sem
   o mínimo não há alerta de estoque baixo, e sem o prazo a análise supõe 15 dias.
 - **O estoque é a soma das movimentações.** Lance como entrada o que já estava no galpão no
@@ -101,17 +125,21 @@ de importar, só um "importar mesmo assim", que pede confirmação.
 | Faltam as colunas: … | A linha 1 precisa ter os títulos. Use a planilha modelo. |
 | data "31/02/2026" inválida | Corrija a data (DD/MM/AAAA). Se aparece um número no lugar da data, a célula está sem formato de data: formate-a como data. |
 | data no futuro | Ano digitado errado? (2062 por 2026) |
-| tipo "devolução" desconhecido | Use `entrada` ou `saída`. Devolução ao fornecedor é uma saída. |
+| tipo "devolução" desconhecido | Use `entrada`, `saída` ou `descarte`. Devolução de lote vencido ao fornecedor é um descarte. |
 | quantidade "dez" não é um número | Escreva o número: 10. |
 | "Adubo X" não está cadastrado; informe a unidade | Insumo novo precisa da unidade na linha. |
 | "Ureia" já está cadastrado em kg, não em sc | Converta para a unidade do cadastro (10 sacas de 50 kg = 500 kg). |
 | há mais de um insumo cadastrado como "ureia" | Renomeie um deles na tela de Insumos. |
 | validade só se informa numa entrada | Apague a validade da linha de saída. |
+| talhão "Talhão Leste" não cadastrado | Cadastre o talhão na tela de Talhões (com a área) e importe de novo, ou corrija o nome. |
+| talhão só se informa numa saída (retirada para uso) | O talhão diz onde o insumo foi aplicado: apague-o da linha de entrada, descarte, sobra ou falta. |
+| valor só se informa numa entrada (compra) | O preço é o que se pagou numa compra: apague o valor da linha de saída, descarte, sobra ou falta. |
+| valor "caro" não é um número / valor deve ser maior que zero | Escreva o preço por unidade como número: 3,20. |
 | há valores na coluna H, que não tem título na linha 1 | Dê um título à coluna (na linha 1) ou apague os valores dela. |
 | o nome do insumo tem um caractere inválido | Há um caractere invisível no nome (comum em texto colado de outro programa): apague a célula e digite o nome de novo. |
 | 6 colunas, mas o cabeçalho tem 5 | CSV separado por vírgula com vírgula decimal: separe por ponto e vírgula ou ponha o número entre aspas. |
 | aspa (") sem fechar | Uma célula começa com aspa e não termina com outra: corrija e salve de novo. |
-| Quantidades com vírgula decimal e com ponto decimal na mesma planilha | Use um formato só em toda a coluna `quantidade`. |
+| Quantidades (ou Números) com vírgula decimal e com ponto decimal na mesma planilha | Use um formato só nas colunas `quantidade` e `valor`. |
 | Não deu para abrir a planilha do Excel | Abra o arquivo no Excel, salve como .xlsx e tente de novo. Planilha protegida por senha: tire a senha antes. |
 | A planilha é grande demais… | Apague as linhas e colunas vazias depois dos dados, ou divida a planilha em partes. |
 | Arquivo maior que 5 MB | Divida a planilha em partes (um ano por arquivo, por exemplo). |

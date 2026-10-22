@@ -38,6 +38,37 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run pytest
 
+  backend-integracao:
+    name: Backend (integração com PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    # Banco descartável: a suíte apaga e recria o schema dele.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_PASSWORD: teste
+          POSTGRES_DB: campocerto_teste
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      INTEGRACAO_DATABASE_URL: postgresql+psycopg://postgres:teste@127.0.0.1:5432/campocerto_teste
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          working-directory: backend
+      - run: uv sync --frozen
+      - run: uv run pytest tests/integracao
+
   frontend:
     name: Frontend (vue-tsc + eslint + vitest)
     runs-on: ubuntu-latest

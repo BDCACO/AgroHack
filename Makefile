@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate demo demo-limpar test test-backend test-frontend lint check-db verify
+.PHONY: help up down logs migrate demo demo-limpar usuario-dono test test-backend test-frontend test-integracao lint check-db verify
 
 COMPOSE := docker compose
 # Testes e lint rodam DENTRO do container (padrão do ArkoHub): a máquina não
@@ -30,11 +30,21 @@ demo: ## Carrega a fazenda de demonstração (fictícia, datas relativas a hoje;
 demo-limpar: ## Apaga só os dados de demonstração
 	$(COMPOSE) run --rm api python -m app.demo limpar
 
+# A senha é pedida no terminal (duas vezes, sem aparecer); para automação, SENHA_DO_DONO.
+usuario-dono: ## Cria o primeiro dono: make usuario-dono LOGIN=maria NOME="Dona Maria"
+	@test -n "$(LOGIN)" -a -n "$(NOME)" || { echo 'uso: make usuario-dono LOGIN=maria NOME="Dona Maria"'; exit 2; }
+	$(COMPOSE) run --rm -e SENHA_DO_DONO api python -m app.usuarios criar-dono --login "$(LOGIN)" --nome "$(NOME)"
+
 test-backend: ## Pytest da API (SQLite em memória, sem banco)
 	$(API_RUN) pytest -p no:cacheprovider
 
 test-frontend: ## Vitest do frontend
 	$(WEB_RUN) sh -c "npm install --no-audit --no-fund && npm test"
+
+# Num banco à parte (campocerto_teste), criado na hora: o schema dele é apagado a cada rodada.
+test-integracao: ## API real (uvicorn) + PostgreSQL real, por HTTP (exige `make up` rodando)
+	$(COMPOSE) exec db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc "select 1 from pg_database where datname = '"'"'campocerto_teste'"'"'" | grep -q 1 || createdb -U "$$POSTGRES_USER" campocerto_teste'
+	$(COMPOSE) exec api sh -c 'INTEGRACAO_DATABASE_URL="$${DATABASE_URL%/*}/campocerto_teste" pytest -p no:cacheprovider tests/integracao'
 
 test: test-backend test-frontend ## Todos os testes unitários
 

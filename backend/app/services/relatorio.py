@@ -2,7 +2,9 @@
 agrônomo ou guardar.
 
 A aba Movimentações tem o formato da importação: o relatório também é a cópia de
-segurança de todas as entradas e saídas, e volta para o sistema pela mesma tela.
+segurança de todas as entradas e saídas (com o talhão de cada aplicação), e volta para o
+sistema pela mesma tela. Os talhões precisam estar cadastrados antes: a aba Talhões tem a
+área e a cultura de cada um.
 """
 
 import math
@@ -19,12 +21,14 @@ from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
 from app.domain.estoque import Gravidade, TipoAlerta
-from app.models import Insumo, Movimentacao
-from app.schemas.estoque import InsumoResposta
-from app.services import estoque
+from app.models import Insumo, Movimentacao, Talhao
+from app.schemas.estoque import InsumoResposta, Resumo
+from app.schemas.talhao import TalhaoResposta
+from app.services import estoque, resumo, talhoes
 from app.services.planilha_modelo import (
     CINZA,
     FORMATO_DATA,
+    FORMATO_DINHEIRO,
     VERDE_ESCURO,
     aba_de_movimentacoes,
     fonte,
@@ -48,8 +52,17 @@ ROTULOS: dict[TipoAlerta, str] = {
     "excesso": "Excesso de estoque",
     "baixa_movimentacao": "Baixa movimentação",
     "consumo_incomum": "Consumo incomum",
+    "carencia": "Carência",
 }
 _ORDEM: dict[Gravidade, int] = {"alta": 0, "media": 1, "baixa": 2}
+# Como a importação lê: o descarte volta como descarte, e não como consumo.
+_TIPO_NA_PLANILHA = {
+    ("entrada", None): "entrada",
+    ("saida", None): "saída",
+    ("saida", "descarte"): "descarte",
+    ("entrada", "inventario"): "sobra",
+    ("saida", "inventario"): "falta",
+}
 
 
 def gerar(db: Session) -> bytes:
@@ -59,12 +72,13 @@ def gerar(db: Session) -> bytes:
     livro.properties.creator = "CampoCerto"
     livro.properties.title = f"Situação do estoque em {referencia:%d/%m/%Y}"
 
-    resumo = livro.active
-    resumo.title = "Resumo"
-    _aba_de_resumo(resumo, insumos, referencia)
+    aba_resumo = livro.active
+    aba_resumo.title = "Resumo"
+    _aba_de_resumo(aba_resumo, insumos, resumo.resumir(db, insumos, referencia), referencia)
     _aba_de_alertas(livro.create_sheet("Alertas"), insumos)
     _aba_de_reposicao(livro.create_sheet("Reposição"), insumos)
     _aba_de_estoque(livro.create_sheet("Estoque"), insumos)
+    _aba_de_talhoes(livro.create_sheet("Talhões"), talhoes.listar_talhoes(db))
     aba_de_movimentacoes(
         livro.create_sheet("Movimentações"), total_de_insumos=0, linhas=_movimentacoes(db)
     )
@@ -74,10 +88,12 @@ def gerar(db: Session) -> bytes:
     return arquivo.getvalue()
 
 
-def _aba_de_resumo(aba: Worksheet, insumos: list[InsumoResposta], referencia: date) -> None:
+def _aba_de_resumo(
+    aba: Worksheet, insumos: list[InsumoResposta], geral: Resumo, referencia: date
+) -> None:
     aba.sheet_view.showGridLines = False
-    aba.column_dimensions["A"].width = 24
-    aba.column_dimensions["B"].width = 12
+    aba.column_dimensions["A"].width = 26
+    aba.column_dimensions["B"].width = 16
     aba.column_dimensions["C"].width = 70
 
     aba["A1"] = "Situação do estoque"
@@ -91,31 +107,61 @@ def _aba_de_resumo(aba: Worksheet, insumos: list[InsumoResposta], referencia: da
         linha = 5
 
     titulos(aba, ["Alertas", "Quantos"], linha=linha)
-    contagem = {gravidade: 0 for gravidade in _ORDEM}
-    for insumo in insumos:
-        for alerta in insumo.analise.alertas:
-            contagem[alerta.gravidade] += 1
-    for gravidade, total in contagem.items():
+    for gravidade, total in geral.alertas.model_dump().items():
         linha += 1
         _selo(aba.cell(linha, 1), gravidade)
         aba.cell(linha, 2, total).font = fonte(bold=True)
-    pedir_hoje = sum(1 for i in insumos if i.analise.reposicao and i.analise.reposicao.pedir_hoje)
-    for rotulo, valor in (("Pedir hoje", pedir_hoje), ("Insumos cadastrados", len(insumos))):
+    pedir_hoje = geral.compras_sugeridas.pedir_hoje
+    for rotulo, valor in (
+        ("Pedir hoje", pedir_hoje),
+        ("Insumos cadastrados", len(insumos)),
+        # À parte dos alertas, como no GET /resumo: a carência é do talhão.
+        ("Talhões em carência", geral.talhoes_em_carencia),
+    ):
         linha += 1
         aba.cell(linha, 1, rotulo)
         aba.cell(linha, 2, valor).font = fonte(bold=True)
 
     linha += 2
+    titulos(aba, ["Em reais", "R$"], linha=linha)
+    for rotulo, valor in (
+        ("Valor em estoque", geral.valor_em_estoque),
+        ("Perdas nos últimos 30 dias", geral.perdas.ultimos_30_dias),
+        ("Perdas no total", geral.perdas.total),
+        ("Compras dos próximos 30 dias", geral.compras_sugeridas.valor),
+    ):
+        linha += 1
+        aba.cell(linha, 1, rotulo)
+        # Sem preço nenhum, a célula diz isso, em vez de um zero que pareceria estoque de graça.
+        celula = aba.cell(linha, 2, "sem preço" if valor is None else valor)
+        celula.font = fonte(bold=True)
+        celula.number_format = FORMATO_DINHEIRO
+    for limitacao in geral.limitacoes:
+        linha += 1
+        aba.cell(linha, 1, f"• {limitacao}").font = fonte(italic=True, color=CINZA)
+
+    linha += 2
     aba.cell(linha, 1, "O que tem em cada aba").font = fonte(bold=True, size=12, color=VERDE_ESCURO)
     for nome, explicacao in (
         ("Alertas", "Cada alerta, dos mais graves aos mais leves, com a conta que o justifica."),
-        ("Reposição", "Quanto pedir de cada insumo e até quando, com a conta."),
-        ("Estoque", "A situação de cada insumo e o que a análise não sabe (limitações)."),
+        ("Reposição", "Quanto pedir de cada insumo, até quando e quanto custa, com a conta."),
+        (
+            "Estoque",
+            "A situação de cada insumo, o custo médio e o valor em estoque, e o que a análise "
+            "não sabe (limitações).",
+        ),
+        (
+            "Talhões",
+            "Cada talhão com a área, a cultura, até quando não colher (a carência do que foi "
+            "aplicado, com a conta) e o custo do que foi aplicado nele, total e por hectare.",
+        ),
         (
             "Movimentações",
             "Todas as entradas e saídas, no formato da importação: este arquivo também é a "
-            "cópia de segurança, e volta pela tela Importar dados. O mínimo e o prazo de cada "
-            "insumo (aba Estoque) não voltam: lance-os de novo na tela de Insumos.",
+            "cópia de segurança, e volta pela tela Importar dados, com os preços e o talhão de "
+            "cada aplicação. Os talhões precisam estar cadastrados antes (a aba Talhões tem a "
+            "área e a cultura). O mínimo, o prazo, a embalagem, o pedido mínimo e a carência "
+            "de cada insumo não voltam: lance-os de novo na tela de Insumos.",
         ),
     ):
         linha += 1
@@ -145,7 +191,14 @@ def _aba_de_alertas(aba: Worksheet, insumos: list[InsumoResposta]) -> None:
 def _aba_de_reposicao(aba: Worksheet, insumos: list[InsumoResposta]) -> None:
     _tabela(
         aba,
-        [("insumo", 28), ("quantidade", 13), ("unidade", 10), ("pedir até", 13), ("conta", 80)],
+        [
+            ("insumo", 28),
+            ("quantidade", 13),
+            ("unidade", 10),
+            ("pedir até", 13),
+            ("custo estimado (R$)", 19),
+            ("conta", 80),
+        ],
     )
     pedidos = sorted(
         (i for i in insumos if i.analise.reposicao), key=lambda i: i.analise.reposicao.pedir_em
@@ -159,7 +212,8 @@ def _aba_de_reposicao(aba: Worksheet, insumos: list[InsumoResposta]) -> None:
         _texto(aba.cell(numero, 3), insumo.unidade)
         pedir = aba.cell(numero, 4, reposicao.pedir_em)
         pedir.number_format = FORMATO_DATA
-        aba.cell(numero, 5, reposicao.justificativa)
+        aba.cell(numero, 5, reposicao.custo_estimado).number_format = FORMATO_DINHEIRO
+        aba.cell(numero, 6, reposicao.justificativa)
         texto_corrido(aba, numero, reposicao.justificativa, 80)
         if reposicao.pedir_hoje:
             # O que é para pedir hoje salta aos olhos, como na tela.
@@ -180,6 +234,8 @@ def _aba_de_estoque(aba: Worksheet, insumos: list[InsumoResposta]) -> None:
             ("consumo por dia", 16),
             ("dura (dias)", 12),
             ("entrega (dias)", 14),
+            ("custo médio (R$)", 16),
+            ("valor em estoque (R$)", 20),
             ("situação", 13),
             ("limitações da análise", 80),
         ],
@@ -195,11 +251,15 @@ def _aba_de_estoque(aba: Worksheet, insumos: list[InsumoResposta]) -> None:
             None if consumo is None else round(consumo, 2),
             None if cobertura is None else round(cobertura),
             insumo.prazo_reposicao_dias,
+            insumo.custo_medio,
+            insumo.valor_em_estoque,
         )
         for coluna, valor in enumerate(valores, start=3):
             aba.cell(numero, coluna, valor)
+        for coluna in (8, 9):
+            aba.cell(numero, coluna).number_format = FORMATO_DINHEIRO
         limitacoes = [f"• {texto}" for texto in analise.limitacoes]
-        aba.cell(numero, 9, "\n".join(limitacoes))
+        aba.cell(numero, 11, "\n".join(limitacoes))
         texto_corrido(aba, numero, "", 80)
         # Uma limitação por linha do texto, cada uma quebrada na largura da coluna.
         aba.row_dimensions[numero].height = 15 * max(
@@ -207,14 +267,59 @@ def _aba_de_estoque(aba: Worksheet, insumos: list[InsumoResposta]) -> None:
         )
         # Depois do texto_corrido, que alinha a linha inteira. A API já ordena os
         # alertas do mais grave ao mais leve.
-        _selo(aba.cell(numero, 8), analise.alertas[0].gravidade if analise.alertas else None)
+        _selo(aba.cell(numero, 10), analise.alertas[0].gravidade if analise.alertas else None)
     _filtro(aba, len(insumos))
+
+
+def _aba_de_talhoes(aba: Worksheet, lista: list[TalhaoResposta]) -> None:
+    _tabela(
+        aba,
+        [
+            ("talhão", 28),
+            ("área (ha)", 11),
+            ("cultura", 14),
+            ("situação", 13),
+            ("colheita liberada em", 14),
+            ("custo total (R$)", 16),
+            ("custo por ha (R$)", 16),
+            ("carência", 70),
+            ("limitações", 80),
+        ],
+    )
+    if not lista:
+        _vazio(aba, "Nenhum talhão cadastrado.")
+    for numero, talhao in enumerate(lista, start=2):
+        _texto(aba.cell(numero, 1), talhao.nome)
+        aba.cell(numero, 2, talhao.area_ha)
+        if talhao.cultura is not None:
+            _texto(aba.cell(numero, 3), talhao.cultura)
+        aba.cell(numero, 5, talhao.colheita_liberada_em).number_format = FORMATO_DATA
+        for coluna, valor in ((6, talhao.custo_total), (7, talhao.custo_por_ha)):
+            # Sem preço nenhum, a célula diz isso, em vez de um zero de insumo de graça.
+            celula = aba.cell(numero, coluna, "sem preço" if valor is None else valor)
+            celula.number_format = FORMATO_DINHEIRO
+        carencia = " ".join(alerta.justificativa for alerta in talhao.alertas) or None
+        aba.cell(numero, 8, carencia)
+        limitacoes = [f"• {texto}" for texto in talhao.limitacoes]
+        aba.cell(numero, 9, "\n".join(limitacoes) or None)
+        texto_corrido(aba, numero, "", 80)
+        aba.row_dimensions[numero].height = 15 * max(
+            1,
+            math.ceil(len(carencia or "") / 77),
+            sum(math.ceil(len(texto) / 88) for texto in limitacoes),
+        )
+        # Depois do texto_corrido, que alinha a linha inteira. Em carência, nas cores do
+        # urgente da tela: colher antes é proibido.
+        _selo(aba.cell(numero, 4), talhao.alertas[0].gravidade if talhao.alertas else None)
+        aba.cell(numero, 5).alignment = Alignment(horizontal="center", vertical="top")
+    _filtro(aba, len(lista))
 
 
 def _movimentacoes(db: Session) -> list[tuple]:
     consulta = (
-        select(Movimentacao, Insumo)
+        select(Movimentacao, Insumo, Talhao.nome)
         .join(Insumo)
+        .outerjoin(Talhao)
         .order_by(Movimentacao.data, Insumo.nome, Movimentacao.id)
     )
     return [
@@ -222,11 +327,13 @@ def _movimentacoes(db: Session) -> list[tuple]:
             m.data,
             ILLEGAL_CHARACTERS_RE.sub("", insumo.nome),
             ILLEGAL_CHARACTERS_RE.sub("", insumo.unidade),
-            "entrada" if m.tipo == "entrada" else "saída",
+            _TIPO_NA_PLANILHA[(m.tipo, m.motivo)],
             m.quantidade,
             m.validade,
+            m.valor_unitario,
+            talhao and ILLEGAL_CHARACTERS_RE.sub("", talhao),
         )
-        for m, insumo in db.execute(consulta)
+        for m, insumo, talhao in db.execute(consulta)
     ]
 
 

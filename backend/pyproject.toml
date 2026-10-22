@@ -19,6 +19,7 @@ dependencies = [
     # O openpyxl o usa sozinho, quando instalado, contra XML malicioso (bomba de
     # entidades) num .xlsx enviado por upload.
     "defusedxml>=0.7.1,<0.8.0",
+    "argon2-cffi>=25.1.0,<26.0.0",
 ]
 
 [dependency-groups]

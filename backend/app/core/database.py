@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from functools import lru_cache
 
 from sqlalchemy import Engine, create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
@@ -24,6 +25,13 @@ def get_engine() -> Engine:
 @lru_cache
 def get_sessionmaker() -> sessionmaker[Session]:
     return sessionmaker(bind=get_engine(), autoflush=False, expire_on_commit=False)
+
+
+def violou_nome_unico(erro: IntegrityError, tabela: str) -> bool:
+    """Se a violação foi a do nome único da tabela, e não outra regra do banco. O
+    PostgreSQL diz o nome da constraint; o SQLite dos testes, a coluna."""
+    mensagem = str(erro.orig)
+    return f"uq_{tabela}_nome" in mensagem or f"{tabela}.nome" in mensagem
 
 
 def get_db() -> Iterator[Session]:

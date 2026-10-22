@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
-from app.models import Insumo
+from app.models import Insumo, Talhao
 from app.services.importacao import LINHAS_MAXIMAS
 
 # Cores da marca, as mesmas de frontend/src/styles/main.css.
@@ -31,6 +31,8 @@ VERDE_ESCURO = "1F3B17"  # campo-900
 CINZA = "57534E"  # stone-600
 CINZA_CLARO = "E7E5E4"  # stone-200
 FORMATO_DATA = "DD/MM/YYYY"  # o Excel em português mostra como DD/MM/AAAA
+# Os separadores do formato são os do Excel de quem abre: no português, R$ 1.234,56.
+FORMATO_DINHEIRO = '"R$" #,##0.00'
 UNIDADES = ("kg", "L", "t", "sc", "dose", "un")
 
 
@@ -64,7 +66,14 @@ COLUNAS = (
         "kg, L, t, sc, dose, un… Para um insumo já cadastrado, pode ficar em branco; se "
         "preenchida, tem de ser a mesma do cadastro.",
     ),
-    Coluna("tipo", 12, "Sim", "entrada (compra que chegou) ou saída (retirada do galpão)."),
+    Coluna(
+        "tipo",
+        12,
+        "Sim",
+        "entrada (compra que chegou), saída (retirada do galpão para uso) ou descarte "
+        "(vencido ou estragado, jogado fora ou devolvido: sai do estoque sem contar como "
+        "consumo).",
+    ),
     Coluna(
         "quantidade",
         14,
@@ -77,11 +86,29 @@ COLUNAS = (
         "Não",
         "Validade do lote, só em entradas. Deixe em branco se o produto não vence.",
     ),
+    Coluna(
+        "valor",
+        14,
+        "Não",
+        "Preço pago por unidade do insumo (R$ por kg, por litro, por saca...), só em "
+        "entradas. Decimais com vírgula: 3,20. Em branco se não souber: tudo funciona sem "
+        "preço, só os alertas e a reposição não falam em reais.",
+    ),
+    Coluna(
+        "talhao",
+        22,
+        "Não",
+        "Onde o insumo foi aplicado, só em saídas (retirada para uso). Escolha da lista um "
+        "talhão já cadastrado; talhão novo se cadastra na tela de Talhões, com a área. Em "
+        "branco se não quiser dizer. Com ele, o CampoCerto calcula o custo por hectare e avisa "
+        "até quando não colher, pela carência do defensivo.",
+    ),
 )
 
 
 def gerar(db: Session) -> bytes:
     insumos = list(db.scalars(select(Insumo).order_by(Insumo.nome)))
+    talhoes = list(db.scalars(select(Talhao).order_by(Talhao.nome)))
     referencia = hoje()
     livro = Workbook()
     livro.properties.creator = "CampoCerto"
@@ -91,11 +118,14 @@ def gerar(db: Session) -> bytes:
     movimentacoes = livro.active
     movimentacoes.title = "Movimentações"
     movimentacoes.sheet_properties.tabColor = VERDE
-    aba_de_movimentacoes(movimentacoes, total_de_insumos=len(insumos))
+    aba_de_movimentacoes(
+        movimentacoes, total_de_insumos=len(insumos), total_de_talhoes=len(talhoes)
+    )
     _aba_de_instrucoes(livro.create_sheet("Como preencher"))
     exemplo = livro.create_sheet("Exemplo")
     aba_de_movimentacoes(exemplo, total_de_insumos=0, linhas=_exemplos(referencia))
     _aba_de_insumos(livro.create_sheet("Insumos cadastrados"), insumos)
+    _aba_de_talhoes(livro.create_sheet("Talhões cadastrados"), talhoes)
 
     arquivo = BytesIO()
     livro.save(arquivo)
@@ -103,7 +133,11 @@ def gerar(db: Session) -> bytes:
 
 
 def aba_de_movimentacoes(
-    aba: Worksheet, *, total_de_insumos: int, linhas: list[tuple] | None = None
+    aba: Worksheet,
+    *,
+    total_de_insumos: int,
+    total_de_talhoes: int = 0,
+    linhas: list[tuple] | None = None,
 ) -> None:
     titulos(aba, [coluna.titulo for coluna in COLUNAS])
     for indice, coluna in enumerate(COLUNAS, start=1):
@@ -118,12 +152,14 @@ def aba_de_movimentacoes(
     for letra in ("A", "F"):
         aba.column_dimensions[letra].number_format = FORMATO_DATA
         aba.column_dimensions[letra].alignment = Alignment(horizontal="center")
+    aba.column_dimensions["G"].number_format = FORMATO_DINHEIRO
     for linha in linhas or []:
         aba.append(linha)
     for linha in aba.iter_rows(min_row=2, max_col=len(COLUNAS)):
-        data, *_, validade = linha
+        data, *_, validade, valor, _ = linha
         data.number_format = validade.number_format = FORMATO_DATA
         data.alignment = validade.alignment = Alignment(horizontal="center")
+        valor.number_format = FORMATO_DINHEIRO
         for celula in linha:
             if isinstance(celula.value, str):
                 celula.data_type = "s"  # nome começando com "=" não vira fórmula
@@ -160,6 +196,18 @@ def aba_de_movimentacoes(
             prompt="Escolha da lista ou digite um insumo novo.",
             showInputMessage=True,
         )
+    if total_de_talhoes:
+        validar(
+            "talhao",
+            type="list",
+            formula1=f"'Talhões cadastrados'!$A$2:$A${total_de_talhoes + 1}",
+            # Só sugere, como o insumo: a importação diz o que está errado (talhão não
+            # cadastrado, talhão numa entrada), com a linha.
+            showErrorMessage=False,
+            promptTitle="Talhão",
+            prompt="Só em saída: escolha onde o insumo foi aplicado, ou deixe em branco.",
+            showInputMessage=True,
+        )
     validar(
         "unidade",
         type="list",
@@ -172,9 +220,9 @@ def aba_de_movimentacoes(
     validar(
         "tipo",
         type="list",
-        formula1='"entrada,saída"',
+        formula1='"entrada,saída,descarte"',
         errorTitle="Tipo inválido",
-        error="Escolha entrada (compra que chegou) ou saída (retirada do galpão).",
+        error="Escolha entrada (compra), saída (retirada para uso) ou descarte.",
     )
     validar(
         "quantidade",
@@ -192,6 +240,14 @@ def aba_de_movimentacoes(
         errorTitle="Validade inválida",
         error="Use uma data como 30/06/2027.",
     )
+    validar(
+        "valor",
+        type="decimal",
+        operator="greaterThan",
+        formula1="0",
+        errorTitle="Valor inválido",
+        error="O valor é o preço por unidade, um número maior que zero, como 3,20.",
+    )
 
 
 def _exemplos(referencia: date) -> list[tuple]:
@@ -201,9 +257,17 @@ def _exemplos(referencia: date) -> list[tuple]:
         return referencia - timedelta(days=dias_atras)
 
     return [
-        (dia(20), "Adubo NPK 20-05-20", "kg", "entrada", 1000, None),
-        (dia(13), "Adubo NPK 20-05-20", None, "saída", 25.5, None),
-        (dia(6), "Vacina contra aftosa", "dose", "entrada", 50, referencia + timedelta(days=250)),
+        (dia(20), "Adubo NPK 20-05-20", "kg", "entrada", 1000, None, 3.2),
+        (dia(13), "Adubo NPK 20-05-20", None, "saída", 25.5, None, None),
+        (
+            dia(6),
+            "Vacina contra aftosa",
+            "dose",
+            "entrada",
+            50,
+            referencia + timedelta(days=250),
+            2.9,
+        ),
     ]
 
 
@@ -240,8 +304,10 @@ def _aba_de_instrucoes(aba: Worksheet) -> None:
                 "as saídas deixam o estoque negativo.",
                 "• Cada importação soma ao que já está no sistema. Importe cada período uma vez "
                 "só; o CampoCerto avisa se as linhas já estiverem lá.",
-                "• O Excel avisa na hora se a data, o tipo ou a quantidade estiverem fora do "
-                "esperado.",
+                "• O Excel avisa na hora se a data, o tipo, a quantidade ou o valor estiverem "
+                "fora do esperado.",
+                "• Para dizer onde cada insumo foi aplicado (coluna talhao), cadastre os talhões "
+                "na tela de Talhões antes, e baixe o modelo de novo: a lista vem com eles.",
             ],
         ),
         (
@@ -282,6 +348,28 @@ def _aba_de_insumos(aba: Worksheet, insumos: list[Insumo]) -> None:
         aba["A2"] = "Nenhum insumo cadastrado ainda: os da planilha serão cadastrados."
         aba["A2"].font = fonte(italic=True, color=CINZA)
     # É referência (e a fonte da lista de escolha): protegida contra edição sem querer.
+    aba.protection.sheet = True
+
+
+def _aba_de_talhoes(aba: Worksheet, talhoes: list[Talhao]) -> None:
+    titulos(aba, ["talhão", "área (ha)", "cultura"])
+    for letra, largura in {"A": 30, "B": 11, "C": 16}.items():
+        aba.column_dimensions[letra].width = largura
+    aba.freeze_panes = "A2"
+    for numero, talhao in enumerate(talhoes, start=2):
+        for coluna, texto in ((1, talhao.nome), (3, talhao.cultura)):
+            if texto is not None:
+                celula = aba.cell(numero, coluna)
+                celula.value = ILLEGAL_CHARACTERS_RE.sub("", texto)
+                celula.data_type = "s"
+        aba.cell(numero, 2, talhao.area_ha)
+    if not talhoes:
+        aba["A2"] = (
+            "Nenhum talhão cadastrado ainda: cadastre na tela de Talhões para lançar onde "
+            "cada insumo foi aplicado."
+        )
+        aba["A2"].font = fonte(italic=True, color=CINZA)
+    # A fonte da lista de escolha da coluna talhao: protegida contra edição sem querer.
     aba.protection.sheet = True
 
 

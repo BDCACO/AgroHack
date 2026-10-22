@@ -48,6 +48,22 @@ partes estão conectadas.
 
 Sem `make`? Os alvos são atalhos de `docker compose`: `docker compose up --build`.
 
+## Login
+
+A API tem login com dois papéis: o **dono** (tudo) e o **funcionário** (lê e lança no campo).
+Em produção é obrigatório (`AUTENTICACAO=true`); no desenvolvimento fica desligado por padrão,
+porque o site e o app ainda não têm a tela de login. Para ligar:
+
+```bash
+# no .env: AUTENTICACAO=true, e então:
+make up
+make usuario-dono LOGIN=maria NOME="Dona Maria"   # a senha é pedida no terminal
+```
+
+O dono entra por `POST /api/v1/auth/entrar` e cadastra os funcionários em `POST /api/v1/usuarios`
+(pelo `/docs`, botão Authorize, até as telas existirem). Quem pode o quê está em
+[`docs/ARQUITETURA.md`](docs/ARQUITETURA.md), "Autenticação e papéis".
+
 ## Demonstração
 
 Sem dados reais à mão, `make demo` (com o stack no ar) cria uma fazenda **fictícia** com 6 meses
@@ -69,6 +85,7 @@ make logs       # logs
 make migrate    # alembic upgrade head
 make demo       # carrega a fazenda de demonstração (fictícia, datas relativas a hoje)
 make demo-limpar  # apaga só os dados de demonstração
+make usuario-dono LOGIN=maria NOME="Dona Maria"   # cria o primeiro dono (pede a senha)
 make test       # pytest + vitest
 make lint       # ruff + vue-tsc + eslint
 make check-db   # confere API ↔ PostgreSQL com o stack no ar
@@ -112,6 +129,7 @@ Todas em `.env` na raiz; o modelo comentado está em [`.env.example`](.env.examp
 | Variável | Obrigatória | Uso |
 |---|---|---|
 | `ENVIRONMENT` | sim | `development`, `test` ou `production`. Outro valor impede a API de subir |
+| `AUTENTICACAO` | em produção | Login com papéis (dono e funcionário): `true` ou `false` (padrão). Em `production`, sem `true` a API não sobe. Ligada, crie o primeiro dono com `make usuario-dono` |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | sim | Banco; o compose monta o `DATABASE_URL` da API com elas |
 | `DB_PORT`, `API_PORT`, `WEB_PORT` | não | Portas no host (5433, 8000, 5173) |
 | `LOG_LEVEL` | não | Nível de log da API (`INFO`) |

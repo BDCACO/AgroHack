@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DataError
 
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
@@ -15,6 +16,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """Fábrica da aplicação — os testes criam a sua com Settings próprios."""
     settings = settings or get_settings()
     logging.basicConfig(level=settings.log_level)
+    if not settings.autenticacao:
+        logging.getLogger(__name__).warning(
+            "AUTENTICACAO desligada: qualquer um que alcance a API lê e altera tudo. "
+            "Só para desenvolvimento; em produção a API nem sobe assim."
+        )
 
     docs = settings.docs_habilitadas
     prefixo = settings.api_v1_prefix
@@ -26,6 +32,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
         openapi_url=f"{prefixo}/openapi.json" if docs else None,
     )
+    # As permissões (app/api/permissoes.py) leem daqui se a autenticação está ligada: é a
+    # configuração deste app, e não a do ambiente, que os testes trocam.
+    app.state.settings = settings
     app.include_router(api_router, prefix=prefixo)
 
     @app.middleware("http")
@@ -41,6 +50,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 {"detail": "Arquivo grande demais: o máximo é 5 MB."}, status_code=413
             )
         return await call_next(request)
+
+    @app.exception_handler(DataError)
+    async def dado_que_o_banco_recusa(_: Request, __: DataError) -> JSONResponse:
+        # Um id maior que o `integer` do PostgreSQL ou um texto com caractere nulo passam
+        # pela validação (o SQLite dos testes os aceita) e o banco os recusa. É dado
+        # inválido do pedido, não defeito do servidor: 422, e não 500 com traceback no log.
+        return JSONResponse(
+            {"detail": "Algum valor do pedido está fora do que o sistema aceita."},
+            status_code=422,
+        )
 
     return app
 
