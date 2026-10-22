@@ -253,6 +253,17 @@ def test_custo_medio_pondera_pela_quantidade_e_ignora_compra_sem_preco() -> None
     assert custo_medio([]) is None
 
 
+def test_custo_medio_e_em_centavos_para_a_conta_bater_com_o_texto() -> None:
+    # 400 kg a R$ 3,00 e 300 kg a R$ 3,37 dão R$ 3,1585714...: a tela mostra R$ 3,16, e a
+    # conta em reais tem de ser feita com os mesmos R$ 3,16 que o produtor lê.
+    entradas = [
+        Entrada(antes(9), 400, valor_unitario=3),
+        Entrada(antes(5), 300, valor_unitario=3.37),
+    ]
+
+    assert custo_medio(entradas) == 3.16
+
+
 def test_validade_com_custo_medio_diz_quanto_dinheiro_esta_em_jogo() -> None:
     lotes = [Lote(20, REF + timedelta(days=10)), Lote(10, antes(5))]
 

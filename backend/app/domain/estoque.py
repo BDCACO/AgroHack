@@ -174,12 +174,16 @@ def custo_medio(entradas: Iterable[Entrada]) -> float | None:
 
     Só as entradas com preço entram na conta; sem nenhuma, não há custo (None), em vez
     de um zero que pareceria produto de graça.
+
+    Em centavos: é o preço que a tela mostra, e toda conta em reais parte dele. Com as
+    casas a mais, "R$ 3,16/kg" vezes 700 kg daria R$ 2.210,96 em vez dos R$ 2.212,00 que
+    o produtor confere à mão.
     """
     com_preco = [e for e in entradas if e.valor_unitario is not None]
     quantidade = sum(e.quantidade for e in com_preco)
     if not quantidade:
         return None
-    return sum(e.quantidade * e.valor_unitario for e in com_preco) / quantidade
+    return round(sum(e.quantidade * e.valor_unitario for e in com_preco) / quantidade, 2)
 
 
 _PADRAO_BR = str.maketrans(",.", ".,")
