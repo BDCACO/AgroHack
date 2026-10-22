@@ -91,6 +91,38 @@ def test_reimportar_avisa_que_ja_foi_lancada(client: TestClient) -> None:
     assert [i["novo"] for i in previa["insumos"]] == [False, False]
 
 
+def test_descarte_entra_como_saida_que_nao_e_consumo(client: TestClient) -> None:
+    planilha = (
+        "data;insumo;unidade;tipo;quantidade;validade\n"
+        f"{br(30)};Ivermectina;L;entrada;10;\n"
+        f"{br(20)};Ivermectina;;saída;2;\n"
+        f"{br(10)};Ivermectina;;Descarte;3;\n"
+    )
+
+    previa = importar(client, planilha)
+    importar(client, planilha, confirmar=True)
+
+    assert (previa["entradas"], previa["saidas"]) == (1, 2)
+    assert previa["insumos"][0]["saidas"] == 5
+    movimentacoes = client.get("/api/v1/movimentacoes").json()
+    assert [(m["tipo"], m["motivo"]) for m in movimentacoes] == [
+        ("saida", "descarte"),
+        ("saida", None),
+        ("entrada", None),
+    ]
+    [insumo] = client.get("/api/v1/insumos").json()
+    assert insumo["estoque_atual"] == 5
+
+
+def test_reimportar_nao_confunde_descarte_com_retirada(client: TestClient) -> None:
+    planilha = f"data;insumo;unidade;tipo;quantidade\n{br(9)};Sal;kg;entrada;10\n"
+    importar(client, planilha + f"{br(5)};Sal;kg;descarte;3\n", confirmar=True)
+
+    previa = importar(client, planilha + f"{br(5)};Sal;kg;saída;3\n")
+
+    assert previa["ja_lancadas"] == 1  # só a entrada
+
+
 def test_insumo_existente_com_outra_unidade_e_erro(client: TestClient) -> None:
     client.post("/api/v1/insumos", json={"nome": "Calcário", "unidade": "t"})
     planilha = f"data,insumo,unidade,tipo,quantidade\n{br(1)},CALCÁRIO,kg,entrada,2.5\n"
@@ -120,7 +152,7 @@ def test_com_um_erro_nada_e_gravado(client: TestClient) -> None:
     assert resultado["erros"] == [
         'Linha 3: data "31/02/2026" inválida; use DD/MM/AAAA.',
         "Linha 4: data no futuro.",
-        'Linha 5: tipo "devolução" desconhecido; use entrada ou saída.',
+        'Linha 5: tipo "devolução" desconhecido; use entrada, saída ou descarte.',
         "Linha 6: quantidade deve ser maior que zero.",
         'Linha 7: quantidade "dez" não é um número.',
         "Linha 8: validade só se informa numa entrada.",
@@ -265,7 +297,7 @@ def test_planilha_modelo_vem_formatada_e_com_os_insumos(client: TestClient) -> N
     # barram valor errado na hora; insumo e unidade só sugerem (insumo novo vale).
     validacoes = {str(v.sqref): v for v in aba.data_validations.dataValidation}
     assert validacoes["B2:B50001"].formula1 == "'Insumos cadastrados'!$A$2:$A$2"
-    assert validacoes["D2:D50001"].formula1 == '"entrada,saída"'
+    assert validacoes["D2:D50001"].formula1 == '"entrada,saída,descarte"'
     barram = {faixa[0] for faixa, v in validacoes.items() if v.showErrorMessage}
     assert barram == {"A", "D", "E", "F"}
     assert livro["Insumos cadastrados"]["A2"].value == "Ureia"
@@ -362,7 +394,7 @@ def test_erros_do_xlsx_apontam_a_linha_do_excel(client: TestClient) -> None:
     )
 
     assert importar_xlsx(client, livro)["erros"] == [
-        'Linha 4: tipo "devolução" desconhecido; use entrada ou saída.',
+        'Linha 4: tipo "devolução" desconhecido; use entrada, saída ou descarte.',
         'Linha 5: data "46000" inválida; use DD/MM/AAAA.',
         "Linha 6: há valores na coluna H, que não tem título na linha 1; apague-os ou dê um "
         "título à coluna.",

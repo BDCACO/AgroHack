@@ -64,7 +64,14 @@ COLUNAS = (
         "kg, L, t, sc, dose, un… Para um insumo já cadastrado, pode ficar em branco; se "
         "preenchida, tem de ser a mesma do cadastro.",
     ),
-    Coluna("tipo", 12, "Sim", "entrada (compra que chegou) ou saída (retirada do galpão)."),
+    Coluna(
+        "tipo",
+        12,
+        "Sim",
+        "entrada (compra que chegou), saída (retirada do galpão para uso) ou descarte "
+        "(vencido ou estragado, jogado fora ou devolvido: sai do estoque sem contar como "
+        "consumo).",
+    ),
     Coluna(
         "quantidade",
         14,
@@ -172,9 +179,9 @@ def aba_de_movimentacoes(
     validar(
         "tipo",
         type="list",
-        formula1='"entrada,saída"',
+        formula1='"entrada,saída,descarte"',
         errorTitle="Tipo inválido",
-        error="Escolha entrada (compra que chegou) ou saída (retirada do galpão).",
+        error="Escolha entrada (compra), saída (retirada para uso) ou descarte.",
     )
     validar(
         "quantidade",

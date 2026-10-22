@@ -28,12 +28,15 @@ from app.models import Insumo, Movimentacao
 from app.schemas.estoque import QUANTIDADE_MAXIMA, SEM_CARACTERE_DE_CONTROLE
 
 COLUNAS_OBRIGATORIAS = ("data", "insumo", "tipo", "quantidade")
+# Tipo escrito → (tipo, motivo). Descarte é saída que não é consumo: uma palavra na
+# mesma coluna, em vez de uma coluna a mais para preencher.
 TIPOS = {
-    "entrada": "entrada",
-    "compra": "entrada",
-    "saida": "saida",
-    "saída": "saida",
-    "retirada": "saida",
+    "entrada": ("entrada", None),
+    "compra": ("entrada", None),
+    "saida": ("saida", None),
+    "saída": ("saida", None),
+    "retirada": ("saida", None),
+    "descarte": ("saida", "descarte"),
 }
 # O Excel em português grava DD/MM/AAAA (ou DD/MM/AA, se a célula estiver assim).
 FORMATOS_DE_DATA = ("%d/%m/%Y", "%Y-%m-%d", "%d/%m/%y")
@@ -97,6 +100,7 @@ class _Linha:
     data: date
     quantidade: float
     validade: date | None
+    motivo: str | None
 
 
 # (número da linha no arquivo, células) — ou, no lugar das células, o erro de forma da
@@ -145,7 +149,11 @@ def importar(db: Session, arquivo: str | bytes, *, confirmar: bool) -> Resultado
 
     for linha in linhas:
         movimentacao = Movimentacao(
-            tipo=linha.tipo, data=linha.data, quantidade=linha.quantidade, validade=linha.validade
+            tipo=linha.tipo,
+            data=linha.data,
+            quantidade=linha.quantidade,
+            validade=linha.validade,
+            motivo=linha.motivo,
         )
         if linha.insumo.id is None:
             linha.insumo.movimentacoes.append(movimentacao)
@@ -387,9 +395,9 @@ def _ler(
         raise ValueError("a unidade tem um caractere inválido.")
 
     tipo_escrito = _texto(campos.get("tipo", ""))
-    tipo = TIPOS.get(tipo_escrito.casefold())
-    if tipo is None:
-        raise ValueError(f'tipo "{tipo_escrito}" desconhecido; use entrada ou saída.')
+    if (tipo_e_motivo := TIPOS.get(tipo_escrito.casefold())) is None:
+        raise ValueError(f'tipo "{tipo_escrito}" desconhecido; use entrada, saída ou descarte.')
+    tipo, motivo = tipo_e_motivo
 
     data = _data(campos.get("data", ""), "data")
     if data > hoje():
@@ -408,7 +416,7 @@ def _ler(
             raise ValueError("validade só se informa numa entrada.")
         validade = _data(valor_validade, "validade")
     insumo = _insumo(nome, unidade, cadastrados, novos)
-    return _Linha(insumo, tipo, data, quantidade, validade)
+    return _Linha(insumo, tipo, data, quantidade, validade, motivo)
 
 
 def _quantidade(celula: Celula, decimal: str) -> float:
@@ -490,12 +498,19 @@ def _ja_lancadas(db: Session, linhas: list[_Linha]) -> int:
     if not ids:
         return 0
     no_banco = Counter(
-        (m.insumo_id, m.tipo, m.data, m.quantidade, m.validade)
+        (m.insumo_id, m.tipo, m.data, m.quantidade, m.validade, m.motivo)
         for m in db.scalars(select(Movimentacao).where(Movimentacao.insumo_id.in_(ids)))
     )
     repetidas = 0
     for linha in linhas:
-        chave = (linha.insumo.id, linha.tipo, linha.data, linha.quantidade, linha.validade)
+        chave = (
+            linha.insumo.id,
+            linha.tipo,
+            linha.data,
+            linha.quantidade,
+            linha.validade,
+            linha.motivo,
+        )
         if no_banco[chave] > 0:
             no_banco[chave] -= 1
             repetidas += 1

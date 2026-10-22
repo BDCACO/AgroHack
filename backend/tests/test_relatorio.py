@@ -40,8 +40,13 @@ def test_relatorio_traz_alertas_reposicao_e_estoque(client: TestClient, db: Sess
 
 def test_movimentacoes_do_relatorio_voltam_pela_importacao(client: TestClient, db: Session) -> None:
     carregar(db, hoje())
+    [ivermectina] = [i for i in client.get("/api/v1/insumos").json() if "Ivermectina" in i["nome"]]
+    descarte = {"insumo_id": ivermectina["id"], "tipo": "saida", "motivo": "descarte"}
+    client.post("/api/v1/movimentacoes", json=descarte | {"data": str(hoje()), "quantidade": 4})
     conteudo, livro = baixar(client)
     linhas = livro["Movimentações"].max_row - 1
+    tipos = {linha[3] for linha in livro["Movimentações"].iter_rows(min_row=2, values_only=True)}
+    assert tipos == {"entrada", "saída", "descarte"}
 
     resposta = client.post(
         "/api/v1/importacoes", json={"xlsx": base64.b64encode(conteudo).decode()}

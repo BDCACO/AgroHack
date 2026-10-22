@@ -50,6 +50,12 @@ ROTULOS: dict[TipoAlerta, str] = {
     "consumo_incomum": "Consumo incomum",
 }
 _ORDEM: dict[Gravidade, int] = {"alta": 0, "media": 1, "baixa": 2}
+# Como a importação lê: o descarte volta como descarte, e não como consumo.
+_TIPO_NA_PLANILHA = {
+    ("entrada", None): "entrada",
+    ("saida", None): "saída",
+    ("saida", "descarte"): "descarte",
+}
 
 
 def gerar(db: Session) -> bytes:
@@ -222,7 +228,7 @@ def _movimentacoes(db: Session) -> list[tuple]:
             m.data,
             ILLEGAL_CHARACTERS_RE.sub("", insumo.nome),
             ILLEGAL_CHARACTERS_RE.sub("", insumo.unidade),
-            "entrada" if m.tipo == "entrada" else "saída",
+            _TIPO_NA_PLANILHA[(m.tipo, m.motivo)],
             m.quantidade,
             m.validade,
         )
