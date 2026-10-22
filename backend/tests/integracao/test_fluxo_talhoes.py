@@ -10,8 +10,10 @@ from typing import Any
 
 import httpx
 from openpyxl import load_workbook
+from sqlalchemy import Engine, text
 
 from app.core.relogio import hoje
+from app.models import Base
 
 HOJE = hoje()
 
@@ -165,7 +167,9 @@ def test_carencia_e_custo_por_talhao_de_ponta_a_ponta(api: httpx.Client) -> None
     assert linhas["Talhão Sul"][3:7] == ("Sem alertas", None, "sem preço", "sem preço")
 
 
-def test_restauracao_da_copia_de_seguranca_traz_as_aplicacoes(api: httpx.Client) -> None:
+def test_restauracao_da_copia_de_seguranca_traz_as_aplicacoes(
+    api: httpx.Client, banco: Engine
+) -> None:
     """Perdeu tudo: com os talhões cadastrados de novo (a cópia diz quais faltam), o
     relatório importado num CampoCerto vazio devolve cada aplicação ao seu talhão."""
     talhoes, insumos = fazenda(api)
@@ -184,11 +188,12 @@ def test_restauracao_da_copia_de_seguranca_traz_as_aplicacoes(api: httpx.Client)
         )
 
     antes = aplicacoes()
-    for insumo in insumos.values():
-        ok(api.delete(f"/insumos/{insumo}"), 204)
-    # Sem as aplicações (foram com os insumos), os talhões já podem sair.
-    for talhao in talhoes.values():
-        ok(api.delete(f"/talhoes/{talhao}"), 204)
+    # Perdeu tudo (ou é um CampoCerto novo): o banco vazio. Pela API não dá para chegar
+    # aqui, de propósito: insumo e talhão com aplicação não se removem.
+    tabelas = ", ".join(t.name for t in Base.metadata.sorted_tables)
+    with banco.begin() as conexao:
+        conexao.execute(text(f"TRUNCATE {tabelas} RESTART IDENTITY CASCADE"))
+    assert ok(api.get("/insumos")) == ok(api.get("/talhoes")) == []
 
     sem_talhoes = ok(api.post("/importacoes", json={"xlsx": relatorio, "confirmar": True}))
     assert sem_talhoes["importado"] is False
