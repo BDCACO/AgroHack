@@ -11,6 +11,7 @@ from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, Uuid, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
+from app.models.usuario import Usuario
 
 # Exata no banco, com 3 casas (grama no kg, mililitro no litro); float no Python,
 # que é o que o motor de análise usa.
@@ -99,6 +100,18 @@ class Movimentacao(Base):
     talhao_id: Mapped[int | None] = mapped_column(
         ForeignKey("talhoes.id", ondelete="RESTRICT"), index=True
     )
+    # Quem lançou (auditoria). Vazio no que veio antes da autenticação e no que se lança
+    # com ela desligada sem login. RESTRICT: usuário não se apaga, desativa.
+    usuario_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="RESTRICT"), index=True
+    )
+
+    usuario: Mapped[Usuario | None] = relationship(lazy="joined")
+
+    @property
+    def lancado_por(self) -> str | None:
+        """O nome de quem lançou, para a tela não precisar de outra consulta."""
+        return None if self.usuario is None else self.usuario.nome
 
 
 class Talhao(Base):
