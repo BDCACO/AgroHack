@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.relogio import hoje
 from app.schemas.estoque import (
+    AjusteDeInventario,
+    ContagemDeInventario,
     InsumoCadastro,
     InsumoDetalhe,
     InsumoResposta,
@@ -65,6 +67,18 @@ def remover_insumo(insumo_id: int, db: Session = Depends(get_db)) -> Response:
     except servico.InsumoInexistente:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/insumos/{insumo_id}/inventario", response_model=AjusteDeInventario)
+def registrar_inventario(
+    insumo_id: int, contagem: ContagemDeInventario, db: Session = Depends(get_db)
+) -> AjusteDeInventario:
+    """Contagem física do galpão: lança a diferença para o saldo registrado naquele dia
+    (sobra vira entrada; falta, saída), sem contar como consumo. Bateu, nada é lançado."""
+    try:
+        return servico.registrar_inventario(db, insumo_id, contagem)
+    except servico.InsumoInexistente:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
 
 
 @router.get("/movimentacoes", response_model=list[MovimentacaoResposta])

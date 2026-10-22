@@ -13,6 +13,8 @@ from app.core.relogio import hoje
 from app.domain import estoque as dominio
 from app.models import Insumo, Movimentacao
 from app.schemas.estoque import (
+    AjusteDeInventario,
+    ContagemDeInventario,
     InsumoCadastro,
     InsumoDetalhe,
     InsumoResposta,
@@ -89,6 +91,40 @@ def registrar_movimentacao(db: Session, dados: MovimentacaoEntrada) -> Movimenta
     return movimentacao
 
 
+def registrar_inventario(
+    db: Session, insumo_id: int, contagem: ContagemDeInventario
+) -> AjusteDeInventario:
+    """Compara a contagem do galpão com o saldo registrado até aquele dia e lança a
+    diferença: o estoque passa a ser o que foi contado."""
+    insumo = _buscar_insumo(db, insumo_id)
+    saldo = round(
+        sum(
+            m.quantidade if m.tipo == "entrada" else -m.quantidade
+            for m in insumo.movimentacoes
+            if m.data <= contagem.data
+        ),
+        3,
+    )
+    diferenca = round(contagem.quantidade_contada - saldo, 3)
+    movimentacao = None
+    if diferenca:
+        movimentacao = Movimentacao(
+            insumo_id=insumo.id,
+            tipo="entrada" if diferenca > 0 else "saida",
+            motivo="inventario",
+            data=contagem.data,
+            quantidade=abs(diferenca),
+        )
+        db.add(movimentacao)
+        db.commit()
+    return AjusteDeInventario(
+        saldo_registrado=saldo,
+        quantidade_contada=contagem.quantidade_contada,
+        diferenca=diferenca,
+        movimentacao=movimentacao and MovimentacaoResposta.model_validate(movimentacao),
+    )
+
+
 def remover_movimentacao(db: Session, movimentacao_id: int) -> bool:
     movimentacao = db.get(Movimentacao, movimentacao_id)
     if movimentacao is None:
@@ -121,9 +157,12 @@ def _resposta(insumo: Insumo, referencia: date) -> InsumoResposta:
         if m.tipo == "entrada"
     ]
     saidas = [m for m in insumo.movimentacoes if m.tipo == "saida"]
-    # Só a retirada para uso é consumo; o descarte tira do estoque, mas não do ritmo.
+    # Só a retirada para uso é consumo; descarte e ajuste de inventário tiram do estoque,
+    # mas não do ritmo.
     retiradas = [dominio.Retirada(m.data, m.quantidade) for m in saidas if m.motivo is None]
     descartes = [dominio.Descarte(m.data, m.quantidade) for m in saidas if m.motivo == "descarte"]
+    # Produto que faltou na contagem saiu sem registro, como uma retirada: dos lotes bons.
+    faltas = [dominio.Retirada(m.data, m.quantidade) for m in saidas if m.motivo == "inventario"]
     # Quantidades têm no máximo 3 casas; arredondar a soma tira o resíduo do float
     # (sem isso, um estoque zerado poderia virar 1e-14 e escapar do alerta).
     estoque = round(sum(e.quantidade for e in entradas) - sum(m.quantidade for m in saidas), 3)
@@ -139,7 +178,7 @@ def _resposta(insumo: Insumo, referencia: date) -> InsumoResposta:
             insumo.prazo_reposicao_dias,
         ),
         retiradas,
-        lotes=dominio.lotes_em_estoque(entradas, retiradas, descartes),
+        lotes=dominio.lotes_em_estoque(entradas, retiradas + faltas, descartes),
         registros_desde=min(registros_desde, referencia),
         referencia=referencia,
     )
@@ -147,6 +186,12 @@ def _resposta(insumo: Insumo, referencia: date) -> InsumoResposta:
         limitacao = (
             "Saldo por lote estimado: as retiradas não dizem de qual lote saíram, então "
             "se supõe que o que vence primeiro é usado primeiro."
+        )
+        analise = replace(analise, limitacoes=[*analise.limitacoes, limitacao])
+    if any(m.motivo == "inventario" for m in insumo.movimentacoes):
+        limitacao = (
+            "Houve ajuste de inventário: a diferença da contagem corrige o estoque, mas não "
+            "entra no ritmo de consumo, porque não se sabe quando o produto saiu."
         )
         analise = replace(analise, limitacoes=[*analise.limitacoes, limitacao])
     return InsumoResposta(

@@ -41,11 +41,16 @@ class _Movimentacao(BaseModel):
     data: date
     quantidade: float = Field(gt=0, le=QUANTIDADE_MAXIMA)
     validade: date | None = None
-    # Saída que não é consumo. Sem motivo, a saída é uma retirada para uso.
-    motivo: Literal["descarte"] | None = None
+    # Movimentação que não é consumo: descarte (saída) ou ajuste de inventário (os dois
+    # lados). Sem motivo, a saída é uma retirada para uso.
+    motivo: Literal["descarte", "inventario"] | None = None
 
 
 class MovimentacaoEntrada(_Movimentacao):
+    # O ajuste de inventário só nasce da contagem (POST /insumos/{id}/inventario), que
+    # calcula a diferença: lançado à mão, seria um número sem conferência.
+    motivo: Literal["descarte"] | None = None
+
     @model_validator(mode="after")
     def _coerente(self) -> Self:
         if self.validade is not None and self.tipo != "entrada":
@@ -62,6 +67,25 @@ class MovimentacaoResposta(_Movimentacao):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+
+
+class ContagemDeInventario(BaseModel):
+    quantidade_contada: float = Field(ge=0, le=QUANTIDADE_MAXIMA)
+    data: date = Field(default_factory=hoje)
+
+    @model_validator(mode="after")
+    def _no_passado(self) -> Self:
+        if self.data > hoje():
+            raise ValueError("a data da contagem não pode ser futura")
+        return self
+
+
+class AjusteDeInventario(BaseModel):
+    # O que os registros diziam no fim do dia da contagem.
+    saldo_registrado: float
+    quantidade_contada: float
+    diferenca: float  # positiva = sobra; negativa = falta
+    movimentacao: MovimentacaoResposta | None  # None quando a contagem bate
 
 
 class PontoDeEstoque(BaseModel):

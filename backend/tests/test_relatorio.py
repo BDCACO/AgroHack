@@ -43,10 +43,15 @@ def test_movimentacoes_do_relatorio_voltam_pela_importacao(client: TestClient, d
     [ivermectina] = [i for i in client.get("/api/v1/insumos").json() if "Ivermectina" in i["nome"]]
     descarte = {"insumo_id": ivermectina["id"], "tipo": "saida", "motivo": "descarte"}
     client.post("/api/v1/movimentacoes", json=descarte | {"data": str(hoje()), "quantidade": 4})
+    insumos = {i["nome"]: i for i in client.get("/api/v1/insumos").json()}
+    ureia, sal = insumos["Ureia agrícola"], insumos["Sal mineral 80P"]
+    for insumo, diferenca in ((ureia, 5), (sal, -5)):
+        contagem = {"quantidade_contada": insumo["estoque_atual"] + diferenca}
+        client.post(f"/api/v1/insumos/{insumo['id']}/inventario", json=contagem)
     conteudo, livro = baixar(client)
     linhas = livro["Movimentações"].max_row - 1
     tipos = {linha[3] for linha in livro["Movimentações"].iter_rows(min_row=2, values_only=True)}
-    assert tipos == {"entrada", "saída", "descarte"}
+    assert tipos == {"entrada", "saída", "descarte", "sobra", "falta"}
 
     resposta = client.post(
         "/api/v1/importacoes", json={"xlsx": base64.b64encode(conteudo).decode()}

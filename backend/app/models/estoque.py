@@ -43,9 +43,11 @@ class Movimentacao(Base):
         CheckConstraint("quantidade > 0", name="quantidade_positiva"),
         # Validade é de lote, e lote só nasce numa entrada.
         CheckConstraint("validade IS NULL OR tipo = 'entrada'", name="validade_so_em_entrada"),
-        # Saída com motivo não é consumo: não entra no ritmo nem nos alertas de consumo.
+        # Movimentação com motivo não é consumo: não entra no ritmo nem nos alertas de
+        # consumo. Descarte é sempre saída; o ajuste de inventário vai para os dois lados.
         CheckConstraint(
-            "motivo IS NULL OR (motivo = 'descarte' AND tipo = 'saida')", name="motivo_valido"
+            "motivo IS NULL OR (motivo = 'descarte' AND tipo = 'saida') OR motivo = 'inventario'",
+            name="motivo_valido",
         ),
     )
 

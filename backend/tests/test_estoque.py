@@ -114,6 +114,84 @@ def test_descarte_tira_o_lote_vencido_sem_contar_como_consumo(client: TestClient
     assert depois["movimentacoes"][0]["motivo"] == "descarte"
 
 
+def contar(client: TestClient, insumo_id: int, **corpo: Any) -> dict[str, Any]:
+    resposta = client.post(f"/api/v1/insumos/{insumo_id}/inventario", json=corpo)
+    assert resposta.status_code == 200, resposta.json()
+    return resposta.json()
+
+
+def test_inventario_com_falta_lanca_a_diferenca_sem_virar_consumo(client: TestClient) -> None:
+    insumo = criar(client)
+    lancar(client, insumo_id=insumo["id"], tipo="entrada", data=dia(40), quantidade=100)
+    for dias_atras in range(0, 40, 4):
+        lancar(client, insumo_id=insumo["id"], tipo="saida", data=dia(dias_atras), quantidade=2)
+    antes = client.get(f"/api/v1/insumos/{insumo['id']}").json()
+
+    ajuste = contar(client, insumo["id"], quantidade_contada=70)
+
+    assert (ajuste["saldo_registrado"], ajuste["quantidade_contada"]) == (80, 70)
+    assert ajuste["diferenca"] == -10
+    assert ajuste["movimentacao"] | {"id": 0} == {
+        "id": 0,
+        "insumo_id": insumo["id"],
+        "tipo": "saida",
+        "motivo": "inventario",
+        "data": dia(0),
+        "quantidade": 10,
+        "validade": None,
+    }
+    depois = client.get(f"/api/v1/insumos/{insumo['id']}").json()
+    assert depois["estoque_atual"] == 70
+    assert depois["analise"]["consumo_diario"] == antes["analise"]["consumo_diario"]
+    assert any("inventário" in t for t in depois["analise"]["limitacoes"])
+
+
+def test_inventario_com_sobra_lanca_uma_entrada(client: TestClient) -> None:
+    insumo = criar(client)
+    lancar(client, insumo_id=insumo["id"], tipo="entrada", data=dia(10), quantidade=5)
+
+    ajuste = contar(client, insumo["id"], quantidade_contada=7.5, data=dia(2))
+
+    assert ajuste["diferenca"] == 2.5
+    assert ajuste["movimentacao"]["tipo"] == "entrada"
+    assert ajuste["movimentacao"]["data"] == dia(2)
+    assert client.get("/api/v1/insumos").json()[0]["estoque_atual"] == 7.5
+
+
+def test_inventario_compara_com_o_saldo_da_data_da_contagem(client: TestClient) -> None:
+    insumo = criar(client)
+    lancar(client, insumo_id=insumo["id"], tipo="entrada", data=dia(10), quantidade=50)
+    lancar(client, insumo_id=insumo["id"], tipo="saida", data=dia(1), quantidade=20)
+
+    # Contou 50 há 5 dias: batia com o registro daquele dia; a saída de depois não conta.
+    ajuste = contar(client, insumo["id"], quantidade_contada=50, data=dia(5))
+
+    assert (ajuste["diferenca"], ajuste["movimentacao"]) == (0, None)
+    assert len(client.get("/api/v1/movimentacoes").json()) == 2
+
+
+@pytest.mark.parametrize(
+    "corpo", [{"quantidade_contada": -1}, {"quantidade_contada": 5, "data": dia(-1)}, {}]
+)
+def test_inventario_invalido(client: TestClient, corpo: dict[str, Any]) -> None:
+    insumo = criar(client)
+
+    resposta = client.post(f"/api/v1/insumos/{insumo['id']}/inventario", json=corpo)
+
+    assert resposta.status_code == 422
+    inexistente = client.post("/api/v1/insumos/999/inventario", json={"quantidade_contada": 1})
+    assert inexistente.status_code == 404
+
+
+def test_movimentacao_de_inventario_so_pela_contagem(client: TestClient) -> None:
+    insumo = criar(client)
+    corpo = {"insumo_id": insumo["id"], "tipo": "saida", "data": dia(0), "quantidade": 1}
+
+    resposta = client.post("/api/v1/movimentacoes", json=corpo | {"motivo": "inventario"})
+
+    assert resposta.status_code == 422
+
+
 def test_atualizar_insumo(client: TestClient) -> None:
     ureia = criar(client)
     criar(client, nome="Calcário", unidade="t")

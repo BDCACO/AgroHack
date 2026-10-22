@@ -55,6 +55,8 @@ _TIPO_NA_PLANILHA = {
     ("entrada", None): "entrada",
     ("saida", None): "saída",
     ("saida", "descarte"): "descarte",
+    ("entrada", "inventario"): "sobra",
+    ("saida", "inventario"): "falta",
 }
 
 

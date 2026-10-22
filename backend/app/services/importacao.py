@@ -37,6 +37,9 @@ TIPOS = {
     "saída": ("saida", None),
     "retirada": ("saida", None),
     "descarte": ("saida", "descarte"),
+    # Ajustes de inventário, como o relatório (a cópia de segurança) os escreve.
+    "sobra": ("entrada", "inventario"),
+    "falta": ("saida", "inventario"),
 }
 # O Excel em português grava DD/MM/AAAA (ou DD/MM/AA, se a célula estiver assim).
 FORMATOS_DE_DATA = ("%d/%m/%Y", "%Y-%m-%d", "%d/%m/%y")
