@@ -1,10 +1,15 @@
 from datetime import date
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domain.estoque import Alerta
 from app.domain.talhao import ConsumoNoTalhao
-from app.schemas.estoque import SEM_CARACTERE_DE_CONTROLE, MovimentacaoResposta
+from app.schemas.estoque import (
+    SEM_CARACTERE_DE_CONTROLE,
+    MovimentacaoResposta,
+    nas_casas_da_coluna,
+)
 
 # Teto da coluna NUMERIC(10, 2).
 AREA_MAXIMA = 99_999_999.99
@@ -15,7 +20,8 @@ class _Talhao(BaseModel):
 
     nome: str = Field(min_length=1, max_length=120)
     # Maior que zero: é o divisor do custo por hectare.
-    area_ha: float = Field(gt=0, le=AREA_MAXIMA)
+    # Nas 2 casas da coluna, antes do "maior que zero": 0,004 ha vira 0 e dá 422.
+    area_ha: Annotated[float, nas_casas_da_coluna(2)] = Field(gt=0, le=AREA_MAXIMA)
     cultura: str | None = Field(default=None, max_length=60)  # "Soja", "Milho", "Pasto"...
 
 

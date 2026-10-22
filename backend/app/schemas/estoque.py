@@ -1,8 +1,10 @@
+import math
 from datetime import date
-from typing import Any, Literal, Self
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
-from pydantic import Base64Bytes, BaseModel, ConfigDict, Field, model_validator
+from pydantic import Base64Bytes, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from app.analysis.consumo import Analise
 from app.core.relogio import hoje
@@ -19,17 +21,43 @@ LOTE_MAXIMO = 500
 SEM_CARACTERE_DE_CONTROLE = r"^[^\x00-\x1f\x7f]*$"
 
 
+def como_o_banco(valor: float, casas: int) -> float:
+    """O número como a coluna NUMERIC do PostgreSQL o guarda: lido com 15 dígitos e com o
+    meio arredondado para longe do zero. O round() do Python arredonda pelo valor binário
+    do float e discorda nos meios (1.2345 vira 1,234 lá e 1,235 no banco)."""
+    return float(Decimal(f"{valor:.15g}").quantize(Decimal(1).scaleb(-casas), ROUND_HALF_UP))
+
+
+def nas_casas_da_coluna(casas: int) -> BeforeValidator:
+    """Arredonda ANTES das regras do campo: 0,0004 numa coluna de 3 casas vira 0, e o
+    "maior que zero" o recusa com 422, em vez de o banco recusá-lo depois com um 500."""
+
+    def arredondar(valor: object) -> object:
+        # Só número finito e de tamanho plausível; o resto segue para a validação de sempre.
+        numero = isinstance(valor, int | float) and not isinstance(valor, bool)
+        if numero and math.isfinite(valor) and abs(valor) < 1e15:
+            return como_o_banco(valor, casas)
+        return valor
+
+    return BeforeValidator(arredondar)
+
+
+# As casas das colunas NUMERIC(12, 3) e NUMERIC(14, 4).
+NaColunaDeQuantidade = Annotated[float, nas_casas_da_coluna(3)]
+NaColunaDePreco = Annotated[float, nas_casas_da_coluna(4)]
+
+
 class _Insumo(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     nome: str = Field(min_length=1, max_length=120)
     unidade: str = Field(min_length=1, max_length=20)
-    estoque_minimo: float | None = Field(default=None, ge=0, le=QUANTIDADE_MAXIMA)
+    estoque_minimo: NaColunaDeQuantidade | None = Field(default=None, ge=0, le=QUANTIDADE_MAXIMA)
     prazo_reposicao_dias: int | None = Field(default=None, ge=0, le=365)
     # Na unidade do insumo (50 para o saco de 50 kg). Opcionais: sem eles, a reposição
     # sugere a quantidade da conta, e a análise diz que não considerou a embalagem.
-    embalagem: float | None = Field(default=None, gt=0, le=QUANTIDADE_MAXIMA)
-    pedido_minimo: float | None = Field(default=None, ge=0, le=QUANTIDADE_MAXIMA)
+    embalagem: NaColunaDeQuantidade | None = Field(default=None, gt=0, le=QUANTIDADE_MAXIMA)
+    pedido_minimo: NaColunaDeQuantidade | None = Field(default=None, ge=0, le=QUANTIDADE_MAXIMA)
 
 
 class DadosDoInsumo(_Insumo):
@@ -63,13 +91,13 @@ class _Movimentacao(BaseModel):
     insumo_id: int
     tipo: Literal["entrada", "saida"]
     data: date
-    quantidade: float = Field(gt=0, le=QUANTIDADE_MAXIMA)
+    quantidade: NaColunaDeQuantidade = Field(gt=0, le=QUANTIDADE_MAXIMA)
     validade: date | None = None
     # Movimentação que não é consumo: descarte (saída) ou ajuste de inventário (os dois
     # lados). Sem motivo, a saída é uma retirada para uso.
     motivo: Literal["descarte", "inventario"] | None = None
     # R$ por unidade do insumo, o preço pago. Só numa compra; opcional.
-    valor_unitario: float | None = Field(default=None, gt=0, le=VALOR_UNITARIO_MAXIMO)
+    valor_unitario: NaColunaDePreco | None = Field(default=None, gt=0, le=VALOR_UNITARIO_MAXIMO)
     # Identificador que o app gera para cada lançamento (UUID v4): reenviar o mesmo
     # lançamento não o grava de novo. Opcional: o site não manda.
     uuid: UUID | None = None
@@ -146,7 +174,7 @@ class ResultadoDoLote(BaseModel):
 
 
 class ContagemDeInventario(BaseModel):
-    quantidade_contada: float = Field(ge=0, le=QUANTIDADE_MAXIMA)
+    quantidade_contada: NaColunaDeQuantidade = Field(ge=0, le=QUANTIDADE_MAXIMA)
     data: date = Field(default_factory=hoje)
 
     @model_validator(mode="after")

@@ -22,6 +22,7 @@ from app.schemas.estoque import (
     MovimentacaoEntrada,
     MovimentacaoResposta,
     PontoDeEstoque,
+    como_o_banco,
 )
 
 # Campos que vieram depois do site e do app: um PUT que não os manda (de uma versão que
@@ -214,7 +215,9 @@ def _reenvio(existente: Movimentacao, dados: MovimentacaoEntrada) -> Registro:
 
 
 def _como_no_banco(valor: object, casas: int | None) -> object:
-    return round(valor, casas) if casas is not None and isinstance(valor, float) else valor
+    # Como o PostgreSQL arredonda, e não o round() do Python: senão o reenvio idêntico de
+    # 1,2345 kg compararia 1,234 com o 1,235 gravado e viraria "lançamento diferente".
+    return como_o_banco(valor, casas) if casas is not None and isinstance(valor, float) else valor
 
 
 def _buscar_insumo(db: Session, insumo_id: int) -> Insumo:

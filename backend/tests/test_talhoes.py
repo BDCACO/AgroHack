@@ -559,3 +559,10 @@ def test_relatorio_traz_os_talhoes_e_a_copia_leva_o_talhao(client: TestClient) -
     ).json()
     # A cópia de segurança volta igual: a aplicação, no mesmo talhão, já está lá.
     assert (previa["erros"], previa["linhas"], previa["ja_lancadas"]) == ([], 3, 3)
+
+
+def test_area_que_o_banco_arredondaria_para_zero_e_422(client: TestClient) -> None:
+    resposta = client.post("/api/v1/talhoes", json={"nome": "Horta", "area_ha": 0.004})
+
+    assert resposta.status_code == 422
+    assert criar_talhao(client, nome="Canteiro", area_ha=0.005)["area_ha"] == 0.01

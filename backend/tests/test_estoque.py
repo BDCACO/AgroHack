@@ -352,3 +352,52 @@ def test_preco_em_saida_explica_o_porque(client: TestClient) -> None:
     resposta = client.post("/api/v1/movimentacoes", json=corpo | {"valor_unitario": 3})
 
     assert "só se informa numa entrada" in resposta.json()["detail"][0]["msg"]
+
+
+@pytest.mark.parametrize(
+    "mudanca",
+    [
+        {"quantidade": 0.0004},  # vira 0,000 na coluna de 3 casas
+        {"tipo": "entrada", "valor_unitario": 0.00004},  # vira 0,0000 na de 4 casas
+    ],
+)
+def test_numero_que_o_banco_arredondaria_para_zero_e_422(
+    client: TestClient, mudanca: dict[str, Any]
+) -> None:
+    insumo = criar(client)
+    corpo = {"insumo_id": insumo["id"], "tipo": "saida", "data": dia(0), "quantidade": 1}
+
+    resposta = client.post("/api/v1/movimentacoes", json=corpo | mudanca)
+
+    assert resposta.status_code == 422
+
+
+def test_numeros_chegam_arredondados_como_o_banco_guarda(client: TestClient) -> None:
+    # O PostgreSQL arredonda o meio para longe do zero; o round() do Python, pelo valor
+    # binário do float (1.2345 vira 1.234). A API arredonda como o banco, para o que ela
+    # responde e compara ser o que fica gravado.
+    insumo = criar(client, embalagem=0.0125)
+    entrada = lancar(
+        client,
+        insumo_id=insumo["id"],
+        tipo="entrada",
+        data=dia(0),
+        quantidade=1.2345,
+        valor_unitario=0.01235,
+    )
+
+    assert (entrada["quantidade"], entrada["valor_unitario"]) == (1.235, 0.0124)
+    assert client.get("/api/v1/insumos").json()[0]["embalagem"] == 0.013
+
+
+@pytest.mark.parametrize("campo", ["embalagem", "estoque_minimo", "pedido_minimo"])
+def test_cadastro_com_numero_que_vira_zero(client: TestClient, campo: str) -> None:
+    resposta = client.post(
+        "/api/v1/insumos", json={"nome": "Ureia", "unidade": "kg", campo: 0.0004}
+    )
+
+    # Embalagem zero não existe (422); mínimo e pedido mínimo zero existem.
+    if campo == "embalagem":
+        assert resposta.status_code == 422
+    else:
+        assert (resposta.status_code, resposta.json()[campo]) == (201, 0)
