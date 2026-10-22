@@ -35,8 +35,8 @@ navegador ──► Vite (:5173) ──/api──► FastAPI (:8000) ──► P
 
 | Caminho | Responsabilidade | Regra |
 |---|---|---|
-| `app/domain/estoque.py` | Tipos de entrada (`Insumo`, `Lote`, `Retirada`), `Alerta` e as regras que não dependem de histórico: estoque abaixo do mínimo, lote vencido ou a vencer | **Sem I/O, sem banco, sem `datetime.now()`**: a data de referência entra como parâmetro |
-| `app/analysis/consumo.py` | `analisar(...)`: consumo médio, cobertura em dias, risco de falta, excesso, baixa movimentação, consumo incomum e reposição estimada | Recebe listas, devolve `Analise` com **justificativa** em cada alerta e as **limitações** dos dados |
+| `app/domain/estoque.py` | Tipos de entrada (`Insumo`, `Lote`, `Retirada`, `Entrada`), `Alerta` e as regras que não dependem de histórico: estoque abaixo do mínimo, lote vencido ou a vencer, custo médio das compras; e a formatação brasileira de quantidade e dinheiro | **Sem I/O, sem banco, sem `datetime.now()`**: a data de referência entra como parâmetro |
+| `app/analysis/consumo.py` | `analisar(...)`: consumo médio, cobertura em dias, risco de falta, excesso, baixa movimentação, consumo incomum e reposição estimada (em embalagens fechadas, com pedido mínimo e custo, quando cadastrados) | Recebe listas, devolve `Analise` com **justificativa** em cada alerta e as **limitações** dos dados |
 
 Os limiares (janela de 90 dias, 30 dias para vencimento, 180 de cobertura para excesso, prazo
 padrão de 15 dias...) são constantes no topo de cada módulo, com o porquê ao lado. A análise usa
@@ -50,11 +50,12 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 
 | Caminho | Responsabilidade |
 |---|---|
-| `app/models/estoque.py` | `insumos` e `movimentacoes` (entrada ou saída, data, quantidade, validade e `motivo`: vazio, `descarte` ou `inventario`). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só |
+| `app/models/estoque.py` | `insumos` (com `embalagem` e `pedido_minimo` opcionais) e `movimentacoes` (entrada ou saída, data, quantidade, validade, `motivo`: vazio, `descarte` ou `inventario`, e `valor_unitario`, o preço da compra). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só. O custo médio também não: sai das compras |
 | `app/services/estoque.py` | Casos de uso: cadastro, movimentações, a análise de cada insumo a partir do banco e o saldo dia a dia (histórico do gráfico). As rotas falam só com os serviços (este, `importacao`, `planilha_modelo` e `relatorio`) |
 | `app/services/importacao.py` | Importação de movimentações por planilha (Excel ou CSV), ver abaixo |
 | `app/services/planilha_modelo.py` | A planilha modelo da importação e os estilos das planilhas geradas (cores da marca, títulos, impressão) |
-| `app/services/relatorio.py` | O relatório em Excel: resumo, alertas, reposição, situação de cada insumo e todas as movimentações |
+| `app/services/relatorio.py` | O relatório em Excel: resumo (com os totais em reais), alertas, reposição, situação de cada insumo e todas as movimentações |
+| `app/services/resumo.py` | A visão geral em reais (`GET /resumo`): soma o que `estoque.listar_insumos` já analisou, mais as perdas |
 | `app/demo.py` | Fazenda fictícia para a apresentação (`make demo`): insumos marcados com `demonstracao`, que a tela sinaliza e `make demo-limpar` apaga sozinhos |
 | `app/core/relogio.py` | `hoje()` na data de Rondônia (UTC−4 fixo, sem horário de verão), não na do servidor |
 
@@ -70,6 +71,36 @@ vencido) e do **ajuste de inventário** (a diferença entre a contagem do galpã
 registrado; entrada se sobrou, saída se faltou). Os dois tiram ou põem no estoque, mas não
 entram no ritmo de consumo nem nos alertas de consumo. É uma coluna à parte, e não um terceiro
 `tipo`: para o saldo, o site e o app, continuam sendo entrada ou saída.
+
+**Preço, embalagem e pedido mínimo (opcionais).** A compra pode trazer `valor_unitario` (R$
+por unidade do insumo, `NUMERIC(14, 4)`: o preço por mililitro de um defensivo tem centavos
+depois da vírgula). Só em compra: o banco recusa preço em saída, em ajuste de inventário e
+preço zero ou negativo. Sem preço nenhum, tudo funciona como antes; com ele:
+
+- **Custo médio** (`custo_medio`, no domínio): média do preço pago **ponderada pela
+  quantidade** das compras com preço. Compra sem preço fica fora da conta, e a análise diz
+  quantas ficaram; a sobra de inventário não é compra. Sem compra com preço, é `None`, e não
+  zero.
+- **Alertas em reais.** Lote vencido ou a vencer vale quantidade do lote × custo médio; o
+  excesso vale só o capital de fato parado, o que passa de 180 dias de consumo. O valor vai no
+  campo `valor` do alerta e numa frase no **fim** da justificativa, com o custo usado ("Pelo
+  custo médio de R$ 3,30/kg, são cerca de R$ 950,00."). O começo do texto não muda: a tela se
+  apoia nele. Os outros alertas não têm valor.
+- **Reposição.** A quantidade da conta sobe ao `pedido_minimo` e é arredondada para cima ao
+  múltiplo da `embalagem` (do insumo, na unidade dele: 50 para o saco de 50 kg); a
+  justificativa fala em embalagens e diz quanto a conta dava. Com custo médio, traz
+  `custo_estimado`. A limitação sobre o que a sugestão não considera diz só o que falta
+  (embalagem, preço) e some com os dois cadastrados; pedido mínimo vazio é fornecedor sem
+  mínimo, não falta de dado. `Reposicao.quantidade` virou número com casas, porque a
+  embalagem pode ser fracionada (frasco de 0,5 L).
+- **Compatibilidade.** Tudo é aditivo: campos novos nas respostas, opcionais nos pedidos.
+  `PUT /insumos/{id}` sem `embalagem` ou `pedido_minimo` mantém o que está gravado (o site e o
+  app de antes não conhecem esses campos e apagariam o que outro cadastrou); mandar `null` de
+  propósito limpa.
+- **Migration 0006.** O downgrade apagaria preços e embalagens, que a 0005 não tem onde
+  guardar: ele se recusa enquanto houver algum gravado, e só segue com
+  `alembic -x descartar_precos=sim downgrade 0005` (antes, baixe o relatório, que leva os
+  preços).
 
 ### Importação de planilha
 
@@ -135,18 +166,19 @@ tem banco a orquestrar e chama o motor direto.
 |---|---|
 | `GET /api/v1/health` | Liveness: o processo está no ar. Não toca o banco |
 | `GET /api/v1/ready` | Readiness: `200` com o banco respondendo, `503` sem ele |
-| `GET /api/v1/insumos` | Insumos com estoque atual e a análise de hoje (alertas, reposição, limitações) |
+| `GET /api/v1/insumos` | Insumos com estoque atual, `custo_medio`, `valor_em_estoque` e a análise de hoje (alertas com `valor` em R$, reposição com `custo_estimado`, limitações) |
 | `GET /api/v1/insumos/{id}` | Um insumo com a análise, o saldo no fim de cada dia com movimentação (`historico`) e as movimentações |
-| `POST /api/v1/insumos` · `PUT /api/v1/insumos/{id}` | Cadastra / altera insumo (nome, unidade, mínimo, prazo de reposição). `409` para nome repetido |
+| `POST /api/v1/insumos` · `PUT /api/v1/insumos/{id}` | Cadastra / altera insumo (nome, unidade, mínimo, prazo de reposição e, opcionais, `embalagem` e `pedido_minimo`). `409` para nome repetido. No `PUT`, embalagem e pedido mínimo ausentes ficam como estão |
 | `DELETE /api/v1/insumos/{id}` | Remove o insumo cadastrado por engano, com as movimentações dele |
 | `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (`insumo_id`, `limite`) |
-| `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo. `422` para data futura, validade em saída, descarte em entrada ou insumo inexistente |
+| `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo; entrada pode trazer `valor_unitario` (R$ por unidade). `422` para data futura, validade ou preço em saída, preço zero ou negativo, descarte em entrada ou insumo inexistente |
 | `POST /api/v1/insumos/{id}/inventario` | Contagem do galpão (`quantidade_contada`, `data` opcional): lança a diferença para o saldo registrado naquele dia como ajuste (`motivo: "inventario"`) e devolve saldo, contagem e diferença. Se bate, nada é lançado |
 | `DELETE /api/v1/movimentacoes/{id}` | Remove lançamento errado |
+| `GET /api/v1/resumo` | Visão geral em reais: `valor_em_estoque` (`null` se nenhum insumo tem preço), `insumos_sem_preco`, `perdas` (descartes e faltas da contagem pelo custo médio: `ultimos_30_dias` e `total`), `compras_sugeridas` (custo das reposições dos próximos 30 dias, quantas e quantas para hoje), `alertas` por gravidade e as `limitacoes` das somas |
 | `POST /api/v1/importacoes` | Movimentações de uma planilha: `xlsx` (base64) ou `conteudo` (texto do CSV). Sem `confirmar`, só confere e resume, com o total de cada insumo; com erro, nada é gravado e a resposta lista os erros por linha |
 | `GET /api/v1/importacoes/modelo.xlsx` | Planilha modelo formatada, com os insumos cadastrados para escolher da lista |
 | `GET /api/v1/relatorio.xlsx` | Relatório do estoque em Excel. A aba Movimentações tem o formato da importação: é também a cópia de segurança, e volta pela mesma tela |
-| `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período) e devolve alertas, reposição e limitações. `422` para entrada inválida |
+| `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período; `custo_medio`, `embalagem` e `pedido_minimo` opcionais) e devolve alertas, reposição e limitações. `422` para entrada inválida |
 | `GET /api/v1/docs` | Swagger UI (desligado em `production`) |
 | `GET /api/v1/openapi.json` | Schema OpenAPI (desligado em `production`) |
 
@@ -330,6 +362,10 @@ tecnologias que não se aplicam.
    app, os modelos em Dart entram na mesma conta.
 3. **App nas lojas.** Ícone, assinatura do Android, conta de desenvolvedor da Apple e a API em
    `https://` em algum endereço público.
+4. **Reais nas telas.** A API já devolve preço, custo médio, valor em estoque, embalagem, pedido
+   mínimo e o `GET /resumo`; o site e o app ainda não têm campo para o preço ao lançar uma
+   compra nem para a embalagem no cadastro, e não mostram o resumo. As justificativas, que as
+   telas já exibem, trazem os valores.
 
 Decididas desde a versão anterior deste documento: a importação de planilha existe (Excel e
 CSV, seção 2); o ECharts entrou com o gráfico do insumo; o Pandas não entrou, porque nem o motor de

@@ -19,7 +19,7 @@ diz a linha e o que corrigir.
 
 | Aba | Para quê |
 |---|---|
-| **Movimentações** | A que você preenche, e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade e tipo. O próprio Excel avisa se a data for futura, se o tipo não for entrada, saída ou descarte e se a quantidade não for maior que zero. |
+| **Movimentações** | A que você preenche, e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade e tipo. O próprio Excel avisa se a data for futura, se o tipo não for entrada, saída ou descarte e se a quantidade ou o valor não forem maiores que zero. |
 | **Como preencher** | As instruções, resumidas. |
 | **Exemplo** | Três linhas preenchidas do jeito certo. |
 | **Insumos cadastrados** | Os insumos que já estão no CampoCerto, com a unidade de cada um. É de onde vem a lista de escolha da coluna `insumo`: depois de cadastrar outros, baixe o modelo de novo. |
@@ -36,9 +36,16 @@ Passe o mouse sobre o título de uma coluna para ver a explicação dela.
 | `tipo` | Sim | `entrada` (compra que chegou), `saída` (retirada do galpão) ou `descarte`; no modelo, escolha da lista. `descarte` é a saída que não é consumo: lote vencido ou estragado, jogado fora ou devolvido. Em outras planilhas também valem `compra`, `retirada` e `saida` sem acento; `sobra` e `falta` são ajustes de inventário, como o relatório os escreve. | saída |
 | `quantidade` | Sim | Maior que zero, na unidade do insumo. | 25,5 |
 | `validade` | Não | Validade do lote, só em entradas. Em branco se o produto não vence. | 30/06/2027 |
+| `valor` | Não | Preço pago **por unidade** do insumo (R$ por kg, por litro, por saca), só em entradas (compras). Não é o total da nota: 1.000 kg a R$ 3,20 o quilo é `3,20`. `R$ 3,20` também vale. Em branco se não souber. | 3,20 |
 
 Pode haver outras colunas (observação, fornecedor, nota fiscal), desde que tenham título na
 linha 1: a importação ignora as que não conhece.
+
+**Para que serve o valor.** Com o preço das compras, o CampoCerto calcula o custo médio de cada
+insumo (a média do que se pagou, ponderada pela quantidade) e passa a falar em reais: quanto vale
+o estoque, quanto vale o lote que vence, quanto custa a compra sugerida e quanto se perdeu em
+descartes e faltas. Sem preço, tudo funciona igual, só sem reais. Compras sem preço ficam fora do
+custo médio, e a análise diz quantas ficaram.
 
 ## Excel ou CSV
 
@@ -53,7 +60,8 @@ linha 1: a importação ignora as que não conhece.
 ### Números escritos como texto
 
 No CSV, e numa célula de texto do Excel, `25.500` tanto pode ser vinte e cinco e meio quanto
-vinte e cinco mil. O CampoCerto decide olhando a planilha inteira, não célula a célula:
+vinte e cinco mil. O CampoCerto decide olhando a planilha inteira (as colunas `quantidade` e
+`valor` juntas), não célula a célula:
 
 | Na planilha | Lido como | Por quê |
 |---|---|---|
@@ -70,12 +78,14 @@ prévia**: um número lido errado aparece ali, antes de gravar.
 ## Cópia de segurança
 
 O **relatório em Excel** (botão *Baixar relatório* no Painel) traz, na aba **Movimentações**,
-todas as entradas e saídas no formato da importação, inclusive descartes e ajustes de inventário. Guarde-o: num CampoCerto novo, importá-lo
-traz de volta os insumos e as movimentações.
+todas as entradas e saídas no formato da importação, inclusive descartes, ajustes de inventário
+e o preço de cada compra. Guarde-o: num CampoCerto novo, importá-lo traz de volta os insumos e as
+movimentações, e com elas o custo médio.
 
-O que **não** volta: o estoque mínimo e o prazo de entrega de cada insumo (estão na aba
-**Estoque** do relatório; lance-os de novo na tela de Insumos, porque sem eles os alertas e a
-reposição mudam), os insumos sem nenhuma movimentação e a marca de dados de demonstração.
+O que **não** volta: o estoque mínimo, o prazo de entrega, a embalagem e o pedido mínimo de cada
+insumo (o mínimo e o prazo estão na aba **Estoque** do relatório; lance-os de novo na tela de
+Insumos, porque sem eles os alertas e a reposição mudam), os insumos sem nenhuma movimentação e a
+marca de dados de demonstração.
 Importado no mesmo sistema, a prévia avisa que todas as linhas já estão lá e não oferece o botão
 de importar, só um "importar mesmo assim", que pede confirmação.
 
@@ -107,11 +117,13 @@ de importar, só um "importar mesmo assim", que pede confirmação.
 | "Ureia" já está cadastrado em kg, não em sc | Converta para a unidade do cadastro (10 sacas de 50 kg = 500 kg). |
 | há mais de um insumo cadastrado como "ureia" | Renomeie um deles na tela de Insumos. |
 | validade só se informa numa entrada | Apague a validade da linha de saída. |
+| valor só se informa numa entrada (compra) | O preço é o que se pagou numa compra: apague o valor da linha de saída, descarte, sobra ou falta. |
+| valor "caro" não é um número / valor deve ser maior que zero | Escreva o preço por unidade como número: 3,20. |
 | há valores na coluna H, que não tem título na linha 1 | Dê um título à coluna (na linha 1) ou apague os valores dela. |
 | o nome do insumo tem um caractere inválido | Há um caractere invisível no nome (comum em texto colado de outro programa): apague a célula e digite o nome de novo. |
 | 6 colunas, mas o cabeçalho tem 5 | CSV separado por vírgula com vírgula decimal: separe por ponto e vírgula ou ponha o número entre aspas. |
 | aspa (") sem fechar | Uma célula começa com aspa e não termina com outra: corrija e salve de novo. |
-| Quantidades com vírgula decimal e com ponto decimal na mesma planilha | Use um formato só em toda a coluna `quantidade`. |
+| Quantidades (ou Números) com vírgula decimal e com ponto decimal na mesma planilha | Use um formato só nas colunas `quantidade` e `valor`. |
 | Não deu para abrir a planilha do Excel | Abra o arquivo no Excel, salve como .xlsx e tente de novo. Planilha protegida por senha: tire a senha antes. |
 | A planilha é grande demais… | Apague as linhas e colunas vazias depois dos dados, ou divida a planilha em partes. |
 | Arquivo maior que 5 MB | Divida a planilha em partes (um ano por arquivo, por exemplo). |
