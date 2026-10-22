@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DataError
 
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
@@ -49,6 +50,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 {"detail": "Arquivo grande demais: o máximo é 5 MB."}, status_code=413
             )
         return await call_next(request)
+
+    @app.exception_handler(DataError)
+    async def dado_que_o_banco_recusa(_: Request, __: DataError) -> JSONResponse:
+        # Um id maior que o `integer` do PostgreSQL ou um texto com caractere nulo passam
+        # pela validação (o SQLite dos testes os aceita) e o banco os recusa. É dado
+        # inválido do pedido, não defeito do servidor: 422, e não 500 com traceback no log.
+        return JSONResponse(
+            {"detail": "Algum valor do pedido está fora do que o sistema aceita."},
+            status_code=422,
+        )
 
     return app
 

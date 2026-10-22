@@ -62,11 +62,14 @@ def entrar(
 ) -> tuple[str, Sessao]:
     """Confere login e senha e abre uma sessão. Devolve o token (a única vez em que ele
     existe fora do aparelho) e a sessão."""
+    login = normalizar_login(login)
+    # O PostgreSQL não aceita caractere nulo num texto: a busca daria erro, e não a
+    # resposta do login que não existe. Nenhum login cadastrado tem um.
     # FOR UPDATE: as tentativas no mesmo login entram uma de cada vez, e cinco senhas
     # mandadas ao mesmo tempo não passam todas antes de a primeira contar o erro.
-    usuario = db.scalar(
-        select(Usuario).where(Usuario.login == normalizar_login(login)).with_for_update()
-    )
+    usuario = None
+    if "\x00" not in login:
+        usuario = db.scalar(select(Usuario).where(Usuario.login == login).with_for_update())
     if usuario is None:
         # O mesmo scrypt de um login que existe: sem ele, a resposta rápida denunciaria
         # quais logins existem.

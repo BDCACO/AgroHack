@@ -13,7 +13,7 @@ from uuid import UUID
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 from sqlalchemy import case, func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
@@ -62,10 +62,11 @@ def _sincronizar_item(db: Session, item: Any, usuario_id: int | None) -> Resulta
         return ResultadoDoItem(uuid=dados.uuid, situacao="recusada", erros=[erro])
     except estoque.LancamentoDiferente as erro:
         return ResultadoDoItem(uuid=dados.uuid, situacao="recusada", erros=[str(erro)])
-    except IntegrityError:
-        # Regra do banco que o schema não previu, ou corrida com o site (talhão removido
-        # entre a conferência e a gravação). Um 500 aqui travaria a fila do app para
-        # sempre: o item é recusado, e o resto do lote segue.
+    except IntegrityError, DataError:
+        # Regra do banco que o schema não previu, um id maior que o banco aceita, ou
+        # corrida com o site (talhão removido entre a conferência e a gravação). Um 500
+        # aqui travaria a fila do app para sempre: o item é recusado, e o lote segue.
+        db.rollback()
         erro = "O lançamento não foi gravado: o banco recusou os dados. Confira e lance de novo."
         return ResultadoDoItem(uuid=dados.uuid, situacao="recusada", erros=[erro])
     return ResultadoDoItem(
