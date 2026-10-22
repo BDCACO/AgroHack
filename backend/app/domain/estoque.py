@@ -60,6 +60,9 @@ class Entrada:
     data: date
     quantidade: float
     validade: date | None = None  # sem validade (calcário, por exemplo) não vira lote
+    # R$ por unidade do insumo, o preço pago na compra. Opcional: sem ele, a análise
+    # funciona igual, só não fala em reais.
+    valor_unitario: float | None = None
 
 
 @dataclass(frozen=True)
@@ -156,6 +159,20 @@ def lotes_em_estoque(
     ]
 
 
+def custo_medio(entradas: Iterable[Entrada]) -> float | None:
+    """Preço médio pago, ponderado pela quantidade de cada compra: 1000 kg a R$ 3,00 e
+    500 kg a R$ 3,60 dão R$ 3,20, e não a média simples de R$ 3,30.
+
+    Só as entradas com preço entram na conta; sem nenhuma, não há custo (None), em vez
+    de um zero que pareceria produto de graça.
+    """
+    com_preco = [e for e in entradas if e.valor_unitario is not None]
+    quantidade = sum(e.quantidade for e in com_preco)
+    if not quantidade:
+        return None
+    return sum(e.quantidade * e.valor_unitario for e in com_preco) / quantidade
+
+
 _PADRAO_BR = str.maketrans(",.", ".,")
 
 
@@ -163,6 +180,11 @@ def quantidade_legivel(valor: float, unidade: str) -> str:
     """1234.5, "kg" → "1.234,5 kg". Duas casas porque defensivo se usa em frações de litro."""
     numero = f"{valor:,.2f}".translate(_PADRAO_BR).rstrip("0").rstrip(",")
     return f"{numero} {unidade}"
+
+
+def dinheiro_legivel(valor: float) -> str:
+    """1234.5 → "R$ 1.234,50". Sempre com os centavos, como o produtor lê numa nota."""
+    return f"R$ {valor:,.2f}".translate(_PADRAO_BR)
 
 
 def dias_legivel(dias: float) -> str:

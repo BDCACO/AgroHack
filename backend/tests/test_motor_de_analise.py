@@ -14,6 +14,8 @@ from app.domain.estoque import (
     Retirada,
     alerta_estoque_minimo,
     alertas_de_validade,
+    custo_medio,
+    dinheiro_legivel,
     lotes_em_estoque,
     quantidade_legivel,
 )
@@ -230,3 +232,22 @@ def test_descarte_sai_primeiro_do_lote_vencido() -> None:
 
     # A retirada saiu do novo (o outro já tinha vencido); o descarte levou o vencido.
     assert lotes == [Lote(7, novo)]
+
+
+def test_dinheiro_legivel_no_formato_brasileiro() -> None:
+    assert dinheiro_legivel(1234.5) == "R$ 1.234,50"
+    assert dinheiro_legivel(0.004) == "R$ 0,00"
+    assert dinheiro_legivel(2_000_000) == "R$ 2.000.000,00"
+
+
+def test_custo_medio_pondera_pela_quantidade_e_ignora_compra_sem_preco() -> None:
+    entradas = [
+        Entrada(antes(60), 1000, valor_unitario=3.0),
+        Entrada(antes(30), 500, valor_unitario=3.6),
+        Entrada(antes(10), 200),  # sem preço: fica fora da conta
+    ]
+
+    # (1000 × 3,00 + 500 × 3,60) / 1500 = 4800 / 1500 = 3,20
+    assert custo_medio(entradas) == pytest.approx(3.2)
+    assert custo_medio([Entrada(antes(5), 10)]) is None
+    assert custo_medio([]) is None
