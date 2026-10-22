@@ -104,7 +104,12 @@ de importar, só um "importar mesmo assim", que pede confirmação.
   errado sem ninguém perceber.
 - **Soma, não substitui.** Cada importação acrescenta ao que já está no sistema. Importar a mesma
   planilha duas vezes duplica o consumo; por isso a prévia avisa quando há linhas iguais a
-  movimentações já lançadas.
+  movimentações já lançadas. A mesma planilha reimportada só com o preço ou o talhão
+  preenchidos também é avisada: eles completam o lançamento, não fazem dele outro (já preço
+  diferente, R$ 2,50 contra R$ 2,60, é outra compra).
+- **Uma coluna chamada `valor` é lida como preço por unidade.** Numa planilha sua que já tenha
+  uma coluna `valor` com o total da nota, renomeie-a antes de importar: senão o total vira o
+  preço de cada quilo e o custo médio sai errado.
 - **Insumo novo entra sem mínimo nem prazo de entrega.** Complete os dois na tela de Insumos: sem
   o mínimo não há alerta de estoque baixo, e sem o prazo a análise supõe 15 dias.
 - **O estoque é a soma das movimentações.** Lance como entrada o que já estava no galpão no
