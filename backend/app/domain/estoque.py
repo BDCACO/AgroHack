@@ -106,6 +106,10 @@ def lotes_em_estoque(entradas: Iterable[Entrada], retiradas: Iterable[Retirada])
     A retirada não diz de qual lote saiu, então se supõe a boa prática: usa-se
     primeiro o que vence primeiro, entre os lotes que já tinham chegado na data da
     retirada. No mesmo dia, a entrada conta antes da retirada.
+
+    Lote vencido na data da retirada fica por último: ninguém aplica produto vencido,
+    e ele segue na prateleira (e no alerta) até ser descartado. Só sai dele o que os
+    lotes bons não cobrem, para a soma dos lotes continuar igual ao estoque.
     """
     eventos = sorted(
         [(e.data, 0, e) for e in entradas] + [(r.data, 1, r) for r in retiradas],
@@ -118,7 +122,8 @@ def lotes_em_estoque(entradas: Iterable[Entrada], retiradas: Iterable[Retirada])
             disponiveis.append([evento.validade or date.max, evento.quantidade])
             continue
         falta = evento.quantidade
-        for lote in sorted(disponiveis, key=lambda lote: lote[0]):
+        dia = evento.data
+        for lote in sorted(disponiveis, key=lambda lote: (lote[0] < dia, lote[0])):
             usado = min(lote[1], falta)
             lote[1] -= usado
             falta -= usado

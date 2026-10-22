@@ -190,3 +190,31 @@ def test_lotes_em_estoque_usa_primeiro_o_que_vence_primeiro_entre_os_que_ja_cheg
     ]
 
     assert lotes_em_estoque(entradas, retiradas) == [Lote(6, dezembro), Lote(4, agosto)]
+
+
+def test_retirada_nao_sai_de_lote_que_ja_tinha_vencido() -> None:
+    # Ninguém aplica produto vencido: depois da validade, o lote fica parado na
+    # prateleira até ser descartado, e as retiradas saem do lote bom.
+    vencido, novo = antes(60), REF + timedelta(days=300)
+    entradas = [Entrada(antes(120), 10, vencido), Entrada(antes(70), 10, novo)]
+    retiradas = [Retirada(antes(50 - 7 * i), 1) for i in range(8)]
+
+    assert lotes_em_estoque(entradas, retiradas) == [Lote(10, vencido), Lote(2, novo)]
+
+
+def test_retirada_no_dia_da_validade_ainda_usa_o_lote() -> None:
+    validade = antes(10)
+    entradas = [Entrada(antes(30), 5, validade), Entrada(antes(30), 5, REF + timedelta(days=90))]
+
+    lotes = lotes_em_estoque(entradas, [Retirada(validade, 2)])
+
+    assert lotes == [Lote(3, validade), Lote(5, REF + timedelta(days=90))]
+
+
+def test_sem_lote_valido_a_retirada_sai_do_vencido() -> None:
+    # Só sobrou produto vencido e houve retirada: ou foi usado vencido, ou falta
+    # registro. Tirar do vencido mantém a soma dos lotes igual ao estoque.
+    vencido = antes(60)
+    lotes = lotes_em_estoque([Entrada(antes(120), 10, vencido)], [Retirada(antes(30), 4)])
+
+    assert lotes == [Lote(6, vencido)]
