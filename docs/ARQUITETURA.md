@@ -36,6 +36,7 @@ navegador ──► Vite (:5173) ──/api──► FastAPI (:8000) ──► P
 | Caminho | Responsabilidade | Regra |
 |---|---|---|
 | `app/domain/estoque.py` | Tipos de entrada (`Insumo`, `Lote`, `Retirada`, `Entrada`), `Alerta` e as regras que não dependem de histórico: estoque abaixo do mínimo, lote vencido ou a vencer, custo médio das compras; e a formatação brasileira de quantidade e dinheiro | **Sem I/O, sem banco, sem `datetime.now()`**: a data de referência entra como parâmetro |
+| `app/domain/talhao.py` | A carência do talhão (quando a colheita fica liberada, o alerta com a conta e o que não se sabe) e o custo do que foi aplicado nele, total, por hectare e por insumo, num período | As mesmas: data de referência e período por parâmetro |
 | `app/analysis/consumo.py` | `analisar(...)`: consumo médio, cobertura em dias, risco de falta, excesso, baixa movimentação, consumo incomum e reposição estimada (em embalagens fechadas, com pedido mínimo e custo, quando cadastrados) | Recebe listas, devolve `Analise` com **justificativa** em cada alerta e as **limitações** dos dados |
 
 Os limiares (janela de 90 dias, 30 dias para vencimento, 180 de cobertura para excesso, prazo
@@ -50,14 +51,15 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 
 | Caminho | Responsabilidade |
 |---|---|
-| `app/models/estoque.py` | `insumos` (com `embalagem` e `pedido_minimo` opcionais) e `movimentacoes` (entrada ou saída, data, quantidade, validade, `motivo`: vazio, `descarte` ou `inventario`, `valor_unitario`, o preço da compra, e `uuid`, o identificador gerado pelo app). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só. O custo médio também não: sai das compras |
+| `app/models/estoque.py` | `insumos` (com `embalagem`, `pedido_minimo` e `carencia_dias` opcionais), `talhoes` (nome, `area_ha`, `cultura`) e `movimentacoes` (entrada ou saída, data, quantidade, validade, `motivo`: vazio, `descarte` ou `inventario`, `valor_unitario`, o preço da compra, `uuid`, o identificador gerado pelo app, e `talhao_id`, onde a retirada foi aplicada). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só. O custo médio também não: sai das compras |
 | `app/services/estoque.py` | Casos de uso: cadastro, movimentações, a análise de cada insumo a partir do banco e o saldo dia a dia (histórico do gráfico). As rotas falam só com os serviços (este, `importacao`, `planilha_modelo` e `relatorio`) |
 | `app/services/importacao.py` | Importação de movimentações por planilha (Excel ou CSV), ver abaixo |
 | `app/services/planilha_modelo.py` | A planilha modelo da importação e os estilos das planilhas geradas (cores da marca, títulos, impressão) |
-| `app/services/relatorio.py` | O relatório em Excel: resumo (com os totais em reais), alertas, reposição, situação de cada insumo e todas as movimentações |
+| `app/services/relatorio.py` | O relatório em Excel: resumo (com os totais em reais), alertas, reposição, situação de cada insumo, talhões (carência e custo) e todas as movimentações |
+| `app/services/talhoes.py` | Cadastro de talhões e a leitura de cada um: carência e custo calculados das aplicações, com o custo médio pela mesma regra da tela do insumo |
 | `app/services/sincronizacao.py` | A fila de lançamentos do app (`POST /movimentacoes/lote`): grava item a item, traduz os erros de validação em frases e calcula os avisos (ver abaixo) |
 | `app/services/resumo.py` | A visão geral em reais (`GET /resumo`): soma o que `estoque.listar_insumos` já analisou, mais as perdas |
-| `app/demo.py` | Fazenda fictícia para a apresentação (`make demo`): insumos marcados com `demonstracao`, que a tela sinaliza e `make demo-limpar` apaga sozinhos |
+| `app/demo.py` | Fazenda fictícia para a apresentação (`make demo`): insumos e talhões marcados com `demonstracao`, que a tela sinaliza e `make demo-limpar` apaga sozinhos (menos o talhão em que se lançou a aplicação de um insumo real) |
 | `app/core/relogio.py` | `hoje()` na data de Rondônia (UTC−4 fixo, sem horário de verão), não na do servidor |
 
 Lote = entrada com validade. Como a retirada não diz de qual lote saiu, o saldo de cada lote é
@@ -102,6 +104,59 @@ preço zero ou negativo. Sem preço nenhum, tudo funciona como antes; com ele:
   guardar: ele se recusa enquanto houver algum gravado, e só segue com
   `alembic -x descartar_precos=sim downgrade 0005` (antes, baixe o relatório, que leva os
   preços).
+
+### Talhões e carência
+
+Para onde foi cada retirada: com isso, o custo por talhão e por hectare e o aviso do **prazo de
+carência** (os dias mínimos entre aplicar um defensivo e colher ou abater), que é segurança do
+alimento, exigência legal e motivo de carga recusada. Decisões:
+
+- **Talhão** (`talhoes`): nome único, `area_ha` (`NUMERIC(10, 2)`, maior que zero, porque é o
+  divisor do custo por hectare) e `cultura` opcional ("Soja", "Pasto"). Talhão não nasce da
+  planilha, ao contrário do insumo: falta a área.
+- **Aplicação = retirada para uso com `talhao_id`.** Não é um terceiro `tipo` nem um `motivo`:
+  para o saldo, o consumo, o site e o app continua sendo uma saída. Só ela tem talhão: o schema
+  recusa em entrada e em descarte com a frase do porquê, e o banco tem a mesma regra
+  (`ck_movimentacoes_talhao_so_em_aplicacao`), inclusive para o ajuste de inventário. Talhão
+  inexistente é `422`, como o insumo inexistente; no lote do app, `recusada` com a frase.
+- **Rastreabilidade não se perde.** A FK é `RESTRICT`, e `DELETE /talhoes/{id}` com aplicação é
+  `409` dizendo quantas. Remover o **insumo** continua levando as movimentações dele (regra de
+  antes), e com elas as aplicações.
+- **Carência no insumo** (`carencia_dias`, 0 a 365, opcional): 0 é "não tem carência" (a ureia);
+  vazio é "não informada". Como a embalagem, o `PUT` sem o campo mantém o gravado. Fica fora do
+  motor de análise e do `POST /analises`: é regra do talhão.
+- **Quando libera:** o maior `data + carência` entre as aplicações com carência, e não o da
+  aplicação mais recente (um inseticida de 30 dias aplicado há 10 prende mais que um fungicida de
+  3 dias aplicado ontem). No próprio dia da liberação já pode colher. A justificativa diz o
+  talhão, a data, quantos dias faltam, o insumo que prende, quando foi aplicado e a carência:
+  "Talhão Norte: não colher nem abater antes de 12/11/2026 (faltam 9 dias). Fungicida X aplicado
+  em 28/10/2026, carência de 15 dias."
+- **Gravidade sempre alta enquanto em carência.** Colher antes é proibido, e o erro não tem
+  conserto (resíduo no alimento, carga recusada, multa). Não há meio-termo entre proibido e
+  permitido, e não se sabe quando o produtor pretende colher, então a distância até a liberação
+  não diminui o risco. Liberado, não há alerta.
+- **O que não se sabe vira limitação:** insumo aplicado sem carência cadastrada (não dá para
+  saber se é defensivo), com os nomes e o pedido de cadastrar (0 se não tem); e que a carência é
+  a do cadastro, a conferir na bula ou no receituário, porque muda com a cultura.
+- **Custo:** quantidade aplicada × custo médio do insumo (o mesmo do estoque e das perdas),
+  somado por insumo e no talhão, e dividido pela área. Limitações: é o custo médio de hoje, não o
+  preço da época; aplicação de insumo sem preço fica fora, e a limitação diz quantas. Com
+  aplicação e nenhuma com preço, o custo é `null`, e não zero.
+- **Período** (`desde` e `ate`, opcionais e inclusive): recorta uma safra no custo, no consumo e
+  na lista de aplicações. A carência olha **todas** as aplicações: um defensivo aplicado antes do
+  recorte continua proibindo a colheita.
+- **Resumo:** `GET /resumo` ganha `talhoes_em_carencia`. Os `alertas` por gravidade continuam
+  sendo só os dos insumos, de propósito: o Painel mostra esses números ao lado da lista de
+  alertas dos insumos, e um urgente a mais sem o cartão correspondente confundiria. Pelo mesmo
+  motivo, a aba Alertas do relatório é só dos insumos, e a carência aparece na aba Talhões.
+- **Planilha:** coluna opcional `talhao` (só em saída para uso; o talhão tem de estar cadastrado,
+  casado sem diferenciar maiúsculas). O relatório escreve o talhão de cada aplicação, e a cópia de
+  segurança volta igual; num banco vazio, os talhões precisam ser cadastrados antes (a importação
+  diz quais faltam, e a aba Talhões do relatório tem a área e a cultura). Criá-los a partir dessa
+  aba seria uma segunda regra de importação, escondida, para um caso raro.
+- **Migration 0008.** O downgrade apagaria talhões, aplicações e carências: ele se recusa
+  enquanto houver algum talhão ou carência cadastrada, e só segue com
+  `alembic -x descartar_talhoes=sim downgrade 0007`.
 
 ### Lançamento offline do app (sincronização)
 
@@ -217,17 +272,21 @@ tem banco a orquestrar e chama o motor direto.
 | `GET /api/v1/ready` | Readiness: `200` com o banco respondendo, `503` sem ele |
 | `GET /api/v1/insumos` | Insumos com estoque atual, `custo_medio`, `valor_em_estoque` e a análise de hoje (alertas com `valor` em R$, reposição com `custo_estimado`, limitações) |
 | `GET /api/v1/insumos/{id}` | Um insumo com a análise, o saldo no fim de cada dia com movimentação (`historico`) e as movimentações |
-| `POST /api/v1/insumos` · `PUT /api/v1/insumos/{id}` | Cadastra / altera insumo (nome, unidade, mínimo, prazo de reposição e, opcionais, `embalagem` e `pedido_minimo`). `409` para nome repetido. No `PUT`, embalagem e pedido mínimo ausentes ficam como estão |
+| `POST /api/v1/insumos` · `PUT /api/v1/insumos/{id}` | Cadastra / altera insumo (nome, unidade, mínimo, prazo de reposição e, opcionais, `embalagem`, `pedido_minimo` e `carencia_dias`). `409` para nome repetido. No `PUT`, embalagem, pedido mínimo e carência ausentes ficam como estão |
 | `DELETE /api/v1/insumos/{id}` | Remove o insumo cadastrado por engano, com as movimentações dele |
 | `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (`insumo_id`, `limite`) |
-| `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo; entrada pode trazer `valor_unitario` (R$ por unidade). `422` para data futura, validade ou preço em saída, preço zero ou negativo, descarte em entrada ou insumo inexistente. Com `uuid` (opcional, gerado pelo app), reenviar devolve o já gravado com `200`; o mesmo uuid com outro conteúdo é `409` |
+| `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo; entrada pode trazer `valor_unitario` (R$ por unidade); a retirada para uso pode trazer `talhao_id` (onde foi aplicada). `422` para data futura, validade ou preço em saída, preço zero ou negativo, descarte em entrada, talhão fora da retirada para uso, insumo ou talhão inexistente. Com `uuid` (opcional, gerado pelo app), reenviar devolve o já gravado com `200`; o mesmo uuid com outro conteúdo é `409` |
 | `POST /api/v1/movimentacoes/lote` | A fila do app: `{"movimentacoes": [...]}`, até 500, cada uma com `uuid`. Grava na ordem, item a item; devolve para cada uma `gravada`, `ja_existia` ou `recusada` (com os `erros` em frases) e os `avisos`, mais o `resumo`. Sempre `200`, a não ser que o pedido inteiro esteja malformado (`422`) |
 | `POST /api/v1/insumos/{id}/inventario` | Contagem do galpão (`quantidade_contada`, `data` opcional): lança a diferença para o saldo registrado naquele dia como ajuste (`motivo: "inventario"`) e devolve saldo, contagem e diferença. Se bate, nada é lançado |
 | `DELETE /api/v1/movimentacoes/{id}` | Remove lançamento errado (o mesmo uuid, reenviado depois, grava de novo) |
-| `GET /api/v1/resumo` | Visão geral em reais: `valor_em_estoque` (`null` se nenhum insumo tem preço), `insumos_sem_preco`, `perdas` (descartes e faltas da contagem pelo custo médio: `ultimos_30_dias` e `total`), `compras_sugeridas` (custo das reposições dos próximos 30 dias, quantas e quantas para hoje), `alertas` por gravidade e as `limitacoes` das somas |
+| `GET /api/v1/resumo` | Visão geral em reais: `valor_em_estoque` (`null` se nenhum insumo tem preço), `insumos_sem_preco`, `perdas` (descartes e faltas da contagem pelo custo médio: `ultimos_30_dias` e `total`), `compras_sugeridas` (custo das reposições dos próximos 30 dias, quantas e quantas para hoje), `alertas` por gravidade (só os dos insumos), `talhoes_em_carencia` e as `limitacoes` das somas |
+| `GET /api/v1/talhoes` | Cada talhão com `area_ha`, `cultura`, `colheita_liberada_em`, `em_carencia`, o alerta de carência com a conta, `custo_total`, `custo_por_ha` e as `limitacoes`. `desde` e `ate` (opcionais) recortam o custo |
+| `GET /api/v1/talhoes/{id}` | O mesmo, mais as `aplicacoes` do período (as mais recentes primeiro) e o `consumo` de cada insumo no talhão, com o custo |
+| `POST /api/v1/talhoes` · `PUT /api/v1/talhoes/{id}` | Cadastra / altera talhão (nome, `area_ha` maior que zero, `cultura` opcional). `409` para nome repetido |
+| `DELETE /api/v1/talhoes/{id}` | Remove o talhão sem aplicação; com alguma, `409` |
 | `POST /api/v1/importacoes` | Movimentações de uma planilha: `xlsx` (base64) ou `conteudo` (texto do CSV). Sem `confirmar`, só confere e resume, com o total de cada insumo; com erro, nada é gravado e a resposta lista os erros por linha |
 | `GET /api/v1/importacoes/modelo.xlsx` | Planilha modelo formatada, com os insumos cadastrados para escolher da lista |
-| `GET /api/v1/relatorio.xlsx` | Relatório do estoque em Excel. A aba Movimentações tem o formato da importação: é também a cópia de segurança, e volta pela mesma tela |
+| `GET /api/v1/relatorio.xlsx` | Relatório do estoque em Excel, com a aba Talhões. A aba Movimentações tem o formato da importação (com o talhão de cada aplicação): é também a cópia de segurança, e volta pela mesma tela |
 | `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período; `custo_medio`, `embalagem` e `pedido_minimo` opcionais) e devolve alertas, reposição e limitações. `422` para entrada inválida |
 | `GET /api/v1/docs` | Swagger UI (desligado em `production`) |
 | `GET /api/v1/openapi.json` | Schema OpenAPI (desligado em `production`) |
@@ -365,7 +424,10 @@ precisa:
 4. **Reenviar o mesmo lote até receber o resultado.** Sem resposta (timeout, sinal caiu, `5xx`),
    manda de novo: o que já entrou volta `ja_existia`. Só tira da fila o item que voltou com
    resultado.
-5. **Tratar cada resultado:** `gravada` e `ja_existia` saem da fila; `recusada` não vai mudar
+5. **Opcional, o talhão:** a retirada para uso pode levar `talhao_id` (da lista de
+   `GET /talhoes`, guardada no celular). Se o talhão foi removido no site antes do envio, o item
+   volta `recusada` dizendo isso.
+6. **Tratar cada resultado:** `gravada` e `ja_existia` saem da fila; `recusada` não vai mudar
    reenviando: sai da fila e aparece para o produtor com os `erros`, para corrigir e lançar de
    novo (com uuid novo, é outro lançamento). Os `avisos` também vão para a tela.
 
@@ -432,6 +494,11 @@ tecnologias que não se aplicam.
    mínimo e o `GET /resumo`; o site e o app ainda não têm campo para o preço ao lançar uma
    compra nem para a embalagem no cadastro, e não mostram o resumo. As justificativas, que as
    telas já exibem, trazem os valores.
+5. **Talhões nas telas.** A API já tem o cadastro de talhões, a carência no insumo, a aplicação
+   (`talhao_id` na retirada e no lote) e a leitura com carência e custo por hectare; o site e o
+   app ainda não têm a tela de Talhões, o campo de carência no cadastro do insumo nem a escolha do
+   talhão ao lançar uma retirada. Hoje, o talhão em carência aparece no relatório (aba Talhões) e
+   no `/docs`.
 
 Decididas desde a versão anterior deste documento: a importação de planilha existe (Excel e
 CSV, seção 2); o ECharts entrou com o gráfico do insumo; o Pandas não entrou, porque nem o motor de
