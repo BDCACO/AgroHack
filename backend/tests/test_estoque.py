@@ -72,6 +72,10 @@ def test_estoque_e_analise_saem_das_movimentacoes(client: TestClient) -> None:
         {"insumo_id": 999},
         {"motivo": "descarte"},  # descarte é saída
         {"tipo": "saida", "motivo": "perdi"},
+        {"tipo": "saida", "valor_unitario": 3},  # preço é da compra
+        {"tipo": "saida", "motivo": "descarte", "valor_unitario": 3},
+        {"valor_unitario": 0},
+        {"valor_unitario": -2},
     ],
 )
 def test_movimentacao_invalida_e_recusada(client: TestClient, mudanca: dict[str, Any]) -> None:
@@ -139,6 +143,7 @@ def test_inventario_com_falta_lanca_a_diferenca_sem_virar_consumo(client: TestCl
         "data": dia(0),
         "quantidade": 10,
         "validade": None,
+        "valor_unitario": None,
     }
     depois = client.get(f"/api/v1/insumos/{insumo['id']}").json()
     assert depois["estoque_atual"] == 70
@@ -251,3 +256,95 @@ def test_remover_insumo_leva_as_movimentacoes(client: TestClient) -> None:
     assert client.get("/api/v1/insumos").json() == []
     assert client.get("/api/v1/movimentacoes").json() == []
     assert client.delete(f"/api/v1/insumos/{ureia['id']}").status_code == 404
+
+
+def test_compras_com_preco_dao_custo_medio_e_valor_em_estoque(client: TestClient) -> None:
+    insumo = criar(client, embalagem=50, pedido_minimo=500)
+    assert (insumo["embalagem"], insumo["pedido_minimo"]) == (50, 500)
+    assert (insumo["custo_medio"], insumo["valor_em_estoque"]) == (None, None)
+    compra = lancar(
+        client,
+        insumo_id=insumo["id"],
+        tipo="entrada",
+        data=dia(20),
+        quantidade=1000,
+        valor_unitario=3,
+    )
+    lancar(
+        client,
+        insumo_id=insumo["id"],
+        tipo="entrada",
+        data=dia(10),
+        quantidade=500,
+        valor_unitario=3.6,
+    )
+    lancar(client, insumo_id=insumo["id"], tipo="saida", data=dia(5), quantidade=300)
+
+    detalhe = client.get(f"/api/v1/insumos/{insumo['id']}").json()
+
+    assert compra["valor_unitario"] == 3
+    # (1000 × 3,00 + 500 × 3,60) / 1500 = 3,20; restam 1200 kg × 3,20.
+    assert detalhe["custo_medio"] == pytest.approx(3.2)
+    assert detalhe["valor_em_estoque"] == pytest.approx(3840)
+    assert [m["valor_unitario"] for m in detalhe["movimentacoes"]] == [None, 3.6, 3]
+    assert not any("preço" in t for t in detalhe["analise"]["limitacoes"])
+
+
+def test_compra_sem_preco_fica_fora_do_custo_e_a_analise_diz(client: TestClient) -> None:
+    insumo = criar(client)
+    lancar(
+        client, insumo_id=insumo["id"], tipo="entrada", data=dia(9), quantidade=10, valor_unitario=5
+    )
+    lancar(client, insumo_id=insumo["id"], tipo="entrada", data=dia(8), quantidade=30)
+    # A sobra da contagem não é compra: não pesa no custo nem conta como compra sem preço.
+    contar(client, insumo["id"], quantidade_contada=45)
+
+    [listado] = client.get("/api/v1/insumos").json()
+
+    assert listado["custo_medio"] == 5
+    assert listado["valor_em_estoque"] == 225
+    assert (
+        "Custo médio só das compras com preço (1 de 2): as outras ficam fora da conta."
+        in listado["analise"]["limitacoes"]
+    )
+
+
+def test_estoque_negativo_nao_vale_dinheiro(client: TestClient) -> None:
+    insumo = criar(client)
+    lancar(
+        client, insumo_id=insumo["id"], tipo="entrada", data=dia(9), quantidade=10, valor_unitario=5
+    )
+    lancar(client, insumo_id=insumo["id"], tipo="saida", data=dia(8), quantidade=15)
+
+    assert client.get("/api/v1/insumos").json()[0]["valor_em_estoque"] == 0
+
+
+@pytest.mark.parametrize("campos", [{"embalagem": 0}, {"pedido_minimo": -1}])
+def test_embalagem_e_pedido_minimo_invalidos(client: TestClient, campos: dict[str, Any]) -> None:
+    resposta = client.post("/api/v1/insumos", json={"nome": "Ureia", "unidade": "kg"} | campos)
+
+    assert resposta.status_code == 422
+
+
+def test_alterar_insumo_sem_os_campos_novos_mantem_embalagem(client: TestClient) -> None:
+    # O site e o app de antes não conhecem embalagem nem pedido mínimo: um PUT deles não
+    # pode apagar o que outro cadastrou.
+    ureia = criar(client, embalagem=50, pedido_minimo=200)
+
+    sem = client.put(f"/api/v1/insumos/{ureia['id']}", json={"nome": "Ureia", "unidade": "kg"})
+    limpando = client.put(
+        f"/api/v1/insumos/{ureia['id']}",
+        json={"nome": "Ureia", "unidade": "kg", "embalagem": None, "pedido_minimo": 100},
+    )
+
+    assert (sem.json()["embalagem"], sem.json()["pedido_minimo"]) == (50, 200)
+    assert (limpando.json()["embalagem"], limpando.json()["pedido_minimo"]) == (None, 100)
+
+
+def test_preco_em_saida_explica_o_porque(client: TestClient) -> None:
+    insumo = criar(client)
+    corpo = {"insumo_id": insumo["id"], "tipo": "saida", "data": dia(0), "quantidade": 1}
+
+    resposta = client.post("/api/v1/movimentacoes", json=corpo | {"valor_unitario": 3})
+
+    assert "só se informa numa entrada" in resposta.json()["detail"][0]["msg"]

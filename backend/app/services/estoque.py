@@ -23,6 +23,10 @@ from app.schemas.estoque import (
     PontoDeEstoque,
 )
 
+# Campos que vieram depois do site e do app: um PUT que não os manda (de uma versão que
+# não os conhece) mantém o que está gravado, em vez de apagá-los.
+_CAMPOS_OPCIONAIS_NOVOS = {"embalagem", "pedido_minimo"}
+
 
 class NomeDuplicado(Exception):
     pass
@@ -50,6 +54,8 @@ def criar_insumo(db: Session, dados: InsumoCadastro) -> InsumoResposta:
 def atualizar_insumo(db: Session, insumo_id: int, dados: InsumoCadastro) -> InsumoResposta:
     insumo = _buscar_insumo(db, insumo_id)
     for campo, valor in dados.model_dump().items():
+        if campo in _CAMPOS_OPCIONAIS_NOVOS and campo not in dados.model_fields_set:
+            continue
         setattr(insumo, campo, valor)
     _salvar(db)
     return _resposta(insumo, hoje())
@@ -152,10 +158,12 @@ def _salvar(db: Session) -> None:
 
 def _resposta(insumo: Insumo, referencia: date) -> InsumoResposta:
     entradas = [
-        dominio.Entrada(m.data, m.quantidade, m.validade)
+        dominio.Entrada(m.data, m.quantidade, m.validade, m.valor_unitario)
         for m in insumo.movimentacoes
         if m.tipo == "entrada"
     ]
+    # Sobra de inventário não tem preço (o banco nem aceita): só a compra entra no custo.
+    custo_medio = dominio.custo_medio(entradas)
     saidas = [m for m in insumo.movimentacoes if m.tipo == "saida"]
     # Só a retirada para uso é consumo; descarte e ajuste de inventário tiram do estoque,
     # mas não do ritmo.
@@ -176,12 +184,23 @@ def _resposta(insumo: Insumo, referencia: date) -> InsumoResposta:
             estoque,
             insumo.estoque_minimo,
             insumo.prazo_reposicao_dias,
+            insumo.embalagem,
+            insumo.pedido_minimo,
         ),
         retiradas,
         lotes=dominio.lotes_em_estoque(entradas, retiradas + faltas, descartes),
         registros_desde=min(registros_desde, referencia),
         referencia=referencia,
+        custo_medio=custo_medio,
     )
+    compras = [m for m in insumo.movimentacoes if m.tipo == "entrada" and m.motivo is None]
+    com_preco = sum(m.valor_unitario is not None for m in compras)
+    if custo_medio is not None and com_preco < len(compras):
+        limitacao = (
+            f"Custo médio só das compras com preço ({com_preco} de {len(compras)}): as "
+            "outras ficam fora da conta."
+        )
+        analise = replace(analise, limitacoes=[*analise.limitacoes, limitacao])
     if any(e.validade for e in entradas):
         limitacao = (
             "Saldo por lote estimado: as retiradas não dizem de qual lote saíram, então "
@@ -201,6 +220,11 @@ def _resposta(insumo: Insumo, referencia: date) -> InsumoResposta:
         unidade=insumo.unidade,
         estoque_minimo=insumo.estoque_minimo,
         prazo_reposicao_dias=insumo.prazo_reposicao_dias,
+        embalagem=insumo.embalagem,
+        pedido_minimo=insumo.pedido_minimo,
         estoque_atual=estoque,
+        custo_medio=None if custo_medio is None else round(custo_medio, 4),
+        # Estoque negativo é registro faltando, não dívida: vale zero.
+        valor_em_estoque=None if custo_medio is None else round(max(estoque, 0) * custo_medio, 2),
         analise=analise,
     )

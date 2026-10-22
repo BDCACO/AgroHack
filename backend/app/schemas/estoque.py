@@ -8,6 +8,8 @@ from app.core.relogio import hoje
 
 # Teto da coluna NUMERIC(12, 3).
 QUANTIDADE_MAXIMA = 999_999_999
+# Teto da coluna NUMERIC(14, 4).
+VALOR_UNITARIO_MAXIMO = 9_999_999_999
 # Caractere de controle num nome não aparece na tela, separa nomes que parecem iguais e
 # não pode ser gravado numa planilha do Excel.
 SEM_CARACTERE_DE_CONTROLE = r"^[^\x00-\x1f\x7f]*$"
@@ -20,6 +22,10 @@ class _Insumo(BaseModel):
     unidade: str = Field(min_length=1, max_length=20)
     estoque_minimo: float | None = Field(default=None, ge=0, le=QUANTIDADE_MAXIMA)
     prazo_reposicao_dias: int | None = Field(default=None, ge=0, le=365)
+    # Na unidade do insumo (50 para o saco de 50 kg). Opcionais: sem eles, a reposição
+    # sugere a quantidade da conta, e a análise diz que não considerou a embalagem.
+    embalagem: float | None = Field(default=None, gt=0, le=QUANTIDADE_MAXIMA)
+    pedido_minimo: float | None = Field(default=None, ge=0, le=QUANTIDADE_MAXIMA)
 
 
 class InsumoCadastro(_Insumo):
@@ -32,6 +38,10 @@ class InsumoResposta(_Insumo):
     id: int
     demonstracao: bool
     estoque_atual: float
+    # R$ por unidade, média das compras com preço ponderada pela quantidade. None sem
+    # nenhuma compra com preço.
+    custo_medio: float | None
+    valor_em_estoque: float | None  # estoque atual (se positivo) × custo médio
     analise: Analise
 
 
@@ -44,6 +54,8 @@ class _Movimentacao(BaseModel):
     # Movimentação que não é consumo: descarte (saída) ou ajuste de inventário (os dois
     # lados). Sem motivo, a saída é uma retirada para uso.
     motivo: Literal["descarte", "inventario"] | None = None
+    # R$ por unidade do insumo, o preço pago. Só numa compra; opcional.
+    valor_unitario: float | None = Field(default=None, gt=0, le=VALOR_UNITARIO_MAXIMO)
 
 
 class MovimentacaoEntrada(_Movimentacao):
@@ -57,6 +69,8 @@ class MovimentacaoEntrada(_Movimentacao):
             raise ValueError("validade só se informa numa entrada: é ela que traz o lote")
         if self.motivo is not None and self.tipo != "saida":
             raise ValueError("descarte é uma saída: o produto deixa o estoque")
+        if self.valor_unitario is not None and self.tipo != "entrada":
+            raise ValueError("valor_unitario só se informa numa entrada: é o preço da compra")
         # Ano digitado errado (2062 por 2026) jogaria a movimentação no futuro.
         if self.data > hoje():
             raise ValueError("a data da movimentação não pode ser futura")

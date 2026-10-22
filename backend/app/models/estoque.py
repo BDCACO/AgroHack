@@ -14,6 +14,9 @@ from app.models.base import Base
 # Exata no banco, com 3 casas (grama no kg, mililitro no litro); float no Python,
 # que é o que o motor de análise usa.
 Quantidade = Numeric(12, 3, asdecimal=False)
+# R$ por unidade do insumo. Quatro casas: o preço por grama ou por mililitro de um
+# defensivo caro tem centavos depois da vírgula.
+ValorUnitario = Numeric(14, 4, asdecimal=False)
 
 
 class Insumo(Base):
@@ -21,6 +24,8 @@ class Insumo(Base):
     __table_args__ = (
         CheckConstraint("estoque_minimo >= 0", name="estoque_minimo_nao_negativo"),
         CheckConstraint("prazo_reposicao_dias >= 0", name="prazo_nao_negativo"),
+        CheckConstraint("embalagem > 0", name="embalagem_positiva"),
+        CheckConstraint("pedido_minimo >= 0", name="pedido_minimo_nao_negativo"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -28,6 +33,10 @@ class Insumo(Base):
     unidade: Mapped[str] = mapped_column(String(20))
     estoque_minimo: Mapped[float | None] = mapped_column(Quantidade)
     prazo_reposicao_dias: Mapped[int | None]
+    # Na unidade do insumo: 50 para o saco de 50 kg. A reposição sugere embalagens
+    # fechadas, e nunca menos que o pedido mínimo do fornecedor.
+    embalagem: Mapped[float | None] = mapped_column(Quantidade)
+    pedido_minimo: Mapped[float | None] = mapped_column(Quantidade)
     # Gerado por `python -m app.demo`: a tela avisa, e `limpar` apaga só estes.
     demonstracao: Mapped[bool] = mapped_column(default=False, server_default=false())
 
@@ -49,6 +58,12 @@ class Movimentacao(Base):
             "motivo IS NULL OR (motivo = 'descarte' AND tipo = 'saida') OR motivo = 'inventario'",
             name="motivo_valido",
         ),
+        CheckConstraint("valor_unitario > 0", name="valor_unitario_positivo"),
+        # Preço é o que se pagou numa compra: nem saída nem ajuste de inventário têm.
+        CheckConstraint(
+            "valor_unitario IS NULL OR (tipo = 'entrada' AND motivo IS NULL)",
+            name="valor_so_em_compra",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -60,3 +75,5 @@ class Movimentacao(Base):
     # Coluna à parte, e não um terceiro `tipo`: para o saldo, o site e o app, o
     # descarte continua sendo uma saída.
     motivo: Mapped[str | None] = mapped_column(String(10))
+    # Opcional: sem preço, tudo funciona igual; com ele, a análise fala em reais.
+    valor_unitario: Mapped[float | None] = mapped_column(ValorUnitario)
