@@ -50,7 +50,7 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 
 | Caminho | Responsabilidade |
 |---|---|
-| `app/models/estoque.py` | `insumos` e `movimentacoes` (entrada ou saída, data, quantidade, validade). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só |
+| `app/models/estoque.py` | `insumos` e `movimentacoes` (entrada ou saída, data, quantidade, validade e `motivo`: vazio, `descarte` ou `inventario`). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só |
 | `app/services/estoque.py` | Casos de uso: cadastro, movimentações, a análise de cada insumo a partir do banco e o saldo dia a dia (histórico do gráfico). As rotas falam só com os serviços (este, `importacao`, `planilha_modelo` e `relatorio`) |
 | `app/services/importacao.py` | Importação de movimentações por planilha (Excel ou CSV), ver abaixo |
 | `app/services/planilha_modelo.py` | A planilha modelo da importação e os estilos das planilhas geradas (cores da marca, títulos, impressão) |
@@ -60,7 +60,16 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 
 Lote = entrada com validade. Como a retirada não diz de qual lote saiu, o saldo de cada lote é
 estimado supondo que se usa primeiro o que vence primeiro (`lotes_em_estoque`), e a análise diz
-isso nas limitações. Quantidades são `NUMERIC(12, 3)` no banco e `float` no Python.
+isso nas limitações. Lote que já tinha vencido na data da retirada fica por último: ninguém
+aplica produto vencido, e ele segue no alerta até ser **descartado**. Quantidades são
+`NUMERIC(12, 3)` no banco e `float` no Python.
+
+**Saída que não é consumo.** A coluna `motivo` separa a retirada para uso (sem motivo) do
+**descarte** (lote vencido ou produto estragado, jogado fora ou devolvido; sai primeiro do
+vencido) e do **ajuste de inventário** (a diferença entre a contagem do galpão e o saldo
+registrado; entrada se sobrou, saída se faltou). Os dois tiram ou põem no estoque, mas não
+entram no ritmo de consumo nem nos alertas de consumo. É uma coluna à parte, e não um terceiro
+`tipo`: para o saldo, o site e o app, continuam sendo entrada ou saída.
 
 ### Importação de planilha
 
@@ -131,7 +140,8 @@ tem banco a orquestrar e chama o motor direto.
 | `POST /api/v1/insumos` · `PUT /api/v1/insumos/{id}` | Cadastra / altera insumo (nome, unidade, mínimo, prazo de reposição). `409` para nome repetido |
 | `DELETE /api/v1/insumos/{id}` | Remove o insumo cadastrado por engano, com as movimentações dele |
 | `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (`insumo_id`, `limite`) |
-| `POST /api/v1/movimentacoes` | Lança entrada ou saída. `422` para data futura, validade em saída ou insumo inexistente |
+| `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo. `422` para data futura, validade em saída, descarte em entrada ou insumo inexistente |
+| `POST /api/v1/insumos/{id}/inventario` | Contagem do galpão (`quantidade_contada`, `data` opcional): lança a diferença para o saldo registrado naquele dia como ajuste (`motivo: "inventario"`) e devolve saldo, contagem e diferença. Se bate, nada é lançado |
 | `DELETE /api/v1/movimentacoes/{id}` | Remove lançamento errado |
 | `POST /api/v1/importacoes` | Movimentações de uma planilha: `xlsx` (base64) ou `conteudo` (texto do CSV). Sem `confirmar`, só confere e resume, com o total de cada insumo; com erro, nada é gravado e a resposta lista os erros por linha |
 | `GET /api/v1/importacoes/modelo.xlsx` | Planilha modelo formatada, com os insumos cadastrados para escolher da lista |

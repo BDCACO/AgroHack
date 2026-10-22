@@ -19,7 +19,7 @@ diz a linha e o que corrigir.
 
 | Aba | Para quê |
 |---|---|
-| **Movimentações** | A que você preenche, e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade e tipo. O próprio Excel avisa se a data for futura, se o tipo não for entrada ou saída e se a quantidade não for maior que zero. |
+| **Movimentações** | A que você preenche, e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade e tipo. O próprio Excel avisa se a data for futura, se o tipo não for entrada, saída ou descarte e se a quantidade não for maior que zero. |
 | **Como preencher** | As instruções, resumidas. |
 | **Exemplo** | Três linhas preenchidas do jeito certo. |
 | **Insumos cadastrados** | Os insumos que já estão no CampoCerto, com a unidade de cada um. É de onde vem a lista de escolha da coluna `insumo`: depois de cadastrar outros, baixe o modelo de novo. |
@@ -33,7 +33,7 @@ Passe o mouse sobre o título de uma coluna para ver a explicação dela.
 | `data` | Sim | Dia em que a compra chegou ou em que o produto saiu do galpão. Não pode ser futura. | 05/03/2026 |
 | `insumo` | Sim | Nome do produto. Maiúsculas não importam: "ureia agrícola" é o mesmo que "Ureia agrícola". Um nome que não existe vira insumo novo. | Ureia agrícola |
 | `unidade` | Só para insumo novo | kg, L, t, sc, dose, un… Para um insumo já cadastrado, deixe em branco ou repita a do cadastro. | kg |
-| `tipo` | Sim | `entrada` (compra que chegou) ou `saída` (retirada do galpão); no modelo, escolha da lista. Em outras planilhas também valem `compra`, `retirada` e `saida` sem acento. | saída |
+| `tipo` | Sim | `entrada` (compra que chegou), `saída` (retirada do galpão) ou `descarte`; no modelo, escolha da lista. `descarte` é a saída que não é consumo: lote vencido ou estragado, jogado fora ou devolvido. Em outras planilhas também valem `compra`, `retirada` e `saida` sem acento; `sobra` e `falta` são ajustes de inventário, como o relatório os escreve. | saída |
 | `quantidade` | Sim | Maior que zero, na unidade do insumo. | 25,5 |
 | `validade` | Não | Validade do lote, só em entradas. Em branco se o produto não vence. | 30/06/2027 |
 
@@ -70,7 +70,7 @@ prévia**: um número lido errado aparece ali, antes de gravar.
 ## Cópia de segurança
 
 O **relatório em Excel** (botão *Baixar relatório* no Painel) traz, na aba **Movimentações**,
-todas as entradas e saídas no formato da importação. Guarde-o: num CampoCerto novo, importá-lo
+todas as entradas e saídas no formato da importação, inclusive descartes e ajustes de inventário. Guarde-o: num CampoCerto novo, importá-lo
 traz de volta os insumos e as movimentações.
 
 O que **não** volta: o estoque mínimo e o prazo de entrega de cada insumo (estão na aba
@@ -101,7 +101,7 @@ de importar, só um "importar mesmo assim", que pede confirmação.
 | Faltam as colunas: … | A linha 1 precisa ter os títulos. Use a planilha modelo. |
 | data "31/02/2026" inválida | Corrija a data (DD/MM/AAAA). Se aparece um número no lugar da data, a célula está sem formato de data: formate-a como data. |
 | data no futuro | Ano digitado errado? (2062 por 2026) |
-| tipo "devolução" desconhecido | Use `entrada` ou `saída`. Devolução ao fornecedor é uma saída. |
+| tipo "devolução" desconhecido | Use `entrada`, `saída` ou `descarte`. Devolução de lote vencido ao fornecedor é um descarte. |
 | quantidade "dez" não é um número | Escreva o número: 10. |
 | "Adubo X" não está cadastrado; informe a unidade | Insumo novo precisa da unidade na linha. |
 | "Ureia" já está cadastrado em kg, não em sc | Converta para a unidade do cadastro (10 sacas de 50 kg = 500 kg). |
