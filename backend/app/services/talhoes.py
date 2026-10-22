@@ -73,6 +73,15 @@ def detalhar_talhao(
     )
 
 
+def em_carencia(db: Session, referencia: date) -> int:
+    """Quantos talhões não podem ser colhidos na data de referência."""
+    nomes = dict(db.execute(select(Talhao.id, Talhao.nome)).all())
+    return sum(
+        bool(regras.carencia(nomes[talhao_id], [a for _, a in lista], referencia).alertas)
+        for talhao_id, lista in _aplicacoes(db).items()
+    )
+
+
 def criar_talhao(db: Session, dados: TalhaoCadastro) -> TalhaoResposta:
     talhao = Talhao(**dados.model_dump())
     db.add(talhao)

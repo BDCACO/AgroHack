@@ -201,7 +201,9 @@ class Resumo(BaseModel):
     insumos_sem_preco: int  # sem nenhuma compra com preço
     perdas: Perdas
     compras_sugeridas: ComprasSugeridas
+    # Só os dos insumos: a carência é do talhão, e vem contada à parte.
     alertas: AlertasPorGravidade
+    talhoes_em_carencia: int  # onde colher hoje é proibido (GET /talhoes diz até quando)
     # O que as somas não sabem, como a análise de cada insumo.
     limitacoes: list[str]
 

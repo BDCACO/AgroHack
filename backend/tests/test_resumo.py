@@ -43,8 +43,28 @@ def test_resumo_sem_nada_cadastrado(client: TestClient) -> None:
         "perdas": {"ultimos_30_dias": 0, "total": 0},
         "compras_sugeridas": {"valor": None, "pedidos": 0, "pedir_hoje": 0},
         "alertas": {"alta": 0, "media": 0, "baixa": 0},
+        "talhoes_em_carencia": 0,
         "limitacoes": [],
     }
+
+
+def test_resumo_conta_os_talhoes_em_carencia_a_parte_dos_alertas(client: TestClient) -> None:
+    fungicida = criar(client, "Fungicida", carencia_dias=30)
+    lancar(client, fungicida, "entrada", 60, 10)
+    norte, sul, _ = (
+        client.post("/api/v1/talhoes", json={"nome": nome, "area_ha": 10}).json()["id"]
+        for nome in ("Norte", "Sul", "Leste")
+    )
+    lancar(client, fungicida, "saida", 5, 1, talhao_id=norte)  # em carência
+    lancar(client, fungicida, "saida", 40, 1, talhao_id=sul)  # já liberado
+
+    resumo = client.get("/api/v1/resumo").json()
+
+    assert resumo["talhoes_em_carencia"] == 1
+    # Os alertas por gravidade continuam sendo os dos insumos: a carência é do talhão, e o
+    # Painel mostra a lista dos insumos ao lado desses números.
+    insumo = client.get(f"/api/v1/insumos/{fungicida}").json()
+    assert sum(resumo["alertas"].values()) == len(insumo["analise"]["alertas"])
 
 
 def test_resumo_soma_estoque_perdas_e_compras_em_reais(client: TestClient) -> None:

@@ -19,7 +19,7 @@ from app.schemas.estoque import (
     Perdas,
     Resumo,
 )
-from app.services import estoque
+from app.services import estoque, talhoes
 
 # Até onde olhar as compras sugeridas e as perdas recentes: um mês, o horizonte de quem
 # planeja o caixa.
@@ -60,6 +60,9 @@ def resumir(db: Session, insumos: list[InsumoResposta], referencia: date) -> Res
     ]
     custos_estimados = [r.custo_estimado for r in reposicoes if r.custo_estimado is not None]
 
+    # Só os alertas dos insumos: o Painel mostra esses números ao lado da lista de alertas
+    # dos insumos, e um urgente a mais sem cartão confundiria. A carência é do talhão, e vem
+    # contada à parte.
     contagem = dict.fromkeys(("alta", "media", "baixa"), 0)
     for insumo in insumos:
         for alerta in insumo.analise.alertas:
@@ -87,5 +90,6 @@ def resumir(db: Session, insumos: list[InsumoResposta], referencia: date) -> Res
             pedir_hoje=sum(r.pedir_hoje for r in reposicoes),
         ),
         alertas=AlertasPorGravidade(**contagem),
+        talhoes_em_carencia=talhoes.em_carencia(db, referencia),
         limitacoes=limitacoes,
     )
