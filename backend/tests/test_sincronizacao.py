@@ -151,3 +151,101 @@ def test_envio_simultaneo_barrado_pelo_banco_vira_reenvio(
     assert resposta.status_code == 200, resposta.json()
     assert len(chamadas) == 2
     assert len(client.get("/api/v1/movimentacoes").json()) == 1
+
+
+def sincronizar(client: TestClient, itens: list[Any]) -> dict[str, Any]:
+    resposta = client.post("/api/v1/movimentacoes/lote", json={"movimentacoes": itens})
+    assert resposta.status_code == 200, resposta.json()
+    return resposta.json()
+
+
+def test_fila_do_app_grava_na_ordem_e_o_reenvio_nao_duplica(client: TestClient) -> None:
+    insumo = criar_insumo(client)
+    fila = [
+        lancamento(insumo, tipo="entrada", data=dia(3), quantidade=100, valor_unitario=3.2),
+        lancamento(insumo, data=dia(2), quantidade=10),
+        lancamento(insumo, data=dia(1), quantidade=15.5),
+    ]
+
+    primeiro = sincronizar(client, fila)
+    # A resposta não chegou ao celular: a fila inteira vai de novo.
+    segundo = sincronizar(client, fila)
+
+    assert [r["uuid"] for r in primeiro["resultados"]] == [i["uuid"] for i in fila]
+    assert [r["situacao"] for r in primeiro["resultados"]] == ["gravada"] * 3
+    assert primeiro["resumo"] == {"gravadas": 3, "ja_existiam": 0, "recusadas": 0}
+    assert [r["situacao"] for r in segundo["resultados"]] == ["ja_existia"] * 3
+    assert segundo["resumo"] == {"gravadas": 0, "ja_existiam": 3, "recusadas": 0}
+    assert [r["movimentacao"] for r in segundo["resultados"]] == [
+        r["movimentacao"] for r in primeiro["resultados"]
+    ]
+    assert primeiro["resultados"][0]["movimentacao"]["valor_unitario"] == 3.2
+    assert primeiro["resultados"][0]["erros"] == []
+    [listado] = client.get("/api/v1/insumos").json()
+    assert listado["estoque_atual"] == 74.5
+
+
+def test_item_ruim_e_recusado_e_os_outros_gravam(client: TestClient) -> None:
+    insumo = criar_insumo(client)
+    ja_usado = lancamento(insumo)
+    sincronizar(client, [ja_usado])
+    sem_uuid = lancamento(insumo)
+    del sem_uuid["uuid"]
+    fila = [
+        lancamento(insumo, tipo="entrada", quantidade=40),
+        lancamento(insumo, quantidade=-3),
+        sem_uuid,
+        lancamento(insumo, data="31/10/2026", tipo="troca"),
+        lancamento(insumo, data=dia(-5)),
+        lancamento(insumo, insumo_id=999),
+        ja_usado | {"quantidade": 9},
+        "não é um lançamento",
+        lancamento(insumo, uuid="123"),
+        lancamento(insumo, quantidade=4),
+    ]
+
+    resultado = sincronizar(client, fila)
+
+    situacoes = [r["situacao"] for r in resultado["resultados"]]
+    assert situacoes == ["gravada"] + ["recusada"] * 8 + ["gravada"]
+    assert resultado["resumo"] == {"gravadas": 2, "ja_existiam": 0, "recusadas": 8}
+    erros = [r["erros"] for r in resultado["resultados"][1:-1]]
+    assert erros == [
+        ["quantidade tem de ser maior que 0."],
+        ["Falta o campo uuid, que o app gera para cada lançamento."],
+        [
+            "tipo tem de ser 'entrada' ou 'saida'.",
+            "data não é uma data válida: use AAAA-MM-DD.",
+        ],
+        ["A data da movimentação não pode ser futura."],
+        ["O insumo 999 não existe: pode ter sido removido no site."],
+        [
+            "Este uuid já identifica outro lançamento, diferente deste em: quantidade. Cada "
+            "lançamento precisa de um uuid novo."
+        ],
+        [
+            "O item não é um lançamento: mande um objeto com uuid, insumo_id, tipo, data e "
+            "quantidade."
+        ],
+        ["uuid não é um identificador válido: gere um UUID v4 para cada lançamento."],
+    ]
+    assert all(r["movimentacao"] is None for r in resultado["resultados"][1:-1])
+    # O uuid que dá para ler volta, para o app achar o item; o que não dá, volta vazio.
+    assert resultado["resultados"][1]["uuid"] == fila[1]["uuid"]
+    assert [resultado["resultados"][i]["uuid"] for i in (2, 7, 8)] == [None] * 3
+    [listado] = client.get("/api/v1/insumos").json()
+    assert listado["estoque_atual"] == 40 - 2.5 - 4
+
+
+def test_lote_cabe_500_lancamentos_e_recusa_mais(client: TestClient) -> None:
+    insumo = criar_insumo(client)
+    fila = [lancamento(insumo, tipo="entrada", quantidade=1) for _ in range(500)]
+
+    resultado = sincronizar(client, fila)
+    demais = client.post(
+        "/api/v1/movimentacoes/lote", json={"movimentacoes": [*fila, lancamento(insumo)]}
+    )
+
+    assert resultado["resumo"]["gravadas"] == 500
+    # Pedido malformado como um todo, não um item: o app divide a fila em lotes de 500.
+    assert demais.status_code == 422

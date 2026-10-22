@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Literal, Self
+from typing import Any, Literal, Self
 from uuid import UUID
 
 from pydantic import Base64Bytes, BaseModel, ConfigDict, Field, model_validator
@@ -11,6 +11,9 @@ from app.core.relogio import hoje
 QUANTIDADE_MAXIMA = 999_999_999
 # Teto da coluna NUMERIC(14, 4).
 VALOR_UNITARIO_MAXIMO = 9_999_999_999
+# Lançamentos por lote da sincronização: semanas de fila de um celular cabem com folga, e
+# 500 itens (uns 100 kB) ficam longe do limite de 8 MB do corpo (app/main.py).
+LOTE_MAXIMO = 500
 # Caractere de controle num nome não aparece na tela, separa nomes que parecem iguais e
 # não pode ser gravado numa planilha do Excel.
 SEM_CARACTERE_DE_CONTROLE = r"^[^\x00-\x1f\x7f]*$"
@@ -85,6 +88,40 @@ class MovimentacaoResposta(_Movimentacao):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+
+
+class MovimentacaoDoLote(MovimentacaoEntrada):
+    # Na fila do app, o uuid é o que torna o reenvio seguro: sem ele, o item é recusado.
+    uuid: UUID
+
+
+class LoteDeMovimentacoes(BaseModel):
+    """A fila de lançamentos que o app guardou sem sinal, na ordem em que foram feitos."""
+
+    # Itens genéricos: cada um é validado sozinho, no serviço, e um item malformado vira
+    # `recusada`, em vez de um 422 que travaria a fila inteira no celular.
+    movimentacoes: list[Any] = Field(max_length=LOTE_MAXIMO)
+
+
+class ResultadoDoItem(BaseModel):
+    # Volta o uuid enviado, para o app achar o item na fila; None se o item não trouxe
+    # um uuid legível (a ordem dos resultados é a do envio).
+    uuid: UUID | None
+    situacao: Literal["gravada", "ja_existia", "recusada"]
+    movimentacao: MovimentacaoResposta | None = None  # quando gravada ou já existia
+    erros: list[str] = []  # por que foi recusada, em frases para a tela
+    avisos: list[str] = []  # não impedem a gravação: só pedem para conferir
+
+
+class ResumoDoLote(BaseModel):
+    gravadas: int
+    ja_existiam: int
+    recusadas: int
+
+
+class ResultadoDoLote(BaseModel):
+    resultados: list[ResultadoDoItem]  # na ordem do envio
+    resumo: ResumoDoLote
 
 
 class ContagemDeInventario(BaseModel):

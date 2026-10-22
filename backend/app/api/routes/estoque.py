@@ -9,13 +9,15 @@ from app.schemas.estoque import (
     InsumoCadastro,
     InsumoDetalhe,
     InsumoResposta,
+    LoteDeMovimentacoes,
     MovimentacaoEntrada,
     MovimentacaoResposta,
     PedidoDeImportacao,
+    ResultadoDoLote,
     Resumo,
 )
 from app.services import estoque as servico
-from app.services import planilha_modelo, relatorio, resumo
+from app.services import planilha_modelo, relatorio, resumo, sincronizacao
 from app.services.importacao import ResultadoImportacao, importar
 
 router = APIRouter(tags=["estoque"])
@@ -118,6 +120,16 @@ def registrar_movimentacao(
         # Nada foi criado agora: 200, e não 201.
         response.status_code = status.HTTP_200_OK
     return registro.movimentacao
+
+
+@router.post("/movimentacoes/lote", response_model=ResultadoDoLote)
+def sincronizar_movimentacoes(
+    lote: LoteDeMovimentacoes, db: Session = Depends(get_db)
+) -> ResultadoDoLote:
+    """A fila do app (até 500 lançamentos, cada um com o seu `uuid`), gravada na ordem e item
+    a item: o item ruim volta `recusada` com os erros, e os outros gravam. Reenviar o lote é
+    seguro: o que já entrou volta `ja_existia`."""
+    return sincronizacao.sincronizar(db, lote.movimentacoes)
 
 
 @router.delete("/movimentacoes/{movimentacao_id}", status_code=status.HTTP_204_NO_CONTENT)
