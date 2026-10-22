@@ -25,6 +25,14 @@ mostra a conta que o justifica e o que a conta não sabe.**
 | Fungicida azoxistrobina | Baixa movimentação | Ninguém retira há mais de 3 meses |
 | Semente de milho híbrido | Nenhum | Contraste: o que está em dia não grita |
 
+E os talhões (as retiradas da fazenda foram aplicadas neles; carências fictícias):
+
+| Talhão | Situação | Para falar |
+|---|---|---|
+| Talhão Norte (soja, 120 ha) | Em carência | Glifosato aplicado há 2 dias, carência de 7: não colher antes de daqui a 5 dias, com a conta na frase. O fungicida também foi aplicado ali, mas há mais de 3 meses: a carência dele já passou |
+| Talhão Sul (milho, 80 ha) | Liberado | Ureia e semente, sem carência: o custo por hectare do milho |
+| Pasto 1 (pasto, 45 ha) | Liberado | Sal mineral e calcário; o calcário está sem carência cadastrada, e a limitação diz que o prazo dele não foi considerado |
+
 ## Roteiro
 
 1. **O problema (30 s).** O produtor anota compras e retiradas, mas a anotação não avisa quando
@@ -52,8 +60,19 @@ mostra a conta que o justifica e o que a conta não sabe.**
    não existe, "dez" no lugar de 10, unidade diferente da cadastrada, insumo novo sem unidade).
 7. **Lançar uma movimentação** (página da ureia → "Lançar movimentação"): uma entrada de 700 kg
    com a data de hoje, e os alertas da ureia somem do Painel na hora.
-8. **Fechamento.** O que vem depois: acesso por usuário, sazonalidade da safra no consumo,
-   e o resumo em reais (valor em estoque, perdas, compras do mês) nas telas do site e do app.
+8. **Talhão em carência** (segurança do alimento). O site e o app ainda não têm a tela de
+   talhões: mostre no relatório em Excel, aba **Talhões**, ou em
+   `http://localhost:5173/api/v1/docs` → `GET /talhoes`. O Talhão Norte aparece em vermelho:
+   "não colher nem abater antes de" uma data daqui a 5 dias, porque o glifosato foi aplicado há
+   2 dias e a carência dele é de 7. É a mesma ideia dos alertas: a data vem com a conta. Ao lado,
+   o custo do que foi aplicado em cada talhão, total e por hectare, e o que a conta não sabe (o
+   calcário do Pasto 1 sem carência cadastrada; o custo pelo custo médio de hoje). Carga com
+   resíduo acima do permitido é recusada; o CampoCerto avisa antes da colheita.
+9. **Fechamento.** O que vem depois: acesso por usuário, sazonalidade da safra no consumo,
+   o resumo em reais (valor em estoque, perdas, compras do mês) e os talhões nas telas do site
+   e do app.
 
-Depois da apresentação, `make demo-limpar` apaga a fazenda fictícia. Os insumos que vieram da
-planilha modelo não são de demonstração: remova-os pela página de cada um.
+Depois da apresentação, `make demo-limpar` apaga a fazenda fictícia, com os talhões dela (um
+talhão de demonstração em que se lançou a aplicação de um insumo real fica, para não perder
+esse registro). Os insumos que vieram da planilha modelo não são de demonstração: remova-os pela
+página de cada um.
