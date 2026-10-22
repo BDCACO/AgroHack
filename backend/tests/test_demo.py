@@ -92,3 +92,22 @@ def test_limpar_mantem_talhao_com_aplicacao_de_insumo_real(client: TestClient, d
 
     # Apagá-lo levaria o registro de onde o adubo real foi aplicado.
     assert [t["nome"] for t in client.get("/api/v1/talhoes").json()] == ["Talhão Norte"]
+    # E deixa de ser demonstração: guarda dado real. A próxima carga o reaproveita, em
+    # vez de quebrar no nome único ao recriar o "Talhão Norte".
+    assert client.get("/api/v1/talhoes").json()[0]["demonstracao"] is False
+
+    carregar(db, hoje())
+
+    nomes = sorted(t["nome"] for t in client.get("/api/v1/talhoes").json())
+    assert nomes == ["Pasto 1", "Talhão Norte", "Talhão Sul"]
+    insumos = client.get("/api/v1/insumos").json()
+    assert sum(1 for i in insumos if i["demonstracao"]) == 7
+
+
+def test_carregar_com_talhao_real_de_mesmo_nome(client: TestClient, db: Session) -> None:
+    client.post("/api/v1/talhoes", json={"nome": "Pasto 1", "area_ha": 30, "cultura": "Pasto"})
+
+    carregar(db, hoje())
+
+    pastos = [t for t in client.get("/api/v1/talhoes").json() if t["nome"] == "Pasto 1"]
+    assert [(t["area_ha"], t["demonstracao"]) for t in pastos] == [(30, False)]

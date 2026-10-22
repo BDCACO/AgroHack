@@ -16,7 +16,7 @@ import sys
 from datetime import date, timedelta
 from random import Random
 
-from sqlalchemy import delete, exists
+from sqlalchemy import delete, exists, select, update
 from sqlalchemy.orm import Session
 
 from app.core.database import get_sessionmaker
@@ -33,8 +33,16 @@ TALHOES = (
 
 def carregar(db: Session, referencia: date) -> int:
     limpar(db)
+    # Talhão que já existe com o nome (real, ou o que o `limpar` preservou) é
+    # reaproveitado: recriá-lo quebraria no nome único. As aplicações fictícias nele
+    # saem no próximo `limpar`, junto com os insumos de demonstração.
+    existentes = {
+        t.nome: t
+        for t in db.scalars(select(Talhao).where(Talhao.nome.in_([nome for nome, *_ in TALHOES])))
+    }
     talhoes = {
-        nome: Talhao(nome=nome, area_ha=area, cultura=cultura, demonstracao=True)
+        nome: existentes.get(nome)
+        or Talhao(nome=nome, area_ha=area, cultura=cultura, demonstracao=True)
         for nome, area, cultura in TALHOES
     }
     db.add_all(talhoes.values())
@@ -53,6 +61,8 @@ def limpar(db: Session) -> None:
     # apresentação) fica: apagá-lo levaria junto o registro de onde o insumo real foi.
     com_aplicacao = exists().where(Movimentacao.talhao_id == Talhao.id)
     db.execute(delete(Talhao).where(Talhao.demonstracao, ~com_aplicacao))
+    # E deixa de ser demonstração: guarda dado real, e a tela não pode chamá-lo de fictício.
+    db.execute(update(Talhao).where(Talhao.demonstracao).values(demonstracao=False))
     db.commit()
 
 
