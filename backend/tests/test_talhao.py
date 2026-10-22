@@ -3,7 +3,9 @@ e o custo do que foi aplicado. As contas esperadas estão feitas à mão nos com
 
 from datetime import date, timedelta
 
-from app.domain.talhao import Aplicacao, carencia
+import pytest
+
+from app.domain.talhao import Aplicacao, ConsumoNoTalhao, carencia, custo
 
 REF = date(2026, 11, 3)
 
@@ -121,3 +123,76 @@ def test_talhao_sem_aplicacao_nao_tem_o_que_dizer() -> None:
         [],
         [],
     )
+
+
+def test_custo_soma_quantidade_vezes_custo_medio_e_divide_pela_area() -> None:
+    aplicacoes = [
+        aplicacao(30, "Glifosato", 7, insumo_id=1, quantidade=15),
+        aplicacao(10, "Glifosato", 7, insumo_id=1, quantidade=12.5),
+        aplicacao(5, "Ureia", 0, insumo_id=2, unidade="kg", quantidade=200),
+    ]
+    custos = {1: 30.0, 2: 3.25}
+
+    resultado = custo(aplicacoes, custos, area_ha=40)
+
+    # Glifosato: 27,5 L × R$ 30,00 = R$ 825,00; ureia: 200 kg × R$ 3,25 = R$ 650,00.
+    assert resultado.total == pytest.approx(1475)
+    # R$ 1.475,00 / 40 ha.
+    assert resultado.por_hectare == pytest.approx(36.88)
+    # O que mais pesou primeiro.
+    assert resultado.consumo == [
+        ConsumoNoTalhao(1, "Glifosato", "L", 27.5, 825.0),
+        ConsumoNoTalhao(2, "Ureia", "kg", 200, 650.0),
+    ]
+    assert resultado.limitacoes == [
+        "Custo pelo custo médio de hoje de cada insumo, não pelo preço pago na época da aplicação."
+    ]
+
+
+def test_custo_de_uma_safra_so_conta_o_periodo() -> None:
+    aplicacoes = [
+        aplicacao(200, "Glifosato", 7, quantidade=100),  # safra passada
+        aplicacao(60, "Glifosato", 7, quantidade=10),
+        aplicacao(20, "Glifosato", 7, quantidade=5),
+        aplicacao(1, "Glifosato", 7, quantidade=1000),  # depois do fim
+    ]
+
+    resultado = custo(aplicacoes, {1: 10.0}, area_ha=10, desde=antes(60), ate=antes(20))
+
+    # Os dois extremos entram: 15 L × R$ 10,00.
+    assert resultado.total == pytest.approx(150)
+    assert resultado.por_hectare == pytest.approx(15)
+
+
+def test_aplicacao_sem_preco_fica_fora_do_custo_e_a_limitacao_diz_quantas() -> None:
+    aplicacoes = [
+        aplicacao(3, "Glifosato", 7, insumo_id=1, quantidade=10),
+        aplicacao(2, "Calcário", 0, insumo_id=2, unidade="t", quantidade=2),
+        aplicacao(1, "Calcário", 0, insumo_id=2, unidade="t", quantidade=1),
+    ]
+
+    resultado = custo(aplicacoes, {1: 30.0, 2: None}, area_ha=10)
+
+    assert resultado.total == pytest.approx(300)
+    assert resultado.consumo[1] == ConsumoNoTalhao(2, "Calcário", "t", 3, None)
+    assert resultado.limitacoes[-1] == (
+        "2 aplicações sem preço (Calcário) ficam fora do custo: lance o preço das compras "
+        "desse insumo."
+    )
+
+
+def test_sem_preco_nenhum_o_custo_e_desconhecido_e_nao_zero() -> None:
+    resultado = custo([aplicacao(1, "Calcário", 0, quantidade=2)], {}, area_ha=10)
+
+    assert (resultado.total, resultado.por_hectare) == (None, None)
+    assert resultado.limitacoes == [
+        "1 aplicação sem preço (Calcário) fica fora do custo: lance o preço das compras "
+        "desse insumo."
+    ]
+
+
+def test_talhao_sem_aplicacao_custou_zero() -> None:
+    resultado = custo([], {}, area_ha=10)
+
+    assert (resultado.total, resultado.por_hectare, resultado.consumo) == (0, 0, [])
+    assert resultado.limitacoes == []
