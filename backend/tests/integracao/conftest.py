@@ -65,15 +65,19 @@ def _porta_livre() -> int:
         return s.getsockname()[1]
 
 
-@pytest.fixture(scope="session")
-def servidor(banco: Engine) -> Iterator[str]:
-    """O uvicorn de produção (sem --reload) servindo a API; devolve a URL base da v1."""
+def subir_uvicorn(**variaveis: str) -> Iterator[str]:
+    """O uvicorn de produção (sem --reload) servindo a API, com as variáveis dadas no
+    ambiente; devolve a URL base da v1 e derruba o processo no fim."""
     porta = _porta_livre()
-    ambiente = os.environ | {
-        "ENVIRONMENT": "test",
-        "DATABASE_URL": URL_DO_BANCO,
-        "LOG_LEVEL": "WARNING",
-    }
+    ambiente = (
+        os.environ
+        | {
+            "ENVIRONMENT": "test",
+            "DATABASE_URL": URL_DO_BANCO,
+            "LOG_LEVEL": "WARNING",
+        }
+        | variaveis
+    )
     processo = subprocess.Popen(  # noqa: S603 — comando fixo
         [sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(porta)],
         cwd=BACKEND,
@@ -98,12 +102,36 @@ def servidor(banco: Engine) -> Iterator[str]:
         processo.wait(timeout=10)
 
 
+@pytest.fixture(scope="session")
+def servidor(banco: Engine) -> Iterator[str]:
+    """A API como o site e o app de hoje a usam: sem login (AUTENTICACAO=false)."""
+    yield from subir_uvicorn(AUTENTICACAO="false")
+
+
+@pytest.fixture(scope="session")
+def servidor_autenticado(banco: Engine) -> Iterator[str]:
+    """A mesma API, no mesmo banco, com o login ligado (AUTENTICACAO=true)."""
+    yield from subir_uvicorn(AUTENTICACAO="true")
+
+
+def _banco_vazio(banco: Engine) -> None:
+    tabelas = ", ".join(t.name for t in Base.metadata.sorted_tables)
+    with banco.begin() as conexao:
+        conexao.execute(text(f"TRUNCATE {tabelas} RESTART IDENTITY CASCADE"))
+
+
 @pytest.fixture
 def api(servidor: str, banco: Engine) -> Iterator[httpx.Client]:
     """Cliente HTTP contra o servidor, com o banco vazio (as tabelas dos modelos, sem a
     do Alembic) a cada teste."""
-    tabelas = ", ".join(t.name for t in Base.metadata.sorted_tables)
-    with banco.begin() as conexao:
-        conexao.execute(text(f"TRUNCATE {tabelas} RESTART IDENTITY CASCADE"))
+    _banco_vazio(banco)
     with httpx.Client(base_url=servidor, timeout=30) as cliente:
+        yield cliente
+
+
+@pytest.fixture
+def api_autenticada(servidor_autenticado: str, banco: Engine) -> Iterator[httpx.Client]:
+    """Como `api`, contra o servidor com o login ligado. Sem token: cada teste entra."""
+    _banco_vazio(banco)
+    with httpx.Client(base_url=servidor_autenticado, timeout=30) as cliente:
         yield cliente
