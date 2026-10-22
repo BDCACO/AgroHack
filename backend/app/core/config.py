@@ -28,6 +28,11 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    # Login com papéis (dono e funcionário). Desligada, ninguém precisa de token, como
+    # antes do login existir: é o padrão em development e test, para o site e o app que
+    # ainda não têm tela de login continuarem funcionando.
+    autenticacao: bool = False
+
     @property
     def docs_habilitadas(self) -> bool:
         """/docs e /openapi.json ficam fora do ar em produção."""

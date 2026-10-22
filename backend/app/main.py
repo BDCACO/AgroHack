@@ -26,6 +26,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
         openapi_url=f"{prefixo}/openapi.json" if docs else None,
     )
+    # As permissões (app/api/permissoes.py) leem daqui se a autenticação está ligada: é a
+    # configuração deste app, e não a do ambiente, que os testes trocam.
+    app.state.settings = settings
     app.include_router(api_router, prefix=prefixo)
 
     @app.middleware("http")
