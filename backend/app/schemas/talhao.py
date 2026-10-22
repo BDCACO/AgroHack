@@ -1,6 +1,10 @@
+from datetime import date
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.schemas.estoque import SEM_CARACTERE_DE_CONTROLE
+from app.domain.estoque import Alerta
+from app.domain.talhao import ConsumoNoTalhao
+from app.schemas.estoque import SEM_CARACTERE_DE_CONTROLE, MovimentacaoResposta
 
 # Teto da coluna NUMERIC(10, 2).
 AREA_MAXIMA = 99_999_999.99
@@ -27,7 +31,20 @@ class TalhaoCadastro(_Talhao):
 
 
 class TalhaoResposta(_Talhao):
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     demonstracao: bool
+    # Quando a última carência acaba (pode já ter passado). None: nenhuma aplicação de
+    # insumo com carência cadastrada. Vale para todas as aplicações, seja qual for o período.
+    colheita_liberada_em: date | None
+    em_carencia: bool  # colher hoje é proibido
+    alertas: list[Alerta]  # a carência, com a conta; vazio quando liberado
+    # R$ do que foi aplicado no período, pelo custo médio de hoje. None: houve aplicação e
+    # nenhuma tem preço.
+    custo_total: float | None
+    custo_por_ha: float | None
+    limitacoes: list[str]  # o que a carência e o custo não sabem
+
+
+class TalhaoDetalhe(TalhaoResposta):
+    aplicacoes: list[MovimentacaoResposta]  # do período, as mais recentes primeiro
+    consumo: list[ConsumoNoTalhao]  # por insumo, no período, o que mais custou primeiro

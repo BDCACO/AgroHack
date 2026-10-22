@@ -1,12 +1,19 @@
 """Casos de uso dos talhões: o cadastro, e a carência e o custo do que foi aplicado em
-cada um."""
+cada um, a partir das retiradas lançadas nele."""
+
+from collections import defaultdict
+from datetime import date
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Movimentacao, Talhao
-from app.schemas.talhao import TalhaoCadastro, TalhaoResposta
+from app.core.relogio import hoje
+from app.domain import estoque as dominio
+from app.domain import talhao as regras
+from app.models import Insumo, Movimentacao, Talhao
+from app.schemas.estoque import MovimentacaoResposta
+from app.schemas.talhao import TalhaoCadastro, TalhaoDetalhe, TalhaoResposta
 
 
 class NomeDuplicado(Exception):
@@ -31,15 +38,46 @@ class TalhaoComAplicacoes(Exception):
         )
 
 
-def listar_talhoes(db: Session) -> list[TalhaoResposta]:
-    return [_resposta(t) for t in db.scalars(select(Talhao).order_by(Talhao.nome))]
+def listar_talhoes(
+    db: Session, desde: date | None = None, ate: date | None = None
+) -> list[TalhaoResposta]:
+    """Cada talhão com a carência de hoje e o custo do período (`desde` e `ate` inclusive;
+    sem eles, desde sempre)."""
+    referencia = hoje()
+    aplicacoes = _aplicacoes(db)
+    custos = _custos_medios(db)
+    return [
+        _resposta(talhao, aplicacoes.get(talhao.id, []), custos, referencia, desde, ate)
+        for talhao in db.scalars(select(Talhao).order_by(Talhao.nome))
+    ]
+
+
+def detalhar_talhao(
+    db: Session, talhao_id: int, desde: date | None = None, ate: date | None = None
+) -> TalhaoDetalhe:
+    """O talhão, as aplicações do período (as mais recentes primeiro) e quanto de cada
+    insumo foi para ele."""
+    talhao = buscar_talhao(db, talhao_id)
+    aplicacoes = _aplicacoes(db, talhao_id).get(talhao_id, [])
+    custos = _custos_medios(db)
+    no_periodo = sorted(
+        (m for m, _ in aplicacoes if _no_periodo(m.data, desde, ate)),
+        key=lambda m: (m.data, m.id),
+        reverse=True,
+    )
+    custo = regras.custo([a for _, a in aplicacoes], custos, talhao.area_ha, desde, ate)
+    return TalhaoDetalhe(
+        **dict(_resposta(talhao, aplicacoes, custos, hoje(), desde, ate)),
+        aplicacoes=[MovimentacaoResposta.model_validate(m) for m in no_periodo],
+        consumo=custo.consumo,
+    )
 
 
 def criar_talhao(db: Session, dados: TalhaoCadastro) -> TalhaoResposta:
     talhao = Talhao(**dados.model_dump())
     db.add(talhao)
     _salvar(db)
-    return _resposta(talhao)
+    return _resposta(talhao, [], {}, hoje())
 
 
 def atualizar_talhao(db: Session, talhao_id: int, dados: TalhaoCadastro) -> TalhaoResposta:
@@ -47,11 +85,9 @@ def atualizar_talhao(db: Session, talhao_id: int, dados: TalhaoCadastro) -> Talh
     for campo, valor in dados.model_dump().items():
         setattr(talhao, campo, valor)
     _salvar(db)
-    return _resposta(talhao)
-
-
-def detalhar_talhao(db: Session, talhao_id: int) -> TalhaoResposta:
-    return _resposta(buscar_talhao(db, talhao_id))
+    # A área mudou o custo por hectare; o nome, a frase da carência.
+    aplicacoes = _aplicacoes(db, talhao_id).get(talhao_id, [])
+    return _resposta(talhao, aplicacoes, _custos_medios(db), hoje())
 
 
 def remover_talhao(db: Session, talhao_id: int) -> None:
@@ -86,5 +122,69 @@ def _salvar(db: Session) -> None:
         raise NomeDuplicado from erro
 
 
-def _resposta(talhao: Talhao) -> TalhaoResposta:
-    return TalhaoResposta.model_validate(talhao)
+type _Aplicacoes = list[tuple[Movimentacao, regras.Aplicacao]]
+
+
+def _aplicacoes(db: Session, talhao_id: int | None = None) -> dict[int, _Aplicacoes]:
+    """As retiradas lançadas em talhões, por talhão, com o insumo e a carência dele."""
+    consulta = select(Movimentacao, Insumo).join(Insumo).where(Movimentacao.talhao_id.is_not(None))
+    if talhao_id is not None:
+        consulta = consulta.where(Movimentacao.talhao_id == talhao_id)
+    por_talhao: dict[int, _Aplicacoes] = defaultdict(list)
+    for movimentacao, insumo in db.execute(consulta):
+        aplicacao = regras.Aplicacao(
+            data=movimentacao.data,
+            insumo_id=insumo.id,
+            insumo=insumo.nome,
+            unidade=insumo.unidade,
+            quantidade=movimentacao.quantidade,
+            carencia_dias=insumo.carencia_dias,
+        )
+        por_talhao[movimentacao.talhao_id].append((movimentacao, aplicacao))
+    return por_talhao
+
+
+def _custos_medios(db: Session) -> dict[int, float | None]:
+    """O custo médio de cada insumo pela mesma regra da tela do insumo: o custo do talhão
+    não pode discordar do valor em estoque."""
+    entradas: dict[int, list[dominio.Entrada]] = defaultdict(list)
+    compras = select(Movimentacao).where(
+        Movimentacao.tipo == "entrada", Movimentacao.valor_unitario.is_not(None)
+    )
+    for m in db.scalars(compras):
+        entradas[m.insumo_id].append(
+            dominio.Entrada(m.data, m.quantidade, valor_unitario=m.valor_unitario)
+        )
+    return {insumo_id: dominio.custo_medio(lista) for insumo_id, lista in entradas.items()}
+
+
+def _no_periodo(dia: date, desde: date | None, ate: date | None) -> bool:
+    return (desde is None or dia >= desde) and (ate is None or dia <= ate)
+
+
+def _resposta(
+    talhao: Talhao,
+    aplicacoes: _Aplicacoes,
+    custos: dict[int, float | None],
+    referencia: date,
+    desde: date | None = None,
+    ate: date | None = None,
+) -> TalhaoResposta:
+    do_dominio = [a for _, a in aplicacoes]
+    # A carência olha todas as aplicações, seja qual for o período pedido: o recorte é do
+    # custo, e um defensivo aplicado antes dele continua proibindo a colheita.
+    carencia = regras.carencia(talhao.nome, do_dominio, referencia)
+    custo = regras.custo(do_dominio, custos, talhao.area_ha, desde, ate)
+    return TalhaoResposta(
+        id=talhao.id,
+        nome=talhao.nome,
+        area_ha=talhao.area_ha,
+        cultura=talhao.cultura,
+        demonstracao=talhao.demonstracao,
+        colheita_liberada_em=carencia.colheita_liberada_em,
+        em_carencia=bool(carencia.alertas),
+        alertas=carencia.alertas,
+        custo_total=custo.total,
+        custo_por_ha=custo.por_hectare,
+        limitacoes=[*carencia.limitacoes, *custo.limitacoes],
+    )
