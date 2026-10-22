@@ -120,12 +120,13 @@ def _resposta(insumo: Insumo, referencia: date) -> InsumoResposta:
         for m in insumo.movimentacoes
         if m.tipo == "entrada"
     ]
-    retiradas = [
-        dominio.Retirada(m.data, m.quantidade) for m in insumo.movimentacoes if m.tipo == "saida"
-    ]
+    saidas = [m for m in insumo.movimentacoes if m.tipo == "saida"]
+    # Só a retirada para uso é consumo; o descarte tira do estoque, mas não do ritmo.
+    retiradas = [dominio.Retirada(m.data, m.quantidade) for m in saidas if m.motivo is None]
+    descartes = [dominio.Descarte(m.data, m.quantidade) for m in saidas if m.motivo == "descarte"]
     # Quantidades têm no máximo 3 casas; arredondar a soma tira o resíduo do float
     # (sem isso, um estoque zerado poderia virar 1e-14 e escapar do alerta).
-    estoque = round(sum(e.quantidade for e in entradas) - sum(r.quantidade for r in retiradas), 3)
+    estoque = round(sum(e.quantidade for e in entradas) - sum(m.quantidade for m in saidas), 3)
     # Sem movimentação nenhuma, o histórico começa hoje: a análise diz que é curto.
     registros_desde = min((m.data for m in insumo.movimentacoes), default=referencia)
 
@@ -138,7 +139,7 @@ def _resposta(insumo: Insumo, referencia: date) -> InsumoResposta:
             insumo.prazo_reposicao_dias,
         ),
         retiradas,
-        lotes=dominio.lotes_em_estoque(entradas, retiradas),
+        lotes=dominio.lotes_em_estoque(entradas, retiradas, descartes),
         registros_desde=min(registros_desde, referencia),
         referencia=referencia,
     )

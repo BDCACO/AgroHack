@@ -43,6 +43,10 @@ class Movimentacao(Base):
         CheckConstraint("quantidade > 0", name="quantidade_positiva"),
         # Validade é de lote, e lote só nasce numa entrada.
         CheckConstraint("validade IS NULL OR tipo = 'entrada'", name="validade_so_em_entrada"),
+        # Saída com motivo não é consumo: não entra no ritmo nem nos alertas de consumo.
+        CheckConstraint(
+            "motivo IS NULL OR (motivo = 'descarte' AND tipo = 'saida')", name="motivo_valido"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -51,3 +55,6 @@ class Movimentacao(Base):
     data: Mapped[date]
     quantidade: Mapped[float] = mapped_column(Quantidade)
     validade: Mapped[date | None]
+    # Coluna à parte, e não um terceiro `tipo`: para o saldo, o site e o app, o
+    # descarte continua sendo uma saída.
+    motivo: Mapped[str | None] = mapped_column(String(10))

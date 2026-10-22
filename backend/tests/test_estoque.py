@@ -70,6 +70,8 @@ def test_estoque_e_analise_saem_das_movimentacoes(client: TestClient) -> None:
         {"data": dia(-1)},  # data futura
         {"quantidade": 0},
         {"insumo_id": 999},
+        {"motivo": "descarte"},  # descarte é saída
+        {"tipo": "saida", "motivo": "perdi"},
     ],
 )
 def test_movimentacao_invalida_e_recusada(client: TestClient, mudanca: dict[str, Any]) -> None:
@@ -79,6 +81,37 @@ def test_movimentacao_invalida_e_recusada(client: TestClient, mudanca: dict[str,
     resposta = client.post("/api/v1/movimentacoes", json=corpo | mudanca)
 
     assert resposta.status_code == 422
+
+
+def test_descarte_tira_o_lote_vencido_sem_contar_como_consumo(client: TestClient) -> None:
+    insumo = criar(client)
+    vencido = dia(10)
+    lancar(
+        client,
+        insumo_id=insumo["id"],
+        tipo="entrada",
+        data=dia(60),
+        quantidade=10,
+        validade=vencido,
+    )
+    lancar(client, insumo_id=insumo["id"], tipo="entrada", data=dia(60), quantidade=20)
+    # Retiradas só depois do vencimento: saem do lote bom, e o vencido fica inteiro.
+    for dias_atras in range(0, 10, 2):
+        lancar(client, insumo_id=insumo["id"], tipo="saida", data=dia(dias_atras), quantidade=1)
+    antes = client.get(f"/api/v1/insumos/{insumo['id']}").json()
+    assert "vencido" in [a["tipo"] for a in antes["analise"]["alertas"]]
+
+    descarte = lancar(
+        client, insumo_id=insumo["id"], tipo="saida", motivo="descarte", data=dia(0), quantidade=10
+    )
+
+    depois = client.get(f"/api/v1/insumos/{insumo['id']}").json()
+    assert descarte["motivo"] == "descarte"
+    assert depois["estoque_atual"] == antes["estoque_atual"] - 10
+    assert "vencido" not in [a["tipo"] for a in depois["analise"]["alertas"]]
+    # O consumo é o das 5 retiradas: os 10 descartados não entram na conta.
+    assert depois["analise"]["consumo_diario"] == antes["analise"]["consumo_diario"]
+    assert depois["movimentacoes"][0]["motivo"] == "descarte"
 
 
 def test_atualizar_insumo(client: TestClient) -> None:

@@ -41,6 +41,8 @@ class _Movimentacao(BaseModel):
     data: date
     quantidade: float = Field(gt=0, le=QUANTIDADE_MAXIMA)
     validade: date | None = None
+    # Saída que não é consumo. Sem motivo, a saída é uma retirada para uso.
+    motivo: Literal["descarte"] | None = None
 
 
 class MovimentacaoEntrada(_Movimentacao):
@@ -48,6 +50,8 @@ class MovimentacaoEntrada(_Movimentacao):
     def _coerente(self) -> Self:
         if self.validade is not None and self.tipo != "entrada":
             raise ValueError("validade só se informa numa entrada: é ela que traz o lote")
+        if self.motivo is not None and self.tipo != "saida":
+            raise ValueError("descarte é uma saída: o produto deixa o estoque")
         # Ano digitado errado (2062 por 2026) jogaria a movimentação no futuro.
         if self.data > hoje():
             raise ValueError("a data da movimentação não pode ser futura")
