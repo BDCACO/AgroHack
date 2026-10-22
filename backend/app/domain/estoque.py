@@ -33,6 +33,10 @@ class Insumo:
     # Dias entre fazer o pedido e o insumo chegar. Sem ele, a análise assume um
     # padrão e diz isso nas limitações.
     prazo_reposicao_dias: int | None = None
+    # Quanto vem numa embalagem (50 para o saco de 50 kg) e o mínimo que o fornecedor
+    # aceita por pedido, na unidade do insumo. Sem eles, a sugestão de compra não arredonda.
+    embalagem: float | None = None
+    pedido_minimo: float | None = None
 
 
 @dataclass(frozen=True)

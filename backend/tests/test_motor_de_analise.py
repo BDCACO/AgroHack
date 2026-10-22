@@ -302,3 +302,77 @@ def test_alertas_sem_dinheiro_envolvido_nao_tem_valor() -> None:
 
     assert {a.tipo for a in analise.alertas} == {"risco_de_falta", "abaixo_do_minimo"}
     assert all(a.valor is None for a in analise.alertas)
+
+
+def ureia(**cadastro: float) -> Insumo:
+    """2 kg/dia, 20 kg em estoque, mínimo de 10 e entrega em 15 dias: a conta dá 70 kg."""
+    return Insumo("Ureia", "kg", 20, estoque_minimo=10, prazo_reposicao_dias=15, **cadastro)
+
+
+def repor(insumo: Insumo, custo_medio: float | None = None):
+    return analisar(
+        insumo,
+        diarias(2, 120),
+        registros_desde=DESDE_120_DIAS,
+        referencia=REF,
+        custo_medio=custo_medio,
+    )
+
+
+def test_reposicao_arredonda_para_cima_em_embalagens_fechadas() -> None:
+    analise = repor(ureia(embalagem=50))
+
+    # 70 kg não fecham saco de 50: são 2 sacos, 100 kg.
+    assert analise.reposicao.quantidade == pytest.approx(100)
+    assert analise.reposicao.justificativa == (
+        "Pedir hoje 2 embalagens de 50 kg (100 kg): com entrega em 15 dias, cobre 30 dias de "
+        "consumo a 2 kg/dia, mantendo o mínimo de 10 kg. A conta dá 70 kg; a quantidade foi "
+        "arredondada para cima em embalagens fechadas."
+    )
+    assert repor(ureia(embalagem=70)).reposicao.justificativa.startswith(
+        "Pedir hoje 1 embalagem de 70 kg (70 kg): com entrega"
+    )
+
+
+def test_reposicao_respeita_o_pedido_minimo_antes_de_arredondar() -> None:
+    so_minimo = repor(ureia(pedido_minimo=200, embalagem=50)).reposicao
+    os_dois = repor(ureia(pedido_minimo=210, embalagem=50)).reposicao
+
+    assert so_minimo.quantidade == pytest.approx(200)
+    assert so_minimo.justificativa.endswith(
+        "A conta dá 70 kg; a quantidade subiu para o pedido mínimo de 200 kg."
+    )
+    # 210 de mínimo em sacos de 50: 5 sacos, 250 kg.
+    assert os_dois.quantidade == pytest.approx(250)
+    assert os_dois.justificativa.endswith(
+        "A conta dá 70 kg; a quantidade subiu para o pedido mínimo de 210 kg e foi "
+        "arredondada para cima em embalagens fechadas."
+    )
+    # Pedido mínimo abaixo da conta não muda nada.
+    assert repor(ureia(pedido_minimo=50)).reposicao.quantidade == pytest.approx(70)
+
+
+def test_reposicao_com_custo_medio_estima_o_custo_da_compra() -> None:
+    reposicao = repor(ureia(embalagem=50), custo_medio=3.2).reposicao
+
+    assert reposicao.custo_estimado == pytest.approx(320)
+    assert reposicao.justificativa.endswith(
+        "Pelo custo médio de R$ 3,20/kg, a compra fica em cerca de R$ 320,00."
+    )
+    assert repor(ureia()).reposicao.custo_estimado is None
+
+
+def test_limitacao_da_reposicao_diz_so_o_que_falta() -> None:
+    def sobre_a_quantidade(analise) -> list[str]:
+        return [t for t in analise.limitacoes if t.startswith("A quantidade sugerida")]
+
+    assert sobre_a_quantidade(repor(ureia())) == [
+        "A quantidade sugerida não considera embalagem nem preço."
+    ]
+    assert sobre_a_quantidade(repor(ureia(embalagem=50))) == [
+        "A quantidade sugerida não considera preço."
+    ]
+    assert sobre_a_quantidade(repor(ureia(), custo_medio=3)) == [
+        "A quantidade sugerida não considera embalagem."
+    ]
+    assert sobre_a_quantidade(repor(ureia(embalagem=50), custo_medio=3)) == []

@@ -41,11 +41,14 @@ _ORDEM_GRAVIDADE = {"alta": 0, "media": 1, "baixa": 2}
 @dataclass(frozen=True)
 class Reposicao:
     pedir_em: date
-    quantidade: int
+    # Inteira, ou o múltiplo da embalagem (que pode ser fracionada, como o frasco de 0,5 L).
+    quantidade: float
     justificativa: str
     # Decidido aqui, na data de referência da análise (Rondônia): a tela e o relatório
     # não comparam datas cada um com o seu relógio.
     pedir_hoje: bool
+    # Quantidade × custo médio; None sem preço nas compras.
+    custo_estimado: float | None = None
 
 
 @dataclass(frozen=True)
@@ -153,10 +156,15 @@ def analisar(
         # COBERTURA_EXCESSO_DIAS, em vez de séculos à frente com consumo ínfimo.
         return resultado(consumo=consumo, cobertura=cobertura)
 
-    limitacoes.append(
-        "A quantidade sugerida não considera embalagem, pedido mínimo do fornecedor nem preço."
-    )
-    reposicao = _reposicao(insumo, consumo, prazo, referencia)
+    # Só o que de fato falta: pedido mínimo vazio é fornecedor sem mínimo, não falta de dado.
+    faltam = [
+        nome
+        for nome, falta in (("embalagem", insumo.embalagem is None), ("preço", custo_medio is None))
+        if falta
+    ]
+    if faltam:
+        limitacoes.append(f"A quantidade sugerida não considera {' nem '.join(faltam)}.")
+    reposicao = _reposicao(insumo, consumo, prazo, referencia, custo_medio)
     return resultado(consumo=consumo, cobertura=cobertura, reposicao=reposicao)
 
 
@@ -221,7 +229,9 @@ def _consumo_incomum(
     ]
 
 
-def _reposicao(insumo: Insumo, consumo: float, prazo: int, referencia: date) -> Reposicao:
+def _reposicao(
+    insumo: Insumo, consumo: float, prazo: int, referencia: date, custo_medio: float | None
+) -> Reposicao:
     minimo = insumo.estoque_minimo or 0.0
     estoque = max(insumo.estoque_atual, 0.0)
     # Pedir no dia em que o estoque acima do mínimo cobre exatamente o prazo de entrega.
@@ -231,19 +241,52 @@ def _reposicao(insumo: Insumo, consumo: float, prazo: int, referencia: date) -> 
     na_chegada = max(0.0, no_pedido - consumo * prazo)
     # Para cima e inteiro: não se compra 29,32 sacas. O round tira o resíduo do float,
     # que faria um 60,0000001 virar 61.
-    quantidade = math.ceil(round(minimo + consumo * HORIZONTE_COMPRA_DIAS - na_chegada, 3))
+    pela_conta = math.ceil(round(minimo + consumo * HORIZONTE_COMPRA_DIAS - na_chegada, 3))
     pedir_em = referencia + timedelta(days=dias_ate_pedir)
 
     unidade = insumo.unidade
+    ajustes = []
+    quantidade = pela_conta
+    if insumo.pedido_minimo and insumo.pedido_minimo > quantidade:
+        quantidade = insumo.pedido_minimo
+        ajustes.append(f"subiu para o pedido mínimo de {quantidade_legivel(quantidade, unidade)}")
+    o_que = quantidade_legivel(quantidade, unidade)
+    if insumo.embalagem:
+        # Para cima: embalagem aberta não se compra. O round tira o resíduo da divisão.
+        embalagens = math.ceil(round(quantidade / insumo.embalagem, 6))
+        fechadas = round(embalagens * insumo.embalagem, 3)
+        if fechadas != quantidade:
+            ajustes.append("foi arredondada para cima em embalagens fechadas")
+        quantidade = fechadas
+        plural = "embalagem" if embalagens == 1 else "embalagens"
+        o_que = (
+            f"{embalagens} {plural} de {quantidade_legivel(insumo.embalagem, unidade)} "
+            f"({quantidade_legivel(quantidade, unidade)})"
+        )
+
     quando = "hoje" if dias_ate_pedir == 0 else f"até {pedir_em:%d/%m/%Y}"
     margem = f", mantendo o mínimo de {quantidade_legivel(minimo, unidade)}" if minimo else ""
+    justificativa = (
+        f"Pedir {quando} {o_que}: com entrega em "
+        f"{dias_legivel(prazo)}, cobre {HORIZONTE_COMPRA_DIAS} dias de consumo "
+        f"a {quantidade_legivel(consumo, unidade)}/dia{margem}."
+    )
+    if ajustes:
+        justificativa += (
+            f" A conta dá {quantidade_legivel(pela_conta, unidade)}; a quantidade "
+            f"{' e '.join(ajustes)}."
+        )
+    custo = None
+    if custo_medio is not None:
+        custo = round(quantidade * custo_medio, 2)
+        justificativa += (
+            f" {valor_pelo_custo_medio(custo_medio, unidade)}, a compra fica em cerca de "
+            f"{dinheiro_legivel(custo)}."
+        )
     return Reposicao(
         pedir_em=pedir_em,
         quantidade=quantidade,
         pedir_hoje=dias_ate_pedir == 0,
-        justificativa=(
-            f"Pedir {quando} {quantidade_legivel(quantidade, unidade)}: com entrega em "
-            f"{dias_legivel(prazo)}, cobre {HORIZONTE_COMPRA_DIAS} dias de consumo "
-            f"a {quantidade_legivel(consumo, unidade)}/dia{margem}."
-        ),
+        justificativa=justificativa,
+        custo_estimado=custo,
     )
