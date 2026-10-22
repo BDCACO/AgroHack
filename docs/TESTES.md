@@ -24,6 +24,30 @@ cd backend && uv run pytest       # no host (exige uv)
 uv run pytest tests/test_health.py -k ready -v
 ```
 
+### Integração: API real + PostgreSQL real (`backend/tests/integracao/`)
+
+A suíte acima usa SQLite e o `TestClient`. Esta sobe o **uvicorn de verdade** num processo à
+parte, contra um **PostgreSQL de verdade** com o schema criado **pelas migrations** (não pelos
+modelos), e os testes falam **HTTP** com ele, como o site e o app. Pega o que a outra não vê:
+constraint do PostgreSQL, migration que diverge do modelo, serialização na rede.
+
+Só roda com `INTEGRACAO_DATABASE_URL` apontando para um banco **descartável** (o schema `public`
+é apagado e recriado no início); sem a variável, os testes são pulados. No CI, roda em todo PR
+com um PostgreSQL de serviço.
+
+| Arquivo | Cobre |
+|---|---|
+| `test_migracoes.py` | Todas as migrations descem até o zero e sobem de novo; `alembic check` sem diferença entre migrations e modelos; o banco recusa movimentação incoerente mesmo inserida fora da API |
+| `test_fluxo_lotes_descarte_inventario.py` | O produtor com um lote vencido na prateleira: o alerta mostra o vencido inteiro, o descarte o tira sem mexer no consumo, a contagem do galpão lança a falta, o relatório leva tudo e volta pela importação; restauração da cópia de segurança num banco vazio refaz estoque e análise iguais; erros de uso com o status certo |
+
+```bash
+make test-integracao              # com o `make up` rodando (banco campocerto_teste à parte)
+
+# no host, com um PostgreSQL descartável:
+docker run --rm -d --name cc-integracao -e POSTGRES_PASSWORD=teste -e POSTGRES_DB=cc   -p 127.0.0.1:55432:5432 postgres:18-alpine
+cd backend && INTEGRACAO_DATABASE_URL=postgresql+psycopg://postgres:teste@127.0.0.1:55432/cc   uv run pytest tests/integracao
+```
+
 **Regras:** regra de domínio e análise são testadas sem banco, com dados construídos no próprio
 teste. Nada de dado real do desafio em fixture: sintético, sempre. Teste não acessa a internet.
 

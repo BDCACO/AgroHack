@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate demo demo-limpar test test-backend test-frontend lint check-db verify
+.PHONY: help up down logs migrate demo demo-limpar test test-backend test-frontend test-integracao lint check-db verify
 
 COMPOSE := docker compose
 # Testes e lint rodam DENTRO do container (padrão do ArkoHub): a máquina não
@@ -35,6 +35,11 @@ test-backend: ## Pytest da API (SQLite em memória, sem banco)
 
 test-frontend: ## Vitest do frontend
 	$(WEB_RUN) sh -c "npm install --no-audit --no-fund && npm test"
+
+# Num banco à parte (campocerto_teste), criado na hora: o schema dele é apagado a cada rodada.
+test-integracao: ## API real (uvicorn) + PostgreSQL real, por HTTP (exige `make up` rodando)
+	$(COMPOSE) exec db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc "select 1 from pg_database where datname = '"'"'campocerto_teste'"'"'" | grep -q 1 || createdb -U "$$POSTGRES_USER" campocerto_teste'
+	$(COMPOSE) exec api sh -c 'INTEGRACAO_DATABASE_URL="$${DATABASE_URL%/*}/campocerto_teste" pytest -p no:cacheprovider tests/integracao'
 
 test: test-backend test-frontend ## Todos os testes unitários
 
