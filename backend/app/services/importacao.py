@@ -123,9 +123,11 @@ class _Linha:
 type _Lidas = list[tuple[int, list[Celula] | str]]
 
 
-def importar(db: Session, arquivo: str | bytes, *, confirmar: bool) -> ResultadoImportacao:
+def importar(
+    db: Session, arquivo: str | bytes, *, confirmar: bool, usuario_id: int | None = None
+) -> ResultadoImportacao:
     """Confere a planilha — texto = CSV, bytes = .xlsx — e devolve o resumo. Com
-    `confirmar` e sem erros, grava."""
+    `confirmar` e sem erros, grava em nome de `usuario_id` (quem importou)."""
     resultado = ResultadoImportacao()
     if isinstance(arquivo, bytes):
         lido = _ler_xlsx(arquivo, resultado.erros)
@@ -174,6 +176,7 @@ def importar(db: Session, arquivo: str | bytes, *, confirmar: bool) -> Resultado
             motivo=linha.motivo,
             valor_unitario=linha.valor_unitario,
             talhao_id=linha.talhao and linha.talhao.id,
+            usuario_id=usuario_id,
         )
         if linha.insumo.id is None:
             linha.insumo.movimentacoes.append(movimentacao)

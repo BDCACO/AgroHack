@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
+from app.api.permissoes import usuario_atual
 from app.core.database import get_db
 from app.core.relogio import hoje
+from app.models import Usuario
 from app.schemas.estoque import (
     AjusteDeInventario,
     ContagemDeInventario,
@@ -84,12 +86,15 @@ def remover_insumo(insumo_id: int, db: Session = Depends(get_db)) -> Response:
 
 @campo.post("/insumos/{insumo_id}/inventario", response_model=AjusteDeInventario)
 def registrar_inventario(
-    insumo_id: int, contagem: ContagemDeInventario, db: Session = Depends(get_db)
+    insumo_id: int,
+    contagem: ContagemDeInventario,
+    db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(usuario_atual),
 ) -> AjusteDeInventario:
     """Contagem física do galpão: lança a diferença para o saldo registrado naquele dia
     (sobra vira entrada; falta, saída), sem contar como consumo. Bateu, nada é lançado."""
     try:
-        return servico.registrar_inventario(db, insumo_id, contagem)
+        return servico.registrar_inventario(db, insumo_id, contagem, _id(usuario))
     except servico.InsumoInexistente:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
 
@@ -108,12 +113,15 @@ def listar_movimentacoes(
     "/movimentacoes", response_model=MovimentacaoResposta, status_code=status.HTTP_201_CREATED
 )
 def registrar_movimentacao(
-    dados: MovimentacaoEntrada, response: Response, db: Session = Depends(get_db)
+    dados: MovimentacaoEntrada,
+    response: Response,
+    db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(usuario_atual),
 ) -> MovimentacaoResposta:
     """Com `uuid` (gerado pelo app), reenviar é seguro: o lançamento já gravado volta com
     `200`, sem gravar de novo; o mesmo uuid com outro conteúdo é `409`."""
     try:
-        registro = servico.registrar_movimentacao(db, dados)
+        registro = servico.registrar_movimentacao(db, dados, _id(usuario))
     except servico.InsumoInexistente:
         # 422, não 404: o recurso da URL existe; o que está errado é o corpo.
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, _INSUMO_INEXISTENTE) from None
@@ -131,12 +139,14 @@ def registrar_movimentacao(
 
 @campo.post("/movimentacoes/lote", response_model=ResultadoDoLote)
 def sincronizar_movimentacoes(
-    lote: LoteDeMovimentacoes, db: Session = Depends(get_db)
+    lote: LoteDeMovimentacoes,
+    db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(usuario_atual),
 ) -> ResultadoDoLote:
     """A fila do app (até 500 lançamentos, cada um com o seu `uuid`), gravada na ordem e item
     a item: o item ruim volta `recusada` com os erros, e os outros gravam. Reenviar o lote é
     seguro: o que já entrou volta `ja_existia`."""
-    return sincronizacao.sincronizar(db, lote.movimentacoes)
+    return sincronizacao.sincronizar(db, lote.movimentacoes, _id(usuario))
 
 
 @gestao.delete("/movimentacoes/{movimentacao_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -149,14 +159,16 @@ def remover_movimentacao(movimentacao_id: int, db: Session = Depends(get_db)) ->
 
 @gestao.post("/importacoes", response_model=ResultadoImportacao)
 def importar_planilha(
-    pedido: PedidoDeImportacao, db: Session = Depends(get_db)
+    pedido: PedidoDeImportacao,
+    db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(usuario_atual),
 ) -> ResultadoImportacao:
     """Movimentações de uma planilha, em `xlsx` (base64) ou `conteudo` (texto do CSV), com
     as colunas data, insumo, unidade, tipo, quantidade e validade. Sem `confirmar`, só
     confere e resume. Com um erro sequer, nada é gravado: a resposta lista os erros por
     linha e `importado` vem falso."""
     arquivo = pedido.xlsx if pedido.xlsx is not None else pedido.conteudo
-    return importar(db, arquivo, confirmar=pedido.confirmar)
+    return importar(db, arquivo, confirmar=pedido.confirmar, usuario_id=_id(usuario))
 
 
 @gestao.get(
@@ -189,3 +201,8 @@ def baixar_relatorio(db: Session = Depends(get_db)) -> Response:
             "Content-Disposition": f'attachment; filename="relatorio-campocerto-{hoje()}.xlsx"'
         },
     )
+
+
+def _id(usuario: Usuario | None) -> int | None:
+    """Quem lança, para a auditoria; None sem login (autenticação desligada)."""
+    return None if usuario is None else usuario.id

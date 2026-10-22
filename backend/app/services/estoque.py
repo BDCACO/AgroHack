@@ -124,15 +124,18 @@ def listar_movimentacoes(db: Session, insumo_id: int | None, limite: int) -> lis
     return list(db.scalars(consulta.limit(limite)))
 
 
-def registrar_movimentacao(db: Session, dados: MovimentacaoEntrada) -> Registro:
-    """Grava o lançamento. Com `uuid` já gravado, é o app reenviando (a resposta anterior se
-    perdeu no caminho): devolve o que está no banco, sem gravar de novo."""
+def registrar_movimentacao(
+    db: Session, dados: MovimentacaoEntrada, usuario_id: int | None = None
+) -> Registro:
+    """Grava o lançamento em nome de `usuario_id`. Com `uuid` já gravado, é o app reenviando
+    (a resposta anterior se perdeu no caminho): devolve o que está no banco, sem gravar de
+    novo, e com o autor de antes."""
     _buscar_insumo(db, dados.insumo_id)
     if dados.talhao_id is not None and db.get(Talhao, dados.talhao_id) is None:
         raise TalhaoInexistente
     if dados.uuid is not None and (existente := _pelo_uuid(db, dados.uuid)) is not None:
         return _reenvio(existente, dados)
-    movimentacao = Movimentacao(**dados.model_dump())
+    movimentacao = Movimentacao(**dados.model_dump(), usuario_id=usuario_id)
     db.add(movimentacao)
     try:
         db.commit()
@@ -151,7 +154,7 @@ def registrar_movimentacao(db: Session, dados: MovimentacaoEntrada) -> Registro:
 
 
 def registrar_inventario(
-    db: Session, insumo_id: int, contagem: ContagemDeInventario
+    db: Session, insumo_id: int, contagem: ContagemDeInventario, usuario_id: int | None = None
 ) -> AjusteDeInventario:
     """Compara a contagem do galpão com o saldo registrado até aquele dia e lança a
     diferença: o estoque passa a ser o que foi contado."""
@@ -173,6 +176,7 @@ def registrar_inventario(
             motivo="inventario",
             data=contagem.data,
             quantidade=abs(diferenca),
+            usuario_id=usuario_id,
         )
         db.add(movimentacao)
         db.commit()

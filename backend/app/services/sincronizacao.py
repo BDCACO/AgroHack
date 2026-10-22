@@ -32,8 +32,8 @@ from app.services import estoque
 DIAS_DE_ATRASO = 30
 
 
-def sincronizar(db: Session, itens: list[Any]) -> ResultadoDoLote:
-    resultados = [_sincronizar_item(db, item) for item in itens]
+def sincronizar(db: Session, itens: list[Any], usuario_id: int | None = None) -> ResultadoDoLote:
+    resultados = [_sincronizar_item(db, item, usuario_id) for item in itens]
     _avisar(db, resultados)
     situacoes = [r.situacao for r in resultados]
     return ResultadoDoLote(
@@ -46,13 +46,13 @@ def sincronizar(db: Session, itens: list[Any]) -> ResultadoDoLote:
     )
 
 
-def _sincronizar_item(db: Session, item: Any) -> ResultadoDoItem:
+def _sincronizar_item(db: Session, item: Any, usuario_id: int | None) -> ResultadoDoItem:
     try:
         dados = MovimentacaoDoLote.model_validate(item)
     except ValidationError as erro:
         return ResultadoDoItem(uuid=_uuid_legivel(item), situacao="recusada", erros=_frases(erro))
     try:
-        registro = estoque.registrar_movimentacao(db, dados)
+        registro = estoque.registrar_movimentacao(db, dados, usuario_id)
     except estoque.InsumoInexistente:
         erro = f"O insumo {dados.insumo_id} não existe: pode ter sido removido no site."
         return ResultadoDoItem(uuid=dados.uuid, situacao="recusada", erros=[erro])

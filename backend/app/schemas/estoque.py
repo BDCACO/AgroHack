@@ -105,6 +105,10 @@ class MovimentacaoResposta(_Movimentacao):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    # Quem lançou (auditoria), só na resposta: o autor é quem está logado, e não quem o
+    # pedido diz ser. Vazio no que veio sem login (autenticação desligada) ou de antes dela.
+    usuario_id: int | None = None
+    lancado_por: str | None = None  # o nome dele, para a tela não precisar de outra consulta
 
 
 class MovimentacaoDoLote(MovimentacaoEntrada):
