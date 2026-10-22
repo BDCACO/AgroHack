@@ -56,6 +56,9 @@ def _sincronizar_item(db: Session, item: Any) -> ResultadoDoItem:
     except estoque.InsumoInexistente:
         erro = f"O insumo {dados.insumo_id} não existe: pode ter sido removido no site."
         return ResultadoDoItem(uuid=dados.uuid, situacao="recusada", erros=[erro])
+    except estoque.TalhaoInexistente:
+        erro = f"O talhão {dados.talhao_id} não existe: pode ter sido removido no site."
+        return ResultadoDoItem(uuid=dados.uuid, situacao="recusada", erros=[erro])
     except estoque.LancamentoDiferente as erro:
         return ResultadoDoItem(uuid=dados.uuid, situacao="recusada", erros=[str(erro)])
     return ResultadoDoItem(
@@ -109,7 +112,8 @@ def _saldo(db: Session, insumo_id: int) -> float:
 def _igual_sem_uuid(db: Session, movimentacao: MovimentacaoResposta) -> bool:
     """O mesmo lançamento digitado no site e no app: o uuid não ajuda (o do site não tem),
     então só o conteúdo denuncia. Duas retiradas iguais no mesmo dia existem de verdade,
-    por isso é aviso, não recusa."""
+    por isso é aviso, não recusa. O talhão fica fora da comparação: o site pode não tê-lo
+    mandado, e é justamente o mesmo lançamento."""
     consulta = select(Movimentacao.id).where(
         Movimentacao.uuid.is_(None),
         Movimentacao.insumo_id == movimentacao.insumo_id,

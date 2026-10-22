@@ -114,6 +114,10 @@ def registrar_movimentacao(
     except servico.InsumoInexistente:
         # 422, não 404: o recurso da URL existe; o que está errado é o corpo.
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, _INSUMO_INEXISTENTE) from None
+    except servico.TalhaoInexistente:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Talhão não encontrado."
+        ) from None
     except servico.LancamentoDiferente as erro:
         raise HTTPException(status.HTTP_409_CONFLICT, str(erro)) from None
     if not registro.nova:

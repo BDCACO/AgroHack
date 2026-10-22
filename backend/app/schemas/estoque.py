@@ -63,6 +63,9 @@ class _Movimentacao(BaseModel):
     # Identificador que o app gera para cada lançamento (UUID v4): reenviar o mesmo
     # lançamento não o grava de novo. Opcional: o site não manda.
     uuid: UUID | None = None
+    # Onde o insumo foi aplicado, só numa retirada para uso. Opcional: o site e o app de
+    # antes não mandam, e a retirada sem talhão vale como sempre.
+    talhao_id: int | None = None
 
 
 class MovimentacaoEntrada(_Movimentacao):
@@ -78,6 +81,10 @@ class MovimentacaoEntrada(_Movimentacao):
             raise ValueError("descarte é uma saída: o produto deixa o estoque")
         if self.valor_unitario is not None and self.tipo != "entrada":
             raise ValueError("valor_unitario só se informa numa entrada: é o preço da compra")
+        if self.talhao_id is not None and (self.tipo != "saida" or self.motivo is not None):
+            raise ValueError(
+                "talhão só se informa numa retirada para uso: é onde o insumo foi aplicado"
+            )
         # Ano digitado errado (2062 por 2026) jogaria a movimentação no futuro.
         if self.data > hoje():
             raise ValueError("a data da movimentação não pode ser futura")

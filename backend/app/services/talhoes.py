@@ -1,11 +1,11 @@
 """Casos de uso dos talhões: o cadastro, e a carência e o custo do que foi aplicado em
 cada um."""
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Talhao
+from app.models import Movimentacao, Talhao
 from app.schemas.talhao import TalhaoCadastro, TalhaoResposta
 
 
@@ -15,6 +15,20 @@ class NomeDuplicado(Exception):
 
 class TalhaoInexistente(Exception):
     pass
+
+
+class TalhaoComAplicacoes(Exception):
+    """Remover o talhão apagaria (ou deixaria sem dono) o registro de onde cada insumo foi
+    aplicado: a rastreabilidade que a carência e o custo usam."""
+
+    def __init__(self, nome: str, aplicacoes: int) -> None:
+        quantas = (
+            "1 aplicação registrada" if aplicacoes == 1 else f"{aplicacoes} aplicações registradas"
+        )
+        super().__init__(
+            f"{nome} tem {quantas}: removê-lo apagaria para onde foi cada insumo. Remova as "
+            "aplicações antes, se foram lançadas por engano."
+        )
 
 
 def listar_talhoes(db: Session) -> list[TalhaoResposta]:
@@ -41,8 +55,19 @@ def detalhar_talhao(db: Session, talhao_id: int) -> TalhaoResposta:
 
 
 def remover_talhao(db: Session, talhao_id: int) -> None:
-    db.delete(buscar_talhao(db, talhao_id))
-    db.commit()
+    talhao = buscar_talhao(db, talhao_id)
+    aplicacoes = db.scalar(
+        select(func.count()).select_from(Movimentacao).where(Movimentacao.talhao_id == talhao_id)
+    )
+    if aplicacoes:
+        raise TalhaoComAplicacoes(talhao.nome, aplicacoes)
+    db.delete(talhao)
+    try:
+        db.commit()
+    except IntegrityError as erro:
+        # Uma aplicação lançada entre a contagem e o DELETE: o RESTRICT do banco barra.
+        db.rollback()
+        raise TalhaoComAplicacoes(talhao.nome, 1) from erro
 
 
 def buscar_talhao(db: Session, talhao_id: int) -> Talhao:

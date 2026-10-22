@@ -132,3 +132,34 @@ def test_banco_recusa_movimentacao_incoerente_mesmo_fora_da_api(
             ),
             {"tipo": tipo, "motivo": motivo, "validade": validade, "valor": valor},
         )
+
+
+@pytest.mark.parametrize(
+    ("tipo", "motivo"),
+    [("entrada", None), ("saida", "descarte"), ("saida", "inventario"), ("entrada", "inventario")],
+)
+def test_banco_recusa_talhao_fora_da_retirada_para_uso(
+    banco: Engine, tipo: str, motivo: str | None
+) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, talhoes RESTART IDENTITY CASCADE"))
+        conexao.execute(text("INSERT INTO insumos (nome, unidade) VALUES ('Glifosato', 'L')"))
+        conexao.execute(text("INSERT INTO talhoes (nome, area_ha) VALUES ('Norte', 120)"))
+    inserir = text(
+        "INSERT INTO movimentacoes (insumo_id, tipo, data, quantidade, motivo, talhao_id)"
+        " VALUES (1, :tipo, '2026-10-01', 1, :motivo, 1)"
+    )
+
+    with (
+        pytest.raises(IntegrityError, match="ck_movimentacoes_talhao_so_em_aplicacao"),
+        banco.begin() as conexao,
+    ):
+        conexao.execute(inserir, {"tipo": tipo, "motivo": motivo})
+    # A retirada para uso aceita; e o talhão com ela não se apaga, nem fora da API.
+    with banco.begin() as conexao:
+        conexao.execute(inserir, {"tipo": "saida", "motivo": None})
+    with (
+        pytest.raises(IntegrityError, match="fk_movimentacoes_talhao_id_talhoes"),
+        banco.begin() as conexao,
+    ):
+        conexao.execute(text("DELETE FROM talhoes"))

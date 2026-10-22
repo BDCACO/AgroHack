@@ -46,8 +46,11 @@ def atualizar_talhao(
 
 @router.delete("/talhoes/{talhao_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remover_talhao(talhao_id: int, db: Session = Depends(get_db)) -> Response:
+    """Só o talhão sem aplicação: com alguma, `409`, para não perder onde cada insumo foi."""
     try:
         servico.remover_talhao(db, talhao_id)
     except servico.TalhaoInexistente:
         raise _TALHAO_INEXISTENTE from None
+    except servico.TalhaoComAplicacoes as erro:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(erro)) from None
     return Response(status_code=status.HTTP_204_NO_CONTENT)

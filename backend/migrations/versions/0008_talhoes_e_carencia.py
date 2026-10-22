@@ -1,10 +1,13 @@
-"""talhões
+"""talhões e aplicações
 
-`talhoes`: onde os insumos são aplicados (nome único, área em hectares, cultura). Tudo
-opcional para o que já existe: sem talhão, o CampoCerto funciona como antes.
+`talhoes`: onde os insumos são aplicados (nome único, área em hectares, cultura); e
+`movimentacoes.talhao_id`, o talhão de uma retirada para uso (RESTRICT: o talhão com
+aplicação não se apaga). Tudo opcional para o que já existe: sem talhão, o CampoCerto
+funciona como antes.
 
-O downgrade apagaria os talhões, que a versão anterior não tem onde guardar. Por isso ele
-se recusa enquanto houver algum, a não ser que se peça com todas as letras:
+O downgrade apagaria os talhões e o registro de onde cada insumo foi aplicado, que a versão
+anterior não tem onde guardar. Por isso ele se recusa enquanto houver algum talhão, a não
+ser que se peça com todas as letras:
 
     alembic -x descartar_talhoes=sim downgrade 0007
 
@@ -38,6 +41,21 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id", name=op.f("pk_talhoes")),
         sa.UniqueConstraint("nome", name=op.f("uq_talhoes_nome")),
     )
+    op.add_column("movimentacoes", sa.Column("talhao_id", sa.Integer(), nullable=True))
+    op.create_foreign_key(
+        op.f("fk_movimentacoes_talhao_id_talhoes"),
+        "movimentacoes",
+        "talhoes",
+        ["talhao_id"],
+        ["id"],
+        ondelete="RESTRICT",
+    )
+    op.create_index(op.f("ix_movimentacoes_talhao_id"), "movimentacoes", ["talhao_id"])
+    op.create_check_constraint(
+        op.f("ck_movimentacoes_talhao_so_em_aplicacao"),
+        "movimentacoes",
+        "talhao_id IS NULL OR (tipo = 'saida' AND motivo IS NULL)",
+    )
 
 
 def downgrade() -> None:
@@ -49,4 +67,12 @@ def downgrade() -> None:
             "Baixe o relatório (a aba Talhões leva o cadastro) e, para descartá-los, rode: "
             "alembic -x descartar_talhoes=sim downgrade 0007"
         )
+    op.drop_constraint(
+        op.f("ck_movimentacoes_talhao_so_em_aplicacao"), "movimentacoes", type_="check"
+    )
+    op.drop_index(op.f("ix_movimentacoes_talhao_id"), table_name="movimentacoes")
+    op.drop_constraint(
+        op.f("fk_movimentacoes_talhao_id_talhoes"), "movimentacoes", type_="foreignkey"
+    )
+    op.drop_column("movimentacoes", "talhao_id")
     op.drop_table("talhoes")

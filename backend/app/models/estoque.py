@@ -67,6 +67,12 @@ class Movimentacao(Base):
             "valor_unitario IS NULL OR (tipo = 'entrada' AND motivo IS NULL)",
             name="valor_so_em_compra",
         ),
+        # Talhão é para onde o insumo foi aplicado: só a retirada para uso tem. Compra,
+        # descarte e ajuste de inventário não saem para a lavoura.
+        CheckConstraint(
+            "talhao_id IS NULL OR (tipo = 'saida' AND motivo IS NULL)",
+            name="talhao_so_em_aplicacao",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -84,6 +90,11 @@ class Movimentacao(Base):
     # sinal é reconhecido por ele e não vira duplicata. Vazio no que veio do site, da
     # importação e da contagem do galpão.
     uuid: Mapped[UUID | None] = mapped_column(Uuid, unique=True)
+    # Opcional: a retirada sem talhão continua valendo para o estoque e o consumo. RESTRICT:
+    # remover o talhão não pode apagar nem esvaziar o registro de onde cada insumo foi.
+    talhao_id: Mapped[int | None] = mapped_column(
+        ForeignKey("talhoes.id", ondelete="RESTRICT"), index=True
+    )
 
 
 class Talhao(Base):

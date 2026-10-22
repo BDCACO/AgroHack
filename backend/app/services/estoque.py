@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.analysis.consumo import analisar
 from app.core.relogio import hoje
 from app.domain import estoque as dominio
-from app.models import Insumo, Movimentacao
+from app.models import Insumo, Movimentacao, Talhao
 from app.schemas.estoque import (
     AjusteDeInventario,
     ContagemDeInventario,
@@ -37,6 +37,7 @@ _CONTEUDO_DO_LANCAMENTO = {
     "validade": None,
     "motivo": None,
     "valor_unitario": 4,
+    "talhao_id": None,
 }
 
 
@@ -45,6 +46,10 @@ class NomeDuplicado(Exception):
 
 
 class InsumoInexistente(Exception):
+    pass
+
+
+class TalhaoInexistente(Exception):
     pass
 
 
@@ -123,6 +128,8 @@ def registrar_movimentacao(db: Session, dados: MovimentacaoEntrada) -> Registro:
     """Grava o lançamento. Com `uuid` já gravado, é o app reenviando (a resposta anterior se
     perdeu no caminho): devolve o que está no banco, sem gravar de novo."""
     _buscar_insumo(db, dados.insumo_id)
+    if dados.talhao_id is not None and db.get(Talhao, dados.talhao_id) is None:
+        raise TalhaoInexistente
     if dados.uuid is not None and (existente := _pelo_uuid(db, dados.uuid)) is not None:
         return _reenvio(existente, dados)
     movimentacao = Movimentacao(**dados.model_dump())
