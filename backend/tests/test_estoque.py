@@ -144,6 +144,7 @@ def test_inventario_com_falta_lanca_a_diferenca_sem_virar_consumo(client: TestCl
         "quantidade": 10,
         "validade": None,
         "valor_unitario": None,
+        "uuid": None,  # a contagem é feita no sistema, não chega da fila do app
     }
     depois = client.get(f"/api/v1/insumos/{insumo['id']}").json()
     assert depois["estoque_atual"] == 70

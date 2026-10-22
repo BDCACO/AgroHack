@@ -1,5 +1,6 @@
 from datetime import date
 from typing import Literal, Self
+from uuid import UUID
 
 from pydantic import Base64Bytes, BaseModel, ConfigDict, Field, model_validator
 
@@ -56,6 +57,9 @@ class _Movimentacao(BaseModel):
     motivo: Literal["descarte", "inventario"] | None = None
     # R$ por unidade do insumo, o preço pago. Só numa compra; opcional.
     valor_unitario: float | None = Field(default=None, gt=0, le=VALOR_UNITARIO_MAXIMO)
+    # Identificador que o app gera para cada lançamento (UUID v4): reenviar o mesmo
+    # lançamento não o grava de novo. Opcional: o site não manda.
+    uuid: UUID | None = None
 
 
 class MovimentacaoEntrada(_Movimentacao):

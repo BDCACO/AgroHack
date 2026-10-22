@@ -5,8 +5,9 @@ Guardar o saldo seria ter duas fontes da verdade, que um dia discordam.
 """
 
 from datetime import date
+from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, false
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, Uuid, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -77,3 +78,7 @@ class Movimentacao(Base):
     motivo: Mapped[str | None] = mapped_column(String(10))
     # Opcional: sem preço, tudo funciona igual; com ele, a análise fala em reais.
     valor_unitario: Mapped[float | None] = mapped_column(ValorUnitario)
+    # Gerado pelo app no celular, antes de enviar: o reenvio de um lançamento feito sem
+    # sinal é reconhecido por ele e não vira duplicata. Vazio no que veio do site, da
+    # importação e da contagem do galpão.
+    uuid: Mapped[UUID | None] = mapped_column(Uuid, unique=True)
