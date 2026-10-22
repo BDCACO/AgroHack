@@ -50,11 +50,12 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 
 | Caminho | Responsabilidade |
 |---|---|
-| `app/models/estoque.py` | `insumos` (com `embalagem` e `pedido_minimo` opcionais) e `movimentacoes` (entrada ou saída, data, quantidade, validade, `motivo`: vazio, `descarte` ou `inventario`, e `valor_unitario`, o preço da compra). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só. O custo médio também não: sai das compras |
+| `app/models/estoque.py` | `insumos` (com `embalagem` e `pedido_minimo` opcionais) e `movimentacoes` (entrada ou saída, data, quantidade, validade, `motivo`: vazio, `descarte` ou `inventario`, `valor_unitario`, o preço da compra, e `uuid`, o identificador gerado pelo app). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só. O custo médio também não: sai das compras |
 | `app/services/estoque.py` | Casos de uso: cadastro, movimentações, a análise de cada insumo a partir do banco e o saldo dia a dia (histórico do gráfico). As rotas falam só com os serviços (este, `importacao`, `planilha_modelo` e `relatorio`) |
 | `app/services/importacao.py` | Importação de movimentações por planilha (Excel ou CSV), ver abaixo |
 | `app/services/planilha_modelo.py` | A planilha modelo da importação e os estilos das planilhas geradas (cores da marca, títulos, impressão) |
 | `app/services/relatorio.py` | O relatório em Excel: resumo (com os totais em reais), alertas, reposição, situação de cada insumo e todas as movimentações |
+| `app/services/sincronizacao.py` | A fila de lançamentos do app (`POST /movimentacoes/lote`): grava item a item, traduz os erros de validação em frases e calcula os avisos (ver abaixo) |
 | `app/services/resumo.py` | A visão geral em reais (`GET /resumo`): soma o que `estoque.listar_insumos` já analisou, mais as perdas |
 | `app/demo.py` | Fazenda fictícia para a apresentação (`make demo`): insumos marcados com `demonstracao`, que a tela sinaliza e `make demo-limpar` apaga sozinhos |
 | `app/core/relogio.py` | `hoje()` na data de Rondônia (UTC−4 fixo, sem horário de verão), não na do servidor |
@@ -101,6 +102,54 @@ preço zero ou negativo. Sem preço nenhum, tudo funciona como antes; com ele:
   guardar: ele se recusa enquanto houver algum gravado, e só segue com
   `alembic -x descartar_precos=sim downgrade 0005` (antes, baixe o relatório, que leva os
   preços).
+
+### Lançamento offline do app (sincronização)
+
+No campo o sinal cai. O app guarda os lançamentos no celular e os manda quando a rede volta,
+quantas vezes precisar, sem duplicar e sem perder nada. Decisões:
+
+- **O identificador nasce no celular.** `movimentacoes.uuid` (`UUID`, opcional e `UNIQUE`) é
+  gerado pelo app no momento do lançamento, antes de qualquer envio: é ele que diz ao servidor
+  "este é o mesmo lançamento". Fica vazio no que vem do site, da importação e da contagem do
+  galpão. Não vai para a planilha (é detalhe técnico): o relatório e a importação ignoram a
+  coluna, e a cópia de segurança restaurada volta sem uuid.
+- **`POST /movimentacoes` com `uuid` é idempotente.** Se o uuid já está gravado com o mesmo
+  conteúdo (insumo, tipo, data, quantidade, validade, motivo e preço, comparados com as casas
+  que o banco guarda), devolve o lançamento gravado com **`200`** em vez de `201` e não grava de
+  novo. Com outro conteúdo, **`409`** dizendo quais campos diferem: é o app reaproveitando o
+  identificador, e gravar ou ignorar perderia um dos dois em silêncio. Sem `uuid`, nada muda:
+  duas retiradas iguais no mesmo dia continuam sendo duas.
+- **Envio simultâneo.** O app pode reenviar enquanto o primeiro envio ainda grava. Os dois
+  passam pela consulta antes de um deles gravar; quem barra o segundo é o `UNIQUE` do banco, e a
+  violação (`IntegrityError`) vira o caso do reenvio (`200` ou `ja_existia`), não um `500`.
+- **`POST /movimentacoes/lote`, item a item.** Até 500 lançamentos, na ordem da fila, cada um com
+  `uuid` obrigatório e na **própria transação**. Não é tudo ou nada como a importação de
+  planilha: a fila é do celular, e um item ruim não pode travar os que o produtor já fez. Os
+  itens chegam como objetos genéricos e cada um é validado sozinho com o schema de sempre;
+  item malformado (até um que nem é objeto) volta `recusada` com os erros em frases, com o nome
+  do campo ("quantidade tem de ser maior que 0."), em vez de um `422` que derrubaria o lote. O
+  pedido em si malformado (sem `movimentacoes`, mais de 500 itens) continua `422`. Se o envio
+  cair no meio, o que já entrou fica, e o reenvio do lote o devolve como `ja_existia`. 500
+  itens dão uns 100 kB, longe do limite de 8 MB do corpo.
+- **Resposta do lote:** `resultados`, na ordem do envio, cada um com `uuid` (o enviado; `null`
+  se não deu para ler), `situacao` (`gravada`, `ja_existia` ou `recusada`), `movimentacao`
+  (quando gravada ou já existia), `erros` e `avisos`; e `resumo` com `gravadas`, `ja_existiam`
+  e `recusadas`.
+- **Avisos não impedem nada**, só pedem para conferir: (1) o estoque do insumo fica negativo
+  depois do lote inteiro ("O estoque de Ureia fica em -2 kg com este envio: falta lançar uma
+  entrada?"), uma vez por insumo, na última saída dele; o saldo é o do fim do lote porque a
+  fila segue a ordem dos lançamentos, e uma entrada mais adiante pode cobrir a saída; (2) data
+  de mais de 30 dias atrás (ano ou mês digitado errado, ou lançamento esquecido na fila); (3)
+  o mesmo conteúdo já lançado **sem** uuid no mesmo dia: provavelmente digitado no site e no
+  app. Voltam também no `ja_existia`, porque a primeira resposta pode ter se perdido. O `POST`
+  simples não traz avisos: a resposta dele não mudou.
+- **Remoção.** `DELETE /movimentacoes/{id}` continua igual e não deixa rastro: reenviar depois
+  o mesmo uuid grava de novo. É a regra mais simples, e só acontece se o app reenviar algo que
+  já tinha recebido resposta, o que ele não faz (seção 4). Guardar os uuids removidos
+  protegeria contra isso, mas é mais uma tabela e mais uma regra para explicar ao produtor.
+- **Migration 0007.** O downgrade apagaria os uuids, e um lançamento ainda na fila de algum
+  celular seria gravado de novo depois: ele se recusa enquanto houver algum gravado, e só segue
+  com `alembic -x descartar_uuids=sim downgrade 0006` (com os celulares já sincronizados).
 
 ### Importação de planilha
 
@@ -171,9 +220,10 @@ tem banco a orquestrar e chama o motor direto.
 | `POST /api/v1/insumos` · `PUT /api/v1/insumos/{id}` | Cadastra / altera insumo (nome, unidade, mínimo, prazo de reposição e, opcionais, `embalagem` e `pedido_minimo`). `409` para nome repetido. No `PUT`, embalagem e pedido mínimo ausentes ficam como estão |
 | `DELETE /api/v1/insumos/{id}` | Remove o insumo cadastrado por engano, com as movimentações dele |
 | `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (`insumo_id`, `limite`) |
-| `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo; entrada pode trazer `valor_unitario` (R$ por unidade). `422` para data futura, validade ou preço em saída, preço zero ou negativo, descarte em entrada ou insumo inexistente |
+| `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo; entrada pode trazer `valor_unitario` (R$ por unidade). `422` para data futura, validade ou preço em saída, preço zero ou negativo, descarte em entrada ou insumo inexistente. Com `uuid` (opcional, gerado pelo app), reenviar devolve o já gravado com `200`; o mesmo uuid com outro conteúdo é `409` |
+| `POST /api/v1/movimentacoes/lote` | A fila do app: `{"movimentacoes": [...]}`, até 500, cada uma com `uuid`. Grava na ordem, item a item; devolve para cada uma `gravada`, `ja_existia` ou `recusada` (com os `erros` em frases) e os `avisos`, mais o `resumo`. Sempre `200`, a não ser que o pedido inteiro esteja malformado (`422`) |
 | `POST /api/v1/insumos/{id}/inventario` | Contagem do galpão (`quantidade_contada`, `data` opcional): lança a diferença para o saldo registrado naquele dia como ajuste (`motivo: "inventario"`) e devolve saldo, contagem e diferença. Se bate, nada é lançado |
-| `DELETE /api/v1/movimentacoes/{id}` | Remove lançamento errado |
+| `DELETE /api/v1/movimentacoes/{id}` | Remove lançamento errado (o mesmo uuid, reenviado depois, grava de novo) |
 | `GET /api/v1/resumo` | Visão geral em reais: `valor_em_estoque` (`null` se nenhum insumo tem preço), `insumos_sem_preco`, `perdas` (descartes e faltas da contagem pelo custo médio: `ultimos_30_dias` e `total`), `compras_sugeridas` (custo das reposições dos próximos 30 dias, quantas e quantas para hoje), `alertas` por gravidade e as `limitacoes` das somas |
 | `POST /api/v1/importacoes` | Movimentações de uma planilha: `xlsx` (base64) ou `conteudo` (texto do CSV). Sem `confirmar`, só confere e resume, com o total de cada insumo; com erro, nada é gravado e a resposta lista os erros por linha |
 | `GET /api/v1/importacoes/modelo.xlsx` | Planilha modelo formatada, com os insumos cadastrados para escolher da lista |
@@ -302,6 +352,22 @@ Decisões:
 
 Ainda não há no app: página do insumo com o gráfico, cadastro, lançamento de movimentação e
 importação de planilha (falta escolher o arquivo no celular). Para esses, use o site.
+
+**Para lançar sem sinal** (a API já está pronta, seção 2, "Lançamento offline do app"), o app
+precisa:
+
+1. **Gerar um uuid v4 por lançamento**, na hora em que o produtor lança, e guardá-lo junto: é o
+   mesmo uuid em todo reenvio. Nunca um uuid novo para reenviar.
+2. **Guardar a fila no celular** (armazenamento que sobrevive a fechar o app) e mostrar o
+   lançamento como "aguardando envio".
+3. **Mandar a fila por `POST /movimentacoes/lote`**, em lotes de até 500, na ordem em que foram
+   lançados; com sinal também, para ter um caminho só.
+4. **Reenviar o mesmo lote até receber o resultado.** Sem resposta (timeout, sinal caiu, `5xx`),
+   manda de novo: o que já entrou volta `ja_existia`. Só tira da fila o item que voltou com
+   resultado.
+5. **Tratar cada resultado:** `gravada` e `ja_existia` saem da fila; `recusada` não vai mudar
+   reenviando: sai da fila e aparece para o produtor com os `erros`, para corrigir e lançar de
+   novo (com uuid novo, é outro lançamento). Os `avisos` também vão para a tela.
 
 ## 5. Infraestrutura
 
