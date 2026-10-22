@@ -32,7 +32,7 @@ def test_relatorio_traz_alertas_reposicao_e_estoque(client: TestClient, db: Sess
     assert ("Urgente", "Ureia agrícola", "Risco de falta") in {a[:3] for a in alertas}
     assert all(a[3] for a in alertas)
     reposicao = list(livro["Reposição"].iter_rows(min_row=2, values_only=True))
-    assert reposicao[0][:3] == ("Ureia agrícola", 662, "kg")
+    assert reposicao[0][:3] == ("Ureia agrícola", 700, "kg")  # 14 sacos de 50 kg
     estoque = {linha[0]: linha for linha in livro["Estoque"].iter_rows(min_row=2, values_only=True)}
     assert len(estoque) == 7
     assert estoque["Semente de milho híbrido"][9] == "Sem alertas"
