@@ -13,6 +13,13 @@ mostra a conta que o justifica e o que a conta não sabe.**
 4. Ter à mão `docs/exemplos/planilha-com-erros.csv` e o Excel (ou o LibreOffice) instalado,
    para abrir a planilha modelo.
 
+**Login (opcional, fora do roteiro).** A demonstração roda com a autenticação desligada, porque
+o site e o app ainda não têm a tela de login. Para mostrar os papéis pelo `/docs`: `AUTENTICACAO=true`
+no `.env`, `make up`, `make usuario-dono LOGIN=maria NOME="Dona Maria"`; no `/docs`,
+`POST /auth/entrar` com a dona, Authorize com o token, `POST /usuarios` com um funcionário; entre
+como ele e tente `DELETE /insumos/{id}`: `403`, "Só o dono da fazenda pode fazer isto". Depois,
+volte `AUTENTICACAO=false` para as telas funcionarem.
+
 ## O que cada insumo da demonstração mostra
 
 | Insumo | Alerta | Para falar |
@@ -68,7 +75,8 @@ E os talhões (as retiradas da fazenda foram aplicadas neles; carências fictíc
    o custo do que foi aplicado em cada talhão, total e por hectare, e o que a conta não sabe (o
    calcário do Pasto 1 sem carência cadastrada; o custo pelo custo médio de hoje). Carga com
    resíduo acima do permitido é recusada; o CampoCerto avisa antes da colheita.
-9. **Fechamento.** O que vem depois: acesso por usuário, sazonalidade da safra no consumo,
+9. **Fechamento.** O que vem depois: a tela de login no site e no app (a API já tem dono e
+   funcionário), sazonalidade da safra no consumo,
    o resumo em reais (valor em estoque, perdas, compras do mês) e os talhões nas telas do site
    e do app.
 

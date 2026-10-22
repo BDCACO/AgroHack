@@ -24,7 +24,9 @@ navegador ──► Vite (:5173) ──/api──► FastAPI (:8000) ──► P
 | `app/main.py` | Fábrica `create_app(settings)`: os testes criam a sua com configuração própria |
 | `app/core/config.py` | `Settings` (pydantic-settings). Única fonte de variáveis de ambiente |
 | `app/core/database.py` | Engine, sessão e a dependência `get_db` |
-| `app/api/router.py` | Agrega as rotas da v1 (`/api/v1`) |
+| `app/core/senha.py` | Hash scrypt da senha (biblioteca padrão), com o sal e os parâmetros gravados junto |
+| `app/api/router.py` | Agrega as rotas da v1 (`/api/v1`), cada grupo com o seu nível de permissão |
+| `app/api/permissoes.py` | As dependências de cada nível (sessão, funcionário, dono) e quem fez o pedido |
 | `app/api/routes/` | Rotas HTTP, finas: validam entrada, chamam serviço, devolvem schema |
 | `app/schemas/` | Modelos Pydantic de entrada/saída da API |
 | `app/models/` | Modelos ORM (SQLAlchemy). Todo modelo novo é importado em `models/__init__.py` |
@@ -51,7 +53,7 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 
 | Caminho | Responsabilidade |
 |---|---|
-| `app/models/estoque.py` | `insumos` (com `embalagem`, `pedido_minimo` e `carencia_dias` opcionais), `talhoes` (nome, `area_ha`, `cultura`) e `movimentacoes` (entrada ou saída, data, quantidade, validade, `motivo`: vazio, `descarte` ou `inventario`, `valor_unitario`, o preço da compra, `uuid`, o identificador gerado pelo app, e `talhao_id`, onde a retirada foi aplicada). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só. O custo médio também não: sai das compras |
+| `app/models/estoque.py` | `insumos` (com `embalagem`, `pedido_minimo` e `carencia_dias` opcionais), `talhoes` (nome, `area_ha`, `cultura`) e `movimentacoes` (entrada ou saída, data, quantidade, validade, `motivo`: vazio, `descarte` ou `inventario`, `valor_unitario`, o preço da compra, `uuid`, o identificador gerado pelo app, `talhao_id`, onde a retirada foi aplicada, e `usuario_id`, quem lançou). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só. O custo médio também não: sai das compras |
 | `app/services/estoque.py` | Casos de uso: cadastro, movimentações, a análise de cada insumo a partir do banco e o saldo dia a dia (histórico do gráfico). As rotas falam só com os serviços (este, `importacao`, `planilha_modelo` e `relatorio`) |
 | `app/services/importacao.py` | Importação de movimentações por planilha (Excel ou CSV), ver abaixo |
 | `app/services/planilha_modelo.py` | A planilha modelo da importação e os estilos das planilhas geradas (cores da marca, títulos, impressão) |
@@ -59,6 +61,10 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 | `app/services/talhoes.py` | Cadastro de talhões e a leitura de cada um: carência e custo calculados das aplicações, com o custo médio pela mesma regra da tela do insumo |
 | `app/services/sincronizacao.py` | A fila de lançamentos do app (`POST /movimentacoes/lote`): grava item a item, traduz os erros de validação em frases e calcula os avisos (ver abaixo) |
 | `app/services/resumo.py` | A visão geral em reais (`GET /resumo`): soma o que `estoque.listar_insumos` já analisou, mais as perdas |
+| `app/models/usuario.py` | `usuarios` (login em minúsculas, hash da senha, papel, ativo, falhas seguidas e bloqueio) e `sessoes` (o SHA-256 do token, validade, encerramento, aparelho) |
+| `app/services/autenticacao.py` | Login, a sessão conferida a cada pedido, sair, trocar a senha e o bloqueio por senhas erradas |
+| `app/services/usuarios.py` | Gestão pelo dono: cadastrar, alterar, desativar, redefinir a senha; o último dono ativo |
+| `app/usuarios.py` | O comando que cria o primeiro dono no servidor (`make usuario-dono`) |
 | `app/demo.py` | Fazenda fictícia para a apresentação (`make demo`): insumos e talhões marcados com `demonstracao`, que a tela sinaliza e `make demo-limpar` apaga sozinhos (menos o talhão em que se lançou a aplicação de um insumo real) |
 | `app/core/relogio.py` | `hoje()` na data de Rondônia (UTC−4 fixo, sem horário de verão), não na do servidor |
 
@@ -206,6 +212,86 @@ quantas vezes precisar, sem duplicar e sem perder nada. Decisões:
   celular seria gravado de novo depois: ele se recusa enquanto houver algum gravado, e só segue
   com `alembic -x descartar_uuids=sim downgrade 0006` (com os celulares já sincronizados).
 
+### Autenticação e papéis
+
+Até aqui, qualquer um que alcançasse a tela lia, alterava e apagava tudo. Agora há login, com
+dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Decisões:
+
+- **Liga e desliga, fail-closed em produção.** `AUTENTICACAO=true|false`. Em `production`, a API
+  **não sobe** sem `AUTENTICACAO=true` (como o `ENVIRONMENT` inválido): esquecer a variável não
+  pode deixar a produção aberta. Em `development` e `test` o padrão é desligada, para o site e o
+  app, que ainda não têm tela de login, continuarem funcionando; ao subir assim, a API avisa no
+  log.
+- **Desligada**, pedido sem token passa como antes, com os poderes do dono. Mas o token enviado
+  vale: válido, o usuário é reconhecido (vai para a auditoria) e o papel dele conta (funcionário
+  em rota do dono é `403`); falso, vencido ou encerrado é `401`. Assim o site e o app implementam
+  o login contra a API de desenvolvimento sem precisar ligá-la. As rotas da própria sessão e a
+  gestão de usuários exigem login **sempre**: desligada, sem isso, qualquer um na rede criaria
+  um dono para si.
+- **Senha:** `hashlib.scrypt` da biblioteca padrão (sem dependência nova), N=2^14, r=8, p=1
+  (16 MiB, uns 0,2 s), sal aleatório de 16 bytes por senha, gravado como
+  `scrypt$n$r$p$sal$hash`: com os parâmetros no hash, o custo pode subir depois, e o login
+  refaz o hash de quem entrar. Comparação com `hmac.compare_digest`, acento normalizado (NFC),
+  mínimo de 8 caracteres. Usuário não se apaga, **desativa**: as movimentações dizem quem as
+  lançou.
+- **Login** sem diferenciar maiúsculas: guardado em minúsculas (o banco confere com
+  `login = lower(login)`), com o `UNIQUE` simples. Só letras sem acento, números, ponto, hífen
+  e sublinhado: "zé" num teclado sem acento seria outro login.
+- **Token opaco, e não JWT.** `secrets.token_urlsafe(32)`, devolvido **uma vez** no login; o
+  banco guarda só o SHA-256 (sem sal nem scrypt: são 256 bits aleatórios, e a conferência de
+  cada pedido precisa ser rápida). O servidor procura a sessão a cada pedido, então sair,
+  trocar a senha e desativar o usuário valem **na hora**, sem lista de revogação. Vai no
+  cabeçalho `Authorization: Bearer <token>`.
+- **Validade de 30 dias**, fixa, conferida a cada pedido. O app passa dias no campo sem sinal,
+  lançando na fila, e um login vencido no meio da lida obrigaria o funcionário a achar sinal e
+  lembrar a senha só para continuar. O risco do prazo longo (celular perdido) se resolve pelo
+  dono, que desativa o usuário ou redefine a senha: as sessões dele caem na hora.
+- **Respostas:** `401` com `WWW-Authenticate: Bearer` e a frase do motivo (falta o login,
+  sessão inválida, encerrada, vencida, usuário desativado); `403` quando o papel não permite
+  ("Só o dono da fazenda pode fazer isto: peça a ele.").
+- **Contra adivinhação de senha:** 5 erros seguidos bloqueiam o login daquele usuário por 15
+  minutos; o acerto zera a conta; tentar durante o bloqueio não o estende. Fica no banco
+  (sobrevive a reiniciar e vale para todos os processos), com `FOR UPDATE` na linha do usuário:
+  dez chutes simultâneos entram um de cada vez e não passam todos antes de o primeiro contar.
+  A senha atual errada em `PUT /auth/senha` também conta. A resposta é **sempre a mesma**
+  ("Login ou senha incorretos.", com a regra do bloqueio), para login inexistente, senha
+  errada, usuário desativado e login bloqueado, e o login inexistente gasta o mesmo scrypt:
+  nem o texto nem o tempo contam que o login existe. O dono vê `bloqueado_ate` em
+  `GET /usuarios`, e redefinir a senha desbloqueia.
+- **O último dono ativo** não se desativa nem vira funcionário (`409`), com `FOR UPDATE` nos
+  donos para dois não se desativarem ao mesmo tempo.
+- **Primeiro dono pelo servidor:** `python -m app.usuarios criar-dono --login ... --nome ...`
+  (`make usuario-dono`), com a senha do terminal (`getpass`, duas vezes) ou de `SENHA_DO_DONO`
+  para automação, nunca por argumento. Recusa se já houver dono ativo, a não ser com
+  `--outro-dono` (a saída de quem tem o servidor e perdeu o acesso do dono). **Não há endpoint
+  de "primeiro acesso"**: aberto na rede, quem chegasse antes do dono viraria o dono.
+- **Auditoria:** o POST de movimentação, a fila do app, a contagem do galpão e a importação
+  gravam `movimentacoes.usuario_id` (FK `RESTRICT`) de quem está logado, nunca de quem o corpo
+  diz ser; a resposta traz `usuario_id` e `lancado_por` (o nome), aditivos. O reenvio de um
+  uuid mantém quem lançou primeiro. Sem login, os dois vêm `null`, como no que foi lançado
+  antes. O relatório e a planilha não levam o autor: a aba Movimentações é o formato da
+  importação.
+- **As permissões ficam no `include_router`** (`app/api/router.py`), e não rota a rota: as rotas
+  de estoque e de talhões se dividem em `campo` e `gestao`. `tests/test_permissoes.py` percorre
+  todas as rotas do app e exige que cada uma esteja na matriz abaixo: rota nova não nasce aberta
+  por esquecimento.
+- **Migration 0009.** O downgrade apagaria os usuários e o registro de quem lançou: ele se
+  recusa enquanto houver usuário, e só segue com `alembic -x descartar_usuarios=sim downgrade
+  0008`.
+
+**Matriz de permissões** (com a autenticação ligada; desligada, ver acima):
+
+| Nível | Quem | Rotas |
+|---|---|---|
+| Pública | qualquer um | `GET /health`, `GET /ready`, `/docs` e `/openapi.json` (fora de produção), `POST /auth/entrar` |
+| Sessão | qualquer usuário logado, sobre si | `POST /auth/sair`, `GET /auth/eu`, `PUT /auth/senha` (exigem login mesmo desligada) |
+| Funcionário | funcionário e dono | `GET /insumos`, `GET /insumos/{id}`, `GET /movimentacoes`, `GET /talhoes`, `GET /talhoes/{id}`, `GET /resumo`; `POST /movimentacoes`, `POST /movimentacoes/lote`, `POST /insumos/{id}/inventario` |
+| Dono | só o dono | `POST`/`PUT`/`DELETE /insumos`, `DELETE /movimentacoes/{id}`, `POST`/`PUT`/`DELETE /talhoes`, `POST /importacoes`, `GET /importacoes/modelo.xlsx`, `GET /relatorio.xlsx`, `POST /analises` |
+| Gestão | só o dono, sempre com login | `GET /usuarios`, `POST /usuarios`, `PUT /usuarios/{id}`, `PUT /usuarios/{id}/senha` |
+
+O funcionário lê os insumos com o custo médio e o valor em estoque (as telas que ele usa são as
+mesmas); o relatório, com todos os preços e a cópia de segurança, é só do dono.
+
 ### Importação de planilha
 
 `POST /importacoes` recebe a planilha do Excel (`.xlsx`, em base64 no JSON) ou o texto de um CSV
@@ -269,12 +355,18 @@ tem banco a orquestrar e chama o motor direto.
 | Rota | O que faz |
 |---|---|
 | `GET /api/v1/health` | Liveness: o processo está no ar. Não toca o banco |
+| `POST /api/v1/auth/entrar` | `{login, senha, dispositivo?}` → `{token, expira_em, usuario: {id, nome, login, papel}}`. O token vem uma vez só e vale 30 dias. Recusa sempre com o mesmo `401` |
+| `POST /api/v1/auth/sair` · `GET /api/v1/auth/eu` | Encerra a sessão deste token (`204`) / quem está logado |
+| `PUT /api/v1/auth/senha` | `{senha_atual, senha_nova}` (mínimo 8): troca a própria senha e encerra as sessões dos outros aparelhos (`204`); senha atual errada é `400` |
+| `GET /api/v1/usuarios` · `POST /api/v1/usuarios` | Usuários com `ativo` e `bloqueado_ate` / cadastra (`nome`, `login`, `senha`, `papel`); login repetido `409` |
+| `PUT /api/v1/usuarios/{id}` | `nome`, `papel`, `ativo` (o que não vier fica). Desativar derruba as sessões; o último dono ativo não sai (`409`) |
+| `PUT /api/v1/usuarios/{id}/senha` | Redefine a senha (`senha_nova`), derruba as sessões e desfaz o bloqueio (`204`) |
 | `GET /api/v1/ready` | Readiness: `200` com o banco respondendo, `503` sem ele |
 | `GET /api/v1/insumos` | Insumos com estoque atual, `custo_medio`, `valor_em_estoque` e a análise de hoje (alertas com `valor` em R$, reposição com `custo_estimado`, limitações) |
 | `GET /api/v1/insumos/{id}` | Um insumo com a análise, o saldo no fim de cada dia com movimentação (`historico`) e as movimentações |
 | `POST /api/v1/insumos` · `PUT /api/v1/insumos/{id}` | Cadastra / altera insumo (nome, unidade, mínimo, prazo de reposição e, opcionais, `embalagem`, `pedido_minimo` e `carencia_dias`). `409` para nome repetido. No `PUT`, embalagem, pedido mínimo e carência ausentes ficam como estão |
 | `DELETE /api/v1/insumos/{id}` | Remove o insumo cadastrado por engano, com as movimentações dele |
-| `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (`insumo_id`, `limite`) |
+| `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (`insumo_id`, `limite`), cada uma com `usuario_id` e `lancado_por` (quem lançou; `null` sem login) |
 | `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo; entrada pode trazer `valor_unitario` (R$ por unidade); a retirada para uso pode trazer `talhao_id` (onde foi aplicada). `422` para data futura, validade ou preço em saída, preço zero ou negativo, descarte em entrada, talhão fora da retirada para uso, insumo ou talhão inexistente. Com `uuid` (opcional, gerado pelo app), reenviar devolve o já gravado com `200`; o mesmo uuid com outro conteúdo é `409` |
 | `POST /api/v1/movimentacoes/lote` | A fila do app: `{"movimentacoes": [...]}`, até 500, cada uma com `uuid`. Grava na ordem, item a item; devolve para cada uma `gravada`, `ja_existia` ou `recusada` (com os `erros` em frases) e os `avisos`, mais o `resumo`. Sempre `200`, a não ser que o pedido inteiro esteja malformado (`422`) |
 | `POST /api/v1/insumos/{id}/inventario` | Contagem do galpão (`quantidade_contada`, `data` opcional): lança a diferença para o saldo registrado naquele dia como ajuste (`motivo: "inventario"`) e devolve saldo, contagem e diferença. Se bate, nada é lançado |
@@ -307,6 +399,15 @@ tem banco a orquestrar e chama o motor direto.
 | `src/styles/main.css` | Tailwind v4: tokens da marca e de movimento (`@theme`), componentes base (`.cartao`, `.botao-*`, `.campo`, `.esqueleto`) e as transições (ver "Design e movimento") |
 | `public/modelo-movimentacoes.csv` | Modelo alternativo em CSV, servido como arquivo estático (com BOM, para o Excel abrir os acentos); o principal é o `.xlsx` gerado pela API |
 | `tests/unit/` | Vitest + Vue Test Utils |
+
+**Para o login** (a API já está pronta, seção 2, "Autenticação e papéis"), o site precisa: tela
+de login (`POST /auth/entrar`, com `dispositivo` como "Navegador"), guardar o token (em
+`sessionStorage` ou `localStorage`; nunca na URL) e mandá-lo em todo pedido pelo interceptador
+do `services/http.ts` (`Authorization: Bearer <token>`); no `401`, apagar o token e voltar ao
+login com a frase da API; no `403`, mostrar a frase sem deslogar; esconder dos funcionários
+(`usuario.papel`) o que é do dono (cadastro, remover, importar, relatório, Usuários); tela de
+Usuários para o dono e "Trocar senha" para todos; "Sair" chama `POST /auth/sair`. Mostrar
+`lancado_por` nas movimentações.
 
 Regras: componente `.vue` **não chama axios** (passa por `services/`) e **não decide** regra de
 negócio: mostra o que a API calculou.
@@ -431,6 +532,12 @@ precisa:
    reenviando: sai da fila e aparece para o produtor com os `erros`, para corrigir e lançar de
    novo (com uuid novo, é outro lançamento). Os `avisos` também vão para a tela.
 
+**Para o login**, o app precisa do mesmo que o site (seção 3), mais: guardar o token no
+armazenamento seguro do celular (Keystore/Keychain, `flutter_secure_storage`), não em texto
+puro; mandar `dispositivo` no login ("Celular do Zé"); a sessão vale 30 dias, então o login é
+raro, mas o `401` pode chegar no **envio da fila**: aí a fila **fica** no celular (nada foi
+gravado), o app pede o login e reenvia o mesmo lote com os mesmos uuids depois.
+
 ## 5. Infraestrutura
 
 `compose.yaml` na raiz sobe `db` (PostgreSQL 18), `api` (imagem `backend/Dockerfile`, alvo `dev`,
@@ -442,7 +549,9 @@ compose): no Docker Desktop do Windows, o código montado do host não gera even
 dentro do container, e sem isso o Vite serve a versão antiga até reiniciar.
 
 Configuração por `.env` na raiz (modelo em `.env.example`). Variáveis obrigatórias sem default:
-`ENVIRONMENT` e `DATABASE_URL` (montada pelo compose a partir de `POSTGRES_*`).
+`ENVIRONMENT` e `DATABASE_URL` (montada pelo compose a partir de `POSTGRES_*`). `AUTENTICACAO`
+tem padrão `false`, mas em `production` é obrigatória e tem de ser `true`. O primeiro dono se
+cria com `make usuario-dono LOGIN=maria NOME="Dona Maria"`.
 
 ## 6. Herdado do ArkoHub × decidido diferente
 
@@ -455,7 +564,8 @@ tecnologias que não se aplicam.
 - Monorepo `backend/` + `frontend/` com responsabilidades separadas; FastAPI como fonte da verdade
   do contrato.
 - `Settings` com pydantic-settings, validado no boot, **`ENVIRONMENT` obrigatório e restrito** a
-  valores conhecidos (fail-closed) e `/docs` desligado em produção.
+  valores conhecidos (fail-closed) e `/docs` desligado em produção. O mesmo critério vale para a
+  autenticação: em produção, sem `AUTENTICACAO=true` a API não sobe.
 - Separação **liveness (`/health`) × readiness (`/ready`)**.
 - Front e API na mesma origem via proxy do Vite, sem CORS.
 - Cliente HTTP único no front; nenhuma chamada HTTP crua espalhada.
@@ -478,13 +588,16 @@ tecnologias que não se aplicam.
 | openapi-fetch + TanStack Query | Axios + Pinia | Stack definida para o projeto |
 | Tipos TS gerados do OpenAPI | Escritos à mão (por ora) | Poucos recursos; geração entra quando a API crescer |
 | Dois stacks compose + rede `edge` | Um compose só | Sem serviços internos (MinIO, Redis, worker) a isolar |
-| MinIO, Redis, worker, ClamAV, rate-limit, auth com sessão | Não entrou | Nenhum requisito do CampoCerto pede, por ora |
+| MinIO, Redis, worker, ClamAV, rate-limit por IP | Não entrou | Nenhum requisito do CampoCerto pede, por ora. Contra adivinhação de senha, há o bloqueio por usuário, no banco |
+| Auth com sessão em Redis, papéis por tenant | Sessão no PostgreSQL (token opaco, SHA-256), dois papéis fixos | Sem Redis no stack; uma fazenda, dono e funcionário bastam |
 | mypy strict, import-linter, dependency-cruiser, cobertura 90% | ruff + vue-tsc + eslint | Proporcional ao tamanho; os gates entram se as regras de camada começarem a ser violadas |
 
 ## 7. Próximas decisões (pendentes)
 
-1. **Autenticação.** O desafio não exige; decidir se a demonstração é monousuário. Hoje qualquer
-   um que alcance a tela lê e altera tudo (as portas da API e do banco ficam só em 127.0.0.1; a do
+1. **Login nas telas.** A API já tem login com papéis (seção 2, "Autenticação e papéis"); o site
+   e o app ainda não têm a tela de login nem mandam o token (seções 3 e 4), por isso a
+   autenticação fica desligada no desenvolvimento. Enquanto isso, com ela desligada, qualquer um
+   que alcance a tela lê e altera tudo (as portas da API e do banco ficam só em 127.0.0.1; a do
    front fica aberta na rede).
 2. **Geração de tipos TS a partir do OpenAPI** (`openapi-typescript`) quando a API crescer. Com o
    app, os modelos em Dart entram na mesma conta.
@@ -500,6 +613,7 @@ tecnologias que não se aplicam.
    talhão ao lançar uma retirada. Hoje, o talhão em carência aparece no relatório (aba Talhões) e
    no `/docs`.
 
-Decididas desde a versão anterior deste documento: a importação de planilha existe (Excel e
+Decididas desde a versão anterior deste documento: a autenticação existe (dono e funcionário,
+obrigatória em produção, seção 2); a importação de planilha existe (Excel e
 CSV, seção 2); o ECharts entrou com o gráfico do insumo; o Pandas não entrou, porque nem o motor de
 análise nem a importação precisaram; o `openpyxl` entrou para ler e gerar `.xlsx`.
