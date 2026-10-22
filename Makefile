@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate demo demo-limpar test test-backend test-frontend test-integracao lint check-db verify
+.PHONY: help up down logs migrate demo demo-limpar usuario-dono test test-backend test-frontend test-integracao lint check-db verify
 
 COMPOSE := docker compose
 # Testes e lint rodam DENTRO do container (padrão do ArkoHub): a máquina não
@@ -29,6 +29,11 @@ demo: ## Carrega a fazenda de demonstração (fictícia, datas relativas a hoje;
 
 demo-limpar: ## Apaga só os dados de demonstração
 	$(COMPOSE) run --rm api python -m app.demo limpar
+
+# A senha é pedida no terminal (duas vezes, sem aparecer); para automação, SENHA_DO_DONO.
+usuario-dono: ## Cria o primeiro dono: make usuario-dono LOGIN=maria NOME="Dona Maria"
+	@test -n "$(LOGIN)" -a -n "$(NOME)" || { echo 'uso: make usuario-dono LOGIN=maria NOME="Dona Maria"'; exit 2; }
+	$(COMPOSE) run --rm -e SENHA_DO_DONO api python -m app.usuarios criar-dono --login "$(LOGIN)" --nome "$(NOME)"
 
 test-backend: ## Pytest da API (SQLite em memória, sem banco)
 	$(API_RUN) pytest -p no:cacheprovider
