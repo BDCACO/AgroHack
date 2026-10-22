@@ -103,13 +103,21 @@ def listar_movimentacoes(
     "/movimentacoes", response_model=MovimentacaoResposta, status_code=status.HTTP_201_CREATED
 )
 def registrar_movimentacao(
-    dados: MovimentacaoEntrada, db: Session = Depends(get_db)
+    dados: MovimentacaoEntrada, response: Response, db: Session = Depends(get_db)
 ) -> MovimentacaoResposta:
+    """Com `uuid` (gerado pelo app), reenviar é seguro: o lançamento já gravado volta com
+    `200`, sem gravar de novo; o mesmo uuid com outro conteúdo é `409`."""
     try:
-        return servico.registrar_movimentacao(db, dados)
+        registro = servico.registrar_movimentacao(db, dados)
     except servico.InsumoInexistente:
         # 422, não 404: o recurso da URL existe; o que está errado é o corpo.
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, _INSUMO_INEXISTENTE) from None
+    except servico.LancamentoDiferente as erro:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(erro)) from None
+    if not registro.nova:
+        # Nada foi criado agora: 200, e não 201.
+        response.status_code = status.HTTP_200_OK
+    return registro.movimentacao
 
 
 @router.delete("/movimentacoes/{movimentacao_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,8 +1,9 @@
 """Casos de uso do estoque: cadastro de insumos, movimentações e a análise de cada
 insumo a partir do que está no banco."""
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -26,6 +27,17 @@ from app.schemas.estoque import (
 # Campos que vieram depois do site e do app: um PUT que não os manda (de uma versão que
 # não os conhece) mantém o que está gravado, em vez de apagá-los.
 _CAMPOS_OPCIONAIS_NOVOS = {"embalagem", "pedido_minimo"}
+# O que faz dois envios com o mesmo uuid serem o mesmo lançamento. Com as casas que o banco
+# guarda: 2,0004 kg vira 2 kg na coluna, e o reenvio de 2,0004 ainda é o mesmo lançamento.
+_CONTEUDO_DO_LANCAMENTO = {
+    "insumo_id": None,
+    "tipo": None,
+    "data": None,
+    "quantidade": 3,
+    "validade": None,
+    "motivo": None,
+    "valor_unitario": 4,
+}
 
 
 class NomeDuplicado(Exception):
@@ -34,6 +46,24 @@ class NomeDuplicado(Exception):
 
 class InsumoInexistente(Exception):
     pass
+
+
+class LancamentoDiferente(Exception):
+    """O uuid já está num lançamento com outro conteúdo: não é reenvio, é o app usando o
+    mesmo identificador para dois lançamentos. Gravar seria perder um deles em silêncio."""
+
+    def __init__(self, campos: list[str]) -> None:
+        self.campos = campos
+        super().__init__(
+            f"Este uuid já identifica outro lançamento, diferente deste em: {', '.join(campos)}. "
+            "Cada lançamento precisa de um uuid novo."
+        )
+
+
+@dataclass
+class Registro:
+    movimentacao: Movimentacao
+    nova: bool  # falso quando o uuid já estava gravado: reenvio do app
 
 
 def listar_insumos(db: Session) -> list[InsumoResposta]:
@@ -89,12 +119,28 @@ def listar_movimentacoes(db: Session, insumo_id: int | None, limite: int) -> lis
     return list(db.scalars(consulta.limit(limite)))
 
 
-def registrar_movimentacao(db: Session, dados: MovimentacaoEntrada) -> Movimentacao:
+def registrar_movimentacao(db: Session, dados: MovimentacaoEntrada) -> Registro:
+    """Grava o lançamento. Com `uuid` já gravado, é o app reenviando (a resposta anterior se
+    perdeu no caminho): devolve o que está no banco, sem gravar de novo."""
     _buscar_insumo(db, dados.insumo_id)
+    if dados.uuid is not None and (existente := _pelo_uuid(db, dados.uuid)) is not None:
+        return _reenvio(existente, dados)
     movimentacao = Movimentacao(**dados.model_dump())
     db.add(movimentacao)
-    db.commit()
-    return movimentacao
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # Dois envios do mesmo lançamento ao mesmo tempo (o app reenviou enquanto o
+        # primeiro ainda gravava): o outro chegou antes, e o UNIQUE barrou este. É o mesmo
+        # caso do reenvio. Qualquer outra violação segue como erro.
+        existente = None if dados.uuid is None else _pelo_uuid(db, dados.uuid)
+        if existente is None:
+            raise
+        return _reenvio(existente, dados)
+    # Devolve o que o banco guardou (quantidade em 3 casas), como o reenvio devolverá.
+    db.refresh(movimentacao)
+    return Registro(movimentacao, nova=True)
 
 
 def registrar_inventario(
@@ -138,6 +184,26 @@ def remover_movimentacao(db: Session, movimentacao_id: int) -> bool:
     db.delete(movimentacao)
     db.commit()
     return True
+
+
+def _pelo_uuid(db: Session, uuid: UUID) -> Movimentacao | None:
+    return db.scalar(select(Movimentacao).where(Movimentacao.uuid == uuid))
+
+
+def _reenvio(existente: Movimentacao, dados: MovimentacaoEntrada) -> Registro:
+    diferentes = [
+        campo
+        for campo, casas in _CONTEUDO_DO_LANCAMENTO.items()
+        if _como_no_banco(getattr(existente, campo), casas)
+        != _como_no_banco(getattr(dados, campo), casas)
+    ]
+    if diferentes:
+        raise LancamentoDiferente(diferentes)
+    return Registro(existente, nova=False)
+
+
+def _como_no_banco(valor: object, casas: int | None) -> object:
+    return round(valor, casas) if casas is not None and isinstance(valor, float) else valor
 
 
 def _buscar_insumo(db: Session, insumo_id: int) -> Insumo:
