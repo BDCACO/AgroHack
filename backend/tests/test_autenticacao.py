@@ -198,3 +198,105 @@ def test_auth_exige_login_mesmo_com_a_autenticacao_desligada(
 
     assert client.get(EU).status_code == 401
     assert client.get(EU, headers=entrar(client, "ze")).json()["login"] == "ze"
+
+
+def _tentar(cliente: TestClient, tentativa: str, login: str = "ze") -> int:
+    return cliente.post(ENTRAR, json={"login": login, "senha": tentativa}).status_code
+
+
+def test_cinco_senhas_erradas_bloqueiam_o_login_por_15_minutos(
+    cliente_autenticado: TestClient,
+    criar_usuario: CriarUsuario,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ze = criar_usuario("ze")
+    inicio = datetime.now(UTC)
+    monkeypatch.setattr(autenticacao, "agora", lambda: inicio)
+
+    assert [_tentar(cliente_autenticado, f"errada-{i}") for i in range(5)] == [401] * 5
+
+    # A sexta, mesmo certa, é recusada, e com a mesma frase de qualquer erro de login: a
+    # resposta não conta a quem tenta adivinhar que o login existe.
+    sexta = cliente_autenticado.post(ENTRAR, json={"login": "ze", "senha": SENHA})
+    assert sexta.status_code == 401
+    assert (
+        sexta.text
+        == cliente_autenticado.post(ENTRAR, json={"login": "ninguem", "senha": SENHA}).text
+    )
+    assert "bloqueado por 15 minutos" in sexta.json()["detail"]
+    # No banco, e não na memória: sobrevive a reiniciar a API.
+    db.refresh(ze)
+    assert ze.bloqueado_ate == inicio + timedelta(minutes=15)
+
+    monkeypatch.setattr(autenticacao, "agora", lambda: inicio + timedelta(minutes=14))
+    assert _tentar(cliente_autenticado, SENHA) == 401
+    monkeypatch.setattr(autenticacao, "agora", lambda: inicio + timedelta(minutes=15, seconds=1))
+    assert _tentar(cliente_autenticado, SENHA) == 200
+
+
+def test_tentativa_durante_o_bloqueio_nao_o_estende(
+    cliente_autenticado: TestClient,
+    criar_usuario: CriarUsuario,
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ze = criar_usuario("ze")
+    inicio = datetime.now(UTC)
+    monkeypatch.setattr(autenticacao, "agora", lambda: inicio)
+    for i in range(5):
+        _tentar(cliente_autenticado, f"errada-{i}")
+
+    monkeypatch.setattr(autenticacao, "agora", lambda: inicio + timedelta(minutes=10))
+    for i in range(5):
+        _tentar(cliente_autenticado, f"de-novo-{i}")
+
+    db.refresh(ze)
+    assert ze.bloqueado_ate == inicio + timedelta(minutes=15)
+
+
+def test_acertar_zera_as_falhas(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario
+) -> None:
+    criar_usuario("ze")
+
+    for _ in range(2):
+        assert [_tentar(cliente_autenticado, "errada") for _ in range(4)] == [401] * 4
+        assert _tentar(cliente_autenticado, SENHA) == 200
+
+
+def test_senha_atual_errada_na_troca_conta_como_tentativa(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario
+) -> None:
+    # Quem pegou o celular com a sessão aberta não pode testar senhas pela troca de senha.
+    criar_usuario("ze")
+    cabecalho = entrar(cliente_autenticado, "ze")
+    trocar = {"senha_atual": "errada", "senha_nova": "nova-senha-do-ze"}
+
+    for _ in range(5):
+        cliente_autenticado.put("/api/v1/auth/senha", headers=cabecalho, json=trocar)
+
+    certa = {"senha_atual": SENHA, "senha_nova": "nova-senha-do-ze"}
+    assert (
+        cliente_autenticado.put("/api/v1/auth/senha", headers=cabecalho, json=certa).status_code
+        == 400
+    )
+    assert _tentar(cliente_autenticado, SENHA) == 401
+
+
+def test_dono_ve_o_bloqueio_e_a_senha_redefinida_o_desfaz(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario
+) -> None:
+    ze = criar_usuario("ze")
+    criar_usuario("maria", papel="dono")
+    dono = entrar(cliente_autenticado, "maria")
+    for i in range(5):
+        _tentar(cliente_autenticado, f"errada-{i}")
+
+    usuarios = cliente_autenticado.get("/api/v1/usuarios", headers=dono).json()
+    assert next(u for u in usuarios if u["login"] == "ze")["bloqueado_ate"] is not None
+
+    cliente_autenticado.put(
+        f"/api/v1/usuarios/{ze.id}/senha", headers=dono, json={"senha_nova": "senha-nova-ze"}
+    )
+    assert _tentar(cliente_autenticado, "senha-nova-ze") == 200

@@ -24,8 +24,19 @@ from app.models import Sessao, Usuario
 # continuar. O risco do prazo longo (celular perdido) se resolve pelo dono, que desativa o
 # usuário ou redefine a senha, e as sessões dele caem na hora.
 VALIDADE_DA_SESSAO = timedelta(days=30)
+# Contra quem tenta adivinhar a senha: 5 erros seguidos bloqueiam o login por 15 minutos.
+# Quem errou digitando tem folga; quem testa senhas faz 20 por hora, e não milhares. Por
+# usuário, no banco: vale para todos os processos da API e sobrevive a reiniciar.
+TENTATIVAS_ANTES_DO_BLOQUEIO = 5
+TEMPO_DE_BLOQUEIO = timedelta(minutes=15)
 
-_LOGIN_RECUSADO = "Login ou senha incorretos."
+# A mesma frase para login inexistente, senha errada, usuário desativado e login
+# bloqueado: nenhuma resposta conta a quem tenta adivinhar que o login existe. Por isso a
+# regra do bloqueio vai na própria frase, para quem errou de verdade saber esperar.
+_LOGIN_RECUSADO = (
+    "Login ou senha incorretos. Depois de 5 tentativas erradas seguidas, o login fica "
+    "bloqueado por 15 minutos."
+)
 
 
 class LoginRecusado(Exception):
@@ -51,13 +62,18 @@ def entrar(
 ) -> tuple[str, Sessao]:
     """Confere login e senha e abre uma sessão. Devolve o token (a única vez em que ele
     existe fora do aparelho) e a sessão."""
-    usuario = db.scalar(select(Usuario).where(Usuario.login == normalizar_login(login)))
+    # FOR UPDATE: as tentativas no mesmo login entram uma de cada vez, e cinco senhas
+    # mandadas ao mesmo tempo não passam todas antes de a primeira contar o erro.
+    usuario = db.scalar(
+        select(Usuario).where(Usuario.login == normalizar_login(login)).with_for_update()
+    )
     if usuario is None:
         # O mesmo scrypt de um login que existe: sem ele, a resposta rápida denunciaria
         # quais logins existem.
         senha.conferir(senha_digitada, _hash_de_mentira())
         raise LoginRecusado
-    if not senha.conferir(senha_digitada, usuario.senha_hash) or not usuario.ativo:
+    if not _conferir_contando_erros(db, usuario, senha_digitada) or not usuario.ativo:
+        db.commit()
         raise LoginRecusado
     if senha.precisa_refazer(usuario.senha_hash):
         # O custo do hash subiu desde que esta senha foi gravada: aproveita que ela chegou.
@@ -104,7 +120,11 @@ def trocar_senha(db: Session, sessao: Sessao, senha_atual: str, senha_nova: str)
     """Troca a senha e encerra as outras sessões do usuário: se a troca é porque alguém
     soube a senha, o aparelho dele perde o acesso. A sessão de quem trocou continua."""
     usuario = sessao.usuario
-    if not senha.conferir(senha_atual, usuario.senha_hash):
+    db.refresh(usuario, with_for_update=True)
+    # Conta como tentativa de login: quem pegou o celular com a sessão aberta não pode
+    # testar senhas por aqui sem limite.
+    if not _conferir_contando_erros(db, usuario, senha_atual):
+        db.commit()
         raise SenhaAtualIncorreta
     usuario.senha_hash = senha.gerar_hash(senha_nova)
     revogar_sessoes(db, usuario.id, exceto=sessao.id)
@@ -117,6 +137,26 @@ def revogar_sessoes(db: Session, usuario_id: int, exceto: int | None = None) -> 
     if exceto is not None:
         consulta = consulta.where(Sessao.id != exceto)
     db.execute(consulta.values(revogada_em=agora()))
+
+
+def _conferir_contando_erros(db: Session, usuario: Usuario, senha_digitada: str) -> bool:
+    """Confere a senha respeitando o bloqueio: o erro conta, o acerto zera, e bloqueado
+    nada confere (nem a senha certa). Não grava: quem chama faz o commit."""
+    momento = agora()
+    # Sempre o scrypt, mesmo bloqueado: o tempo da resposta não denuncia o bloqueio.
+    confere = senha.conferir(senha_digitada, usuario.senha_hash)
+    if usuario.bloqueado_ate is not None and usuario.bloqueado_ate > momento:
+        # Sem contar o erro nem estender o prazo: senão, quem tenta sem parar empurraria o
+        # fim do bloqueio para sempre, e o funcionário nunca mais entraria.
+        return False
+    if confere:
+        usuario.falhas_seguidas, usuario.bloqueado_ate = 0, None
+        return True
+    usuario.falhas_seguidas += 1
+    if usuario.falhas_seguidas >= TENTATIVAS_ANTES_DO_BLOQUEIO:
+        # Zera a conta: passado o bloqueio, são mais 5 tentativas, e não uma.
+        usuario.falhas_seguidas, usuario.bloqueado_ate = 0, momento + TEMPO_DE_BLOQUEIO
+    return False
 
 
 def _hash_do_token(token: str) -> str:
