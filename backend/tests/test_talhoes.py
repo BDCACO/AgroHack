@@ -2,10 +2,12 @@
 carência e o custo de cada um."""
 
 from datetime import timedelta
+from io import BytesIO
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 
 from app.core.relogio import hoje
 
@@ -408,3 +410,89 @@ def test_talhao_sem_aplicacao(client: TestClient) -> None:
         "custo_por_ha": 0,
         "limitacoes": [],
     }
+
+
+def br(dias_atras: int) -> str:
+    return f"{HOJE - timedelta(days=dias_atras):%d/%m/%Y}"
+
+
+def importar(client: TestClient, conteudo: str, *, confirmar: bool = False) -> dict[str, Any]:
+    resposta = client.post(
+        "/api/v1/importacoes", json={"conteudo": conteudo, "confirmar": confirmar}
+    )
+    assert resposta.status_code == 200, resposta.json()
+    return resposta.json()
+
+
+def test_planilha_lanca_a_aplicacao_no_talhao(client: TestClient) -> None:
+    norte = criar_talhao(client)
+    planilha = (
+        "data;insumo;unidade;tipo;quantidade;talhão\n"
+        f"{br(10)};Glifosato 480;L;entrada;100;\n"
+        f"{br(5)};glifosato 480;;saída;15;talhão norte\n"
+        f"{br(4)};Glifosato 480;;saída;2;\n"
+    )
+
+    resultado = importar(client, planilha, confirmar=True)
+
+    assert (resultado["erros"], resultado["importado"]) == ([], True)
+    movimentacoes = client.get("/api/v1/movimentacoes").json()
+    assert [m["talhao_id"] for m in movimentacoes] == [None, norte["id"], None]
+    # Reimportar: a mesma aplicação, no mesmo talhão, já está lá.
+    assert importar(client, planilha)["ja_lancadas"] == 3
+
+
+def test_talhao_na_planilha_precisa_estar_cadastrado_e_ser_de_uma_saida(
+    client: TestClient,
+) -> None:
+    criar_talhao(client)
+    planilha = (
+        "data;insumo;unidade;tipo;quantidade;talhao\n"
+        f"{br(10)};Glifosato 480;L;entrada;100;Talhão Norte\n"
+        f"{br(5)};Glifosato 480;L;descarte;1;Talhão Norte\n"
+        f"{br(4)};Glifosato 480;L;saída;2;Talhão Leste\n"
+        f"{br(3)};Glifosato 480;L;saída;2;Talhão Norte\n"
+    )
+
+    resultado = importar(client, planilha, confirmar=True)
+
+    assert resultado["erros"] == [
+        "Linha 2: talhão só se informa numa saída (retirada para uso): é onde o insumo foi "
+        "aplicado.",
+        "Linha 3: talhão só se informa numa saída (retirada para uso): é onde o insumo foi "
+        "aplicado.",
+        'Linha 4: talhão "Talhão Leste" não cadastrado; cadastre na tela de Talhões.',
+    ]
+    assert client.get("/api/v1/movimentacoes").json() == []
+
+
+def test_planilha_modelo_traz_a_coluna_e_os_talhoes(client: TestClient) -> None:
+    criar_talhao(client)
+    criar_talhao(client, nome="Pasto 1", area_ha=45.5, cultura="Pasto")
+
+    resposta = client.get("/api/v1/importacoes/modelo.xlsx")
+    livro = load_workbook(BytesIO(resposta.content))
+
+    aba = livro["Movimentações"]
+    assert aba["H1"].value == "talhao"
+    assert aba["H1"].comment.text.startswith("Onde o insumo foi aplicado")
+    validacoes = {str(v.sqref): v for v in aba.data_validations.dataValidation}
+    lista = validacoes["H2:H50001"]
+    assert lista.formula1 == "'Talhões cadastrados'!$A$2:$A$3"
+    assert not lista.showErrorMessage  # só sugere: a importação diz o que está errado
+    talhoes = list(livro["Talhões cadastrados"].iter_rows(values_only=True))
+    assert talhoes == [
+        ("talhão", "área (ha)", "cultura"),
+        ("Pasto 1", 45.5, "Pasto"),
+        ("Talhão Norte", 120, "Soja"),
+    ]
+    instrucoes = [c.value for c in livro["Como preencher"]["C"] if c.value]
+    assert any("Talhões" in texto for texto in instrucoes)
+
+
+def test_planilha_modelo_sem_talhao_cadastrado(client: TestClient) -> None:
+    livro = load_workbook(BytesIO(client.get("/api/v1/importacoes/modelo.xlsx").content))
+
+    validadas = {str(v.sqref)[0] for v in livro["Movimentações"].data_validations.dataValidation}
+    assert "H" not in validadas
+    assert livro["Talhões cadastrados"]["A2"].value.startswith("Nenhum talhão cadastrado")

@@ -346,7 +346,13 @@ def test_planilha_modelo_vem_formatada_e_com_os_insumos(client: TestClient) -> N
 
     livro = baixar_modelo(client)
 
-    assert livro.sheetnames == ["Movimentações", "Como preencher", "Exemplo", "Insumos cadastrados"]
+    assert livro.sheetnames == [
+        "Movimentações",
+        "Como preencher",
+        "Exemplo",
+        "Insumos cadastrados",
+        "Talhões cadastrados",
+    ]
     aba = livro["Movimentações"]
     assert [c.value for c in aba[1]] == [
         "data",
@@ -356,6 +362,7 @@ def test_planilha_modelo_vem_formatada_e_com_os_insumos(client: TestClient) -> N
         "quantidade",
         "validade",
         "valor",
+        "talhao",
     ]
     assert aba["A1"].font.bold
     assert aba["A1"].comment.text.startswith("Dia em que a compra chegou")

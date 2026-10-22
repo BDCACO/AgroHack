@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
-from app.models import Insumo, Movimentacao
+from app.models import Insumo, Movimentacao, Talhao
 from app.schemas.estoque import (
     QUANTIDADE_MAXIMA,
     SEM_CARACTERE_DE_CONTROLE,
@@ -48,6 +48,9 @@ TIPOS = {
     "sobra": ("entrada", "inventario"),
     "falta": ("saida", "inventario"),
 }
+# Título escrito com acento → o nome da coluna. Sem acento é o do modelo; com acento é o que
+# o produtor escreve à mão.
+SINONIMOS_DE_COLUNA = {"talhão": "talhao"}
 # O Excel em português grava DD/MM/AAAA (ou DD/MM/AA, se a célula estiver assim).
 FORMATOS_DE_DATA = ("%d/%m/%Y", "%Y-%m-%d", "%d/%m/%y")
 # Anos de registro de uma propriedade cabem com folga. O teto protege a API de um
@@ -112,6 +115,7 @@ class _Linha:
     validade: date | None
     motivo: str | None
     valor_unitario: float | None
+    talhao: Talhao | None  # onde a retirada foi aplicada; só cadastrado
 
 
 # (número da linha no arquivo, células) — ou, no lugar das células, o erro de forma da
@@ -140,6 +144,9 @@ def importar(db: Session, arquivo: str | bytes, *, confirmar: bool) -> Resultado
     for insumo in db.scalars(select(Insumo).order_by(Insumo.nome)):
         cadastrados.setdefault(insumo.nome.casefold(), []).append(insumo)
     novos: dict[str, Insumo] = {}
+    talhoes: dict[str, list[Talhao]] = {}
+    for talhao in db.scalars(select(Talhao).order_by(Talhao.nome)):
+        talhoes.setdefault(talhao.nome.casefold(), []).append(talhao)
     linhas: list[_Linha] = []
     for numero, celulas in lidas:
         if isinstance(celulas, str):
@@ -147,7 +154,7 @@ def importar(db: Session, arquivo: str | bytes, *, confirmar: bool) -> Resultado
             continue
         campos = dict(zip(cabecalho, celulas, strict=False))
         try:
-            linhas.append(_ler(campos, decimal, cadastrados, novos))
+            linhas.append(_ler(campos, decimal, cadastrados, novos, talhoes))
         except ValueError as erro:
             resultado.erros.append(f"Linha {numero}: {erro}")
 
@@ -166,6 +173,7 @@ def importar(db: Session, arquivo: str | bytes, *, confirmar: bool) -> Resultado
             validade=linha.validade,
             motivo=linha.motivo,
             valor_unitario=linha.valor_unitario,
+            talhao_id=linha.talhao and linha.talhao.id,
         )
         if linha.insumo.id is None:
             linha.insumo.movimentacoes.append(movimentacao)
@@ -337,6 +345,7 @@ def _sem_titulo(letra: str) -> str:
 
 def _cabecalho(valores: list[str], erros: list[str]) -> list[str] | None:
     cabecalho = [valor.strip().lower() for valor in valores]
+    cabecalho = [SINONIMOS_DE_COLUNA.get(titulo, titulo) for titulo in cabecalho]
     if faltando := [c for c in COLUNAS_OBRIGATORIAS if c not in cabecalho]:
         erros.append(
             f"Faltam as colunas: {', '.join(faltando)}. A primeira linha precisa ter os "
@@ -407,6 +416,7 @@ def _ler(
     decimal: str,
     cadastrados: dict[str, list[Insumo]],
     novos: dict[str, Insumo],
+    talhoes: dict[str, list[Talhao]],
 ) -> _Linha:
     nome = _texto(campos.get("insumo", ""))
     if not nome:
@@ -455,8 +465,16 @@ def _ler(
             raise ValueError("valor deve ser maior que zero.")
         if valor_unitario > VALOR_UNITARIO_MAXIMO:
             raise ValueError("valor grande demais.")
+    talhao = None
+    if nome_do_talhao := _texto(campos.get("talhao", "")):
+        # Para onde o insumo foi aplicado: compra, descarte, sobra e falta não vão à lavoura.
+        if tipo != "saida" or motivo is not None:
+            raise ValueError(
+                "talhão só se informa numa saída (retirada para uso): é onde o insumo foi aplicado."
+            )
+        talhao = _talhao(nome_do_talhao, talhoes)
     insumo = _insumo(nome, unidade, cadastrados, novos)
-    return _Linha(insumo, tipo, data, quantidade, validade, motivo, valor_unitario)
+    return _Linha(insumo, tipo, data, quantidade, validade, motivo, valor_unitario, talhao)
 
 
 def _numero(celula: Celula, decimal: str, coluna: str, *, casas: int) -> float:
@@ -499,6 +517,22 @@ def _insumo(
     return insumo
 
 
+def _talhao(nome: str, talhoes: dict[str, list[Talhao]]) -> Talhao:
+    """Casa o nome com o cadastro, sem diferenciar maiúsculas, como o insumo. Ao contrário
+    dele, talhão novo não nasce da planilha: falta a área, sem a qual não há custo por
+    hectare."""
+    match talhoes.get(nome.casefold(), []):
+        case [talhao]:
+            return talhao
+        case []:
+            raise ValueError(f'talhão "{nome}" não cadastrado; cadastre na tela de Talhões.')
+        case varios:
+            raise ValueError(
+                f'há mais de um talhão cadastrado como "{nome}" '
+                f"({', '.join(t.nome for t in varios)}); renomeie um deles na tela de Talhões."
+            )
+
+
 def _data(celula: Celula, coluna: str) -> date:
     if isinstance(celula, date):
         return celula
@@ -538,7 +572,16 @@ def _ja_lancadas(db: Session, linhas: list[_Linha]) -> int:
     if not ids:
         return 0
     no_banco = Counter(
-        (m.insumo_id, m.tipo, m.data, m.quantidade, m.validade, m.motivo, m.valor_unitario)
+        (
+            m.insumo_id,
+            m.tipo,
+            m.data,
+            m.quantidade,
+            m.validade,
+            m.motivo,
+            m.valor_unitario,
+            m.talhao_id,
+        )
         for m in db.scalars(select(Movimentacao).where(Movimentacao.insumo_id.in_(ids)))
     )
     repetidas = 0
@@ -551,6 +594,7 @@ def _ja_lancadas(db: Session, linhas: list[_Linha]) -> int:
             linha.validade,
             linha.motivo,
             linha.valor_unitario,
+            linha.talhao and linha.talhao.id,
         )
         if no_banco[chave] > 0:
             no_banco[chave] -= 1
