@@ -29,6 +29,7 @@ class Insumo(Base):
         CheckConstraint("prazo_reposicao_dias >= 0", name="prazo_nao_negativo"),
         CheckConstraint("embalagem > 0", name="embalagem_positiva"),
         CheckConstraint("pedido_minimo >= 0", name="pedido_minimo_nao_negativo"),
+        CheckConstraint("carencia_dias >= 0", name="carencia_nao_negativa"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -40,6 +41,9 @@ class Insumo(Base):
     # fechadas, e nunca menos que o pedido mínimo do fornecedor.
     embalagem: Mapped[float | None] = mapped_column(Quantidade)
     pedido_minimo: Mapped[float | None] = mapped_column(Quantidade)
+    # Dias mínimos entre aplicar e colher ou abater (a bula do defensivo). 0 = não tem;
+    # vazio = não informada, e a carência do talhão diz que não a considerou.
+    carencia_dias: Mapped[int | None]
     # Gerado por `python -m app.demo`: a tela avisa, e `limpar` apaga só estes.
     demonstracao: Mapped[bool] = mapped_column(default=False, server_default=false())
 

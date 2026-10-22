@@ -3,10 +3,10 @@ from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.schemas.estoque import InsumoCadastro
+from app.schemas.estoque import DadosDoInsumo
 
 
-class InsumoEntrada(InsumoCadastro):
+class InsumoEntrada(DadosDoInsumo):
     # Negativo é aceito: o motor o aponta como inconsistência nos registros.
     estoque_atual: float
     # R$ por unidade. Opcional: sem ele, a análise é a mesma, só não fala em reais.

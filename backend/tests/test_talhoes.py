@@ -240,3 +240,35 @@ def test_reenvio_com_outro_talhao_nao_e_o_mesmo_lancamento(client: TestClient) -
     outro = lancar(client, **corpo | {"talhao_id": sul["id"]})
     assert outro.status_code == 409
     assert "talhao_id" in outro.json()["detail"]
+
+
+def test_carencia_no_cadastro_do_insumo(client: TestClient) -> None:
+    fungicida = client.post(
+        "/api/v1/insumos", json={"nome": "Fungicida", "unidade": "L", "carencia_dias": 30}
+    ).json()
+    ureia = client.post("/api/v1/insumos", json={"nome": "Ureia", "unidade": "kg"}).json()
+
+    assert (fungicida["carencia_dias"], ureia["carencia_dias"]) == (30, None)
+    assert client.get(f"/api/v1/insumos/{fungicida['id']}").json()["carencia_dias"] == 30
+    for carencia in (-1, 366, 1.5):
+        corpo = {"nome": "Outro", "unidade": "L", "carencia_dias": carencia}
+        assert client.post("/api/v1/insumos", json=corpo).status_code == 422, carencia
+
+
+def test_alterar_insumo_sem_a_carencia_mantem_a_gravada(client: TestClient) -> None:
+    # O site e o app de antes não conhecem a carência: um PUT deles não pode apagá-la.
+    fungicida = criar_insumo(client, "Fungicida", carencia_dias=30)
+
+    sem = client.put(f"/api/v1/insumos/{fungicida}", json={"nome": "Fungicida", "unidade": "L"})
+    zerando = client.put(
+        f"/api/v1/insumos/{fungicida}",
+        json={"nome": "Fungicida", "unidade": "L", "carencia_dias": 0},
+    )
+    limpando = client.put(
+        f"/api/v1/insumos/{fungicida}",
+        json={"nome": "Fungicida", "unidade": "L", "carencia_dias": None},
+    )
+
+    assert sem.json()["carencia_dias"] == 30
+    assert zerando.json()["carencia_dias"] == 0
+    assert limpando.json()["carencia_dias"] is None

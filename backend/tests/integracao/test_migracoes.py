@@ -89,6 +89,24 @@ def test_downgrade_nao_descarta_talhoes_sem_pedir(banco: Engine) -> None:
     alembic("upgrade", "head")
 
 
+def test_downgrade_nao_descarta_a_carencia_sem_pedir(banco: Engine) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, talhoes RESTART IDENTITY CASCADE"))
+        conexao.execute(
+            text("INSERT INTO insumos (nome, unidade, carencia_dias) VALUES ('Fungicida', 'L', 30)")
+        )
+
+    with pytest.raises(subprocess.CalledProcessError) as recusa:
+        alembic("downgrade", "0007")
+    assert "descartar_talhoes=sim" in recusa.value.stderr
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT carencia_dias FROM insumos")) == 30
+    alembic("-x", "descartar_talhoes=sim", "downgrade", "0007")
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT nome FROM insumos")) == "Fungicida"
+    alembic("upgrade", "head")
+
+
 def test_banco_recusa_o_mesmo_uuid_duas_vezes(banco: Engine) -> None:
     with banco.begin() as conexao:
         conexao.execute(text("TRUNCATE insumos RESTART IDENTITY CASCADE"))

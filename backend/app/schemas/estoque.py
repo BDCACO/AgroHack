@@ -32,15 +32,25 @@ class _Insumo(BaseModel):
     pedido_minimo: float | None = Field(default=None, ge=0, le=QUANTIDADE_MAXIMA)
 
 
-class InsumoCadastro(_Insumo):
+class DadosDoInsumo(_Insumo):
+    """O que o motor de análise usa, com nome e unidade conferidos como foram digitados."""
+
     # Só na entrada: um nome gravado antes desta regra não pode derrubar a listagem.
     nome: str = Field(min_length=1, max_length=120, pattern=SEM_CARACTERE_DE_CONTROLE)
     unidade: str = Field(min_length=1, max_length=20, pattern=SEM_CARACTERE_DE_CONTROLE)
 
 
+class InsumoCadastro(DadosDoInsumo):
+    # Dias mínimos entre aplicar e colher ou abater, da bula. 0 = não tem carência (a
+    # ureia); vazio = não informada. Fica fora do motor de análise (e de POST /analises):
+    # é regra do talhão onde o insumo foi aplicado, não do estoque.
+    carencia_dias: int | None = Field(default=None, ge=0, le=365)
+
+
 class InsumoResposta(_Insumo):
     id: int
     demonstracao: bool
+    carencia_dias: int | None
     estoque_atual: float
     # R$ por unidade, média das compras com preço ponderada pela quantidade. None sem
     # nenhuma compra com preço.

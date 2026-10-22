@@ -1,17 +1,19 @@
-"""talhões e aplicações
+"""talhões, aplicações e carência
 
 `talhoes`: onde os insumos são aplicados (nome único, área em hectares, cultura); e
 `movimentacoes.talhao_id`, o talhão de uma retirada para uso (RESTRICT: o talhão com
-aplicação não se apaga). Tudo opcional para o que já existe: sem talhão, o CampoCerto
+aplicação não se apaga); e `insumos.carencia_dias`, os dias mínimos entre aplicar o
+insumo e colher ou abater. Tudo opcional para o que já existe: sem talhão, o CampoCerto
 funciona como antes.
 
-O downgrade apagaria os talhões e o registro de onde cada insumo foi aplicado, que a versão
-anterior não tem onde guardar. Por isso ele se recusa enquanto houver algum talhão, a não
-ser que se peça com todas as letras:
+O downgrade apagaria os talhões, o registro de onde cada insumo foi aplicado e as
+carências, que a versão anterior não tem onde guardar. Por isso ele se recusa enquanto
+houver algum talhão ou carência, a não ser que se peça com todas as letras:
 
     alembic -x descartar_talhoes=sim downgrade 0007
 
-Antes, baixe o relatório: a aba Talhões leva o cadastro.
+Antes, baixe o relatório: a aba Talhões leva o cadastro dos talhões, e a Movimentações, o
+talhão de cada aplicação.
 
 Revision ID: 0008
 Revises: 0007
@@ -56,17 +58,29 @@ def upgrade() -> None:
         "movimentacoes",
         "talhao_id IS NULL OR (tipo = 'saida' AND motivo IS NULL)",
     )
+    op.add_column("insumos", sa.Column("carencia_dias", sa.Integer(), nullable=True))
+    op.create_check_constraint(
+        op.f("ck_insumos_carencia_nao_negativa"), "insumos", "carencia_dias >= 0"
+    )
 
 
 def downgrade() -> None:
-    gravados = op.get_bind().scalar(sa.text("SELECT count(*) FROM talhoes"))
+    gravados = op.get_bind().scalar(
+        sa.text(
+            "SELECT (SELECT count(*) FROM talhoes)"
+            " + (SELECT count(*) FROM insumos WHERE carencia_dias IS NOT NULL)"
+        )
+    )
     descartar = context.get_x_argument(as_dictionary=True).get("descartar_talhoes") == "sim"
     if gravados and not descartar:
         raise RuntimeError(
-            f"Há {gravados} talhões cadastrados, que a versão anterior não tem onde guardar. "
-            "Baixe o relatório (a aba Talhões leva o cadastro) e, para descartá-los, rode: "
+            f"Há {gravados} talhões ou carências cadastrados, que a versão anterior não tem onde "
+            "guardar. Baixe o relatório (a aba Talhões leva o cadastro dos talhões) e, para "
+            "descartá-los, rode: "
             "alembic -x descartar_talhoes=sim downgrade 0007"
         )
+    op.drop_constraint(op.f("ck_insumos_carencia_nao_negativa"), "insumos", type_="check")
+    op.drop_column("insumos", "carencia_dias")
     op.drop_constraint(
         op.f("ck_movimentacoes_talhao_so_em_aplicacao"), "movimentacoes", type_="check"
     )
