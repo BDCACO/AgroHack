@@ -7,7 +7,10 @@ from app.core.database import get_db
 from app.schemas.talhao import TalhaoCadastro, TalhaoDetalhe, TalhaoResposta
 from app.services import talhoes as servico
 
-router = APIRouter(tags=["talhões"])
+# Como no estoque: o funcionário consulta os talhões (para lançar a aplicação no certo); o
+# dono cadastra, altera e remove.
+campo = APIRouter(tags=["talhões"])
+gestao = APIRouter(tags=["talhões"])
 
 _NOME_DUPLICADO = HTTPException(status.HTTP_409_CONFLICT, "Já existe um talhão com esse nome.")
 _TALHAO_INEXISTENTE = HTTPException(status.HTTP_404_NOT_FOUND, "Talhão não encontrado.")
@@ -26,7 +29,7 @@ class Periodo:
         self.desde, self.ate = desde, ate
 
 
-@router.get("/talhoes", response_model=list[TalhaoResposta])
+@campo.get("/talhoes", response_model=list[TalhaoResposta])
 def listar_talhoes(
     periodo: Periodo = Depends(), db: Session = Depends(get_db)
 ) -> list[TalhaoResposta]:
@@ -35,7 +38,7 @@ def listar_talhoes(
     return servico.listar_talhoes(db, periodo.desde, periodo.ate)
 
 
-@router.post("/talhoes", response_model=TalhaoResposta, status_code=status.HTTP_201_CREATED)
+@gestao.post("/talhoes", response_model=TalhaoResposta, status_code=status.HTTP_201_CREATED)
 def criar_talhao(dados: TalhaoCadastro, db: Session = Depends(get_db)) -> TalhaoResposta:
     try:
         return servico.criar_talhao(db, dados)
@@ -43,7 +46,7 @@ def criar_talhao(dados: TalhaoCadastro, db: Session = Depends(get_db)) -> Talhao
         raise _NOME_DUPLICADO from None
 
 
-@router.get("/talhoes/{talhao_id}", response_model=TalhaoDetalhe)
+@campo.get("/talhoes/{talhao_id}", response_model=TalhaoDetalhe)
 def detalhar_talhao(
     talhao_id: int, periodo: Periodo = Depends(), db: Session = Depends(get_db)
 ) -> TalhaoDetalhe:
@@ -55,7 +58,7 @@ def detalhar_talhao(
         raise _TALHAO_INEXISTENTE from None
 
 
-@router.put("/talhoes/{talhao_id}", response_model=TalhaoResposta)
+@gestao.put("/talhoes/{talhao_id}", response_model=TalhaoResposta)
 def atualizar_talhao(
     talhao_id: int, dados: TalhaoCadastro, db: Session = Depends(get_db)
 ) -> TalhaoResposta:
@@ -67,7 +70,7 @@ def atualizar_talhao(
         raise _NOME_DUPLICADO from None
 
 
-@router.delete("/talhoes/{talhao_id}", status_code=status.HTTP_204_NO_CONTENT)
+@gestao.delete("/talhoes/{talhao_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remover_talhao(talhao_id: int, db: Session = Depends(get_db)) -> Response:
     """Só o talhão sem aplicação: com alguma, `409`, para não perder onde cada insumo foi."""
     try:

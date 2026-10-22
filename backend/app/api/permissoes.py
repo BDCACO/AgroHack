@@ -9,7 +9,7 @@ o papel dele: token inválido é 401 e funcionário em rota do dono é 403, liga
 Assim o site e o app já implementam o login contra a API de desenvolvimento.
 """
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -46,6 +46,27 @@ def exigir_sessao(sessao: Sessao | None = Depends(sessao_atual)) -> Sessao:
     if sessao is None:
         raise _nao_autenticado(_FALTA_O_LOGIN)
     return sessao
+
+
+def exigir_funcionario(request: Request, usuario: Usuario | None = Depends(usuario_atual)) -> None:
+    """Ler e lançar: qualquer usuário logado (o funcionário e o dono)."""
+    if usuario is None and _ligada(request):
+        raise _nao_autenticado(_FALTA_O_LOGIN)
+
+
+def exigir_dono(request: Request, usuario: Usuario | None = Depends(usuario_atual)) -> None:
+    """Cadastrar, remover, planilhas, relatório: só o dono."""
+    if usuario is None and _ligada(request):
+        raise _nao_autenticado(_FALTA_O_LOGIN)
+    if usuario is not None and usuario.papel != "dono":
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Só o dono da fazenda pode fazer isto: peça a ele.",
+        )
+
+
+def _ligada(request: Request) -> bool:
+    return request.app.state.settings.autenticacao
 
 
 def _nao_autenticado(frase: str) -> HTTPException:
