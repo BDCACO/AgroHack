@@ -1,10 +1,12 @@
 """/fornecedores: o cadastro das revendas de quem se compra, e o que se pagou a cada uma."""
 
 from datetime import timedelta
+from io import BytesIO
 from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 
 from app.core.relogio import hoje
 
@@ -240,3 +242,111 @@ def test_fornecedor_com_compra_nao_se_remove_mas_desativa(client: TestClient) ->
     assert client.put(f"/api/v1/fornecedores/{revenda['id']}", json=desativar).status_code == 200
     # A compra antiga continua dizendo de quem foi.
     assert client.get("/api/v1/movimentacoes").json()[0]["comprado_de"] == "Revenda Boa Safra"
+
+
+def _br(dias_atras: int) -> str:
+    return (hoje() - timedelta(days=dias_atras)).strftime("%d/%m/%Y")
+
+
+def _importar(client: TestClient, conteudo: str, *, confirmar: bool = False) -> dict[str, Any]:
+    resposta = client.post(
+        "/api/v1/importacoes", json={"conteudo": conteudo, "confirmar": confirmar}
+    )
+    assert resposta.status_code == 200, resposta.json()
+    return resposta.json()
+
+
+def test_planilha_com_a_coluna_fornecedor(client: TestClient) -> None:
+    cadastrar(client)
+    planilha = (
+        "data;insumo;unidade;tipo;quantidade;valor;fornecedor\n"
+        f"{_br(5)};Ureia;kg;entrada;100;3,20;revenda boa safra\n"
+        f"{_br(4)};Ureia;;entrada;50;;Cooperativa Nova\n"
+        f"{_br(3)};Ureia;;entrada;20;;cooperativa nova\n"
+        f"{_br(2)};Ureia;;saída;10;;\n"
+    )
+
+    previa = _importar(client, planilha)
+
+    # O fornecedor novo nasce da planilha, como o insumo novo: só precisa do nome.
+    assert (previa["erros"], previa["fornecedores_novos"]) == ([], ["Cooperativa Nova"])
+    assert len(client.get("/api/v1/fornecedores").json()) == 1  # a prévia não grava
+    assert _importar(client, planilha, confirmar=True)["importado"] is True
+    fornecedores = [f["nome"] for f in client.get("/api/v1/fornecedores").json()]
+    assert fornecedores == ["Cooperativa Nova", "Revenda Boa Safra"]
+    compras = client.get("/api/v1/movimentacoes").json()
+    assert [m["comprado_de"] for m in reversed(compras)] == [
+        "Revenda Boa Safra",
+        "Cooperativa Nova",
+        "Cooperativa Nova",
+        None,
+    ]
+    # Reimportada, tudo já está lá, com os mesmos fornecedores.
+    assert _importar(client, planilha)["ja_lancadas"] == 4
+
+
+def test_fornecedor_errado_na_planilha_e_erro_na_linha(client: TestClient) -> None:
+    planilha = (
+        "data;insumo;unidade;tipo;quantidade;fornecedor\n"
+        f"{_br(2)};Ureia;kg;saída;10;Revenda\n"
+        f"{_br(2)};Ureia;kg;descarte;1;Revenda\n"
+        f"{_br(2)};Ureia;kg;entrada;1;Revenda\x0bBoa\n"
+        f"{_br(2)};Ureia;kg;entrada;1;{'R' * 121}\n"
+    )
+
+    resultado = _importar(client, planilha, confirmar=True)
+
+    assert resultado["erros"] == [
+        "Linha 2: fornecedor só se informa numa entrada (compra): é de quem se comprou.",
+        "Linha 3: fornecedor só se informa numa entrada (compra): é de quem se comprou.",
+        "Linha 4: o nome do fornecedor tem um caractere inválido.",
+        "Linha 5: nome do fornecedor com mais de 120 caracteres.",
+    ]
+    assert client.get("/api/v1/fornecedores").json() == []
+
+
+def test_ja_lancadas_trata_o_fornecedor_como_o_preco(client: TestClient) -> None:
+    revenda = cadastrar(client)
+    cadastrar(client, nome="Cooperativa Vale Verde")
+    ureia = _insumo(client)
+    _compra(client, ureia, data=str(hoje() - timedelta(days=5)), quantidade=100)
+    _compra(
+        client,
+        ureia,
+        data=str(hoje() - timedelta(days=4)),
+        quantidade=50,
+        fornecedor_id=revenda["id"],
+    )
+
+    def previa(linhas: str) -> int:
+        cabecalho = "data;insumo;tipo;quantidade;fornecedor\n"
+        return _importar(client, cabecalho + linhas)["ja_lancadas"]
+
+    # A compra lançada sem fornecedor, reimportada com ele: completa, não é outra.
+    assert previa(f"{_br(5)};Ureia;entrada;100;Revenda Boa Safra\n") == 1
+    assert previa(f"{_br(5)};Ureia;entrada;100;Fornecedor que não existe\n") == 1
+    # Fornecedor diferente do lançado é outra compra.
+    assert previa(f"{_br(4)};Ureia;entrada;50;Cooperativa Vale Verde\n") == 0
+    assert previa(f"{_br(4)};Ureia;entrada;50;Fornecedor que não existe\n") == 0
+    assert previa(f"{_br(4)};Ureia;entrada;50;revenda boa safra\n") == 1
+    assert previa(f"{_br(4)};Ureia;entrada;50;\n") == 1
+
+
+def test_modelo_traz_a_coluna_e_os_fornecedores(client: TestClient) -> None:
+    cadastrar(client)
+    cadastrar(client, nome="Cooperativa Vale Verde", cidade="Ariquemes")
+
+    livro = load_workbook(BytesIO(client.get("/api/v1/importacoes/modelo.xlsx").content))
+
+    aba = livro["Movimentações"]
+    assert aba["I1"].value == "fornecedor"
+    assert aba["I1"].comment.text.startswith("De quem se comprou")
+    validacoes = {str(v.sqref): v for v in aba.data_validations.dataValidation}
+    lista = validacoes["I2:I50001"]
+    assert lista.formula1 == "'Fornecedores cadastrados'!$A$2:$A$3"
+    assert not lista.showErrorMessage  # fornecedor novo vale, como o insumo novo
+    assert list(livro["Fornecedores cadastrados"].iter_rows(values_only=True)) == [
+        ("fornecedor", "cidade"),
+        ("Cooperativa Vale Verde", "Ariquemes"),
+        ("Revenda Boa Safra", "Ariquemes"),
+    ]

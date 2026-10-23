@@ -520,6 +520,7 @@ def test_relatorio_traz_os_talhoes_e_a_copia_leva_o_talhao(client: TestClient) -
         "Resumo",
         "Alertas",
         "Reposição",
+        "Pedidos",
         "Estoque",
         "Talhões",
         "Movimentações",

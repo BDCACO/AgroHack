@@ -1,7 +1,7 @@
 """Relatório em Excel (GET /relatorio.xlsx), com a fazenda de demonstração."""
 
 import base64
-from datetime import timedelta
+from datetime import datetime, timedelta
 from io import BytesIO
 
 from fastapi.testclient import TestClient
@@ -29,6 +29,7 @@ def test_relatorio_traz_alertas_reposicao_e_estoque(client: TestClient, db: Sess
         "Resumo",
         "Alertas",
         "Reposição",
+        "Pedidos",
         "Estoque",
         "Talhões",
         "Movimentações",
@@ -85,7 +86,13 @@ def test_movimentacoes_do_relatorio_voltam_pela_importacao(client: TestClient, d
     [ivermectina] = [i for i in client.get("/api/v1/insumos").json() if "Ivermectina" in i["nome"]]
     descarte = {"insumo_id": ivermectina["id"], "tipo": "saida", "motivo": "descarte"}
     client.post("/api/v1/movimentacoes", json=descarte | {"data": str(hoje()), "quantidade": 4})
-    compra = {"insumo_id": ivermectina["id"], "tipo": "entrada", "valor_unitario": 95.1234}
+    agrovet = client.post("/api/v1/fornecedores", json={"nome": "AgroVet do Teste"}).json()
+    compra = {
+        "insumo_id": ivermectina["id"],
+        "tipo": "entrada",
+        "valor_unitario": 95.1234,
+        "fornecedor_id": agrovet["id"],
+    }
     client.post("/api/v1/movimentacoes", json=compra | {"data": str(hoje()), "quantidade": 2})
     insumos = {i["nome"]: i for i in client.get("/api/v1/insumos").json()}
     ureia, sal = insumos["Ureia agrícola"], insumos["Sal mineral 80P"]
@@ -99,6 +106,11 @@ def test_movimentacoes_do_relatorio_voltam_pela_importacao(client: TestClient, d
     assert livro["Movimentações"]["G1"].value == "valor"
     precos = {linha[6] for linha in livro["Movimentações"].iter_rows(min_row=2, values_only=True)}
     assert 95.1234 in precos
+    assert livro["Movimentações"]["I1"].value == "fornecedor"
+    fornecedores = {
+        linha[8] for linha in livro["Movimentações"].iter_rows(min_row=2, values_only=True)
+    }
+    assert "AgroVet do Teste" in fornecedores
 
     resposta = client.post(
         "/api/v1/importacoes", json={"xlsx": base64.b64encode(conteudo).decode()}
@@ -113,3 +125,88 @@ def test_relatorio_sem_nada_cadastrado(client: TestClient) -> None:
     _, livro = baixar(client)
 
     assert livro["Alertas"]["A2"].value == "Nenhum alerta hoje."
+
+
+def test_aba_pedidos_mostra_o_que_falta_chegar(client: TestClient) -> None:
+    ureia = client.post("/api/v1/insumos", json={"nome": "Ureia", "unidade": "kg"}).json()
+    sal = client.post("/api/v1/insumos", json={"nome": "Sal mineral", "unidade": "kg"}).json()
+    revenda = client.post("/api/v1/fornecedores", json={"nome": "Revenda Boa Safra"}).json()
+    atrasado = client.post(
+        "/api/v1/pedidos",
+        json={
+            "fornecedor_id": revenda["id"],
+            "feito_em": str(hoje() - timedelta(days=10)),
+            "previsto_para": str(hoje() - timedelta(days=1)),
+            "itens": [
+                {"insumo_id": ureia["id"], "quantidade": 700, "valor_unitario": 3.3},
+                {"insumo_id": sal["id"], "quantidade": 200},
+            ],
+        },
+    ).json()
+    linha_da_ureia = atrasado["itens"][0]["id"]
+    client.post(
+        f"/api/v1/pedidos/{atrasado['id']}/receber",
+        json={"itens": [{"item_id": linha_da_ureia, "quantidade": 300}]},
+    )
+    recebido = client.post(
+        "/api/v1/pedidos", json={"itens": [{"insumo_id": sal["id"], "quantidade": 5}]}
+    ).json()
+    client.post(
+        f"/api/v1/pedidos/{recebido['id']}/receber",
+        json={"itens": [{"item_id": recebido["itens"][0]["id"], "quantidade": 5}]},
+    )
+
+    _, livro = baixar(client)
+
+    linhas = list(livro["Pedidos"].iter_rows(values_only=True))
+    assert linhas[0] == (
+        "pedido",
+        "feito em",
+        "fornecedor",
+        "previsto para",
+        "insumo",
+        "unidade",
+        "pedido (qtd)",
+        "recebido",
+        "falta chegar",
+        "preço combinado (R$)",
+        "situação",
+    )
+    # Só o que ainda falta chegar: o pedido recebido não aparece.
+    feito_em = datetime.combine(hoje() - timedelta(days=10), datetime.min.time())
+    previsto = datetime.combine(hoje() - timedelta(days=1), datetime.min.time())
+    assert linhas[1:] == [
+        (
+            atrasado["id"],
+            feito_em,
+            "Revenda Boa Safra",
+            previsto,
+            "Sal mineral",
+            "kg",
+            200,
+            0,
+            200,
+            None,
+            "Atrasado",
+        ),
+        (
+            atrasado["id"],
+            feito_em,
+            "Revenda Boa Safra",
+            previsto,
+            "Ureia",
+            "kg",
+            700,
+            300,
+            400,
+            3.3,
+            "Atrasado",
+        ),
+    ]
+    assert livro["Pedidos"]["J3"].number_format == '"R$" #,##0.00'
+
+
+def test_aba_pedidos_sem_pedido(client: TestClient) -> None:
+    _, livro = baixar(client)
+
+    assert livro["Pedidos"]["A2"].value == "Nenhum pedido a caminho."

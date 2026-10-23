@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
-from app.models import Insumo, Movimentacao, Talhao
+from app.models import Fornecedor, Insumo, Movimentacao, Talhao
 from app.schemas.estoque import (
     QUANTIDADE_MAXIMA,
     SEM_CARACTERE_DE_CONTROLE,
@@ -102,6 +102,9 @@ class ResultadoImportacao:
     # Linhas idênticas a movimentações que já estão no banco: sinal de planilha
     # importada duas vezes. Só aviso — duas retiradas iguais no mesmo dia existem.
     ja_lancadas: int = 0
+    # Fornecedores que a planilha vai cadastrar, como o insumo novo: confira a grafia antes
+    # de importar, para "Revenda Boa Safra" e "Revenda Boa Safa" não virarem dois.
+    fornecedores_novos: list[str] = field(default_factory=list)
     erros: list[str] = field(default_factory=list)
     importado: bool = False
 
@@ -116,6 +119,7 @@ class _Linha:
     motivo: str | None
     valor_unitario: float | None
     talhao: Talhao | None  # onde a retirada foi aplicada; só cadastrado
+    fornecedor: Fornecedor | None  # de quem foi a compra: o cadastrado, ou um novo
 
 
 # (número da linha no arquivo, células) — ou, no lugar das células, o erro de forma da
@@ -149,6 +153,10 @@ def importar(
     talhoes: dict[str, list[Talhao]] = {}
     for talhao in db.scalars(select(Talhao).order_by(Talhao.nome)):
         talhoes.setdefault(talhao.nome.casefold(), []).append(talhao)
+    fornecedores: dict[str, list[Fornecedor]] = {}
+    for fornecedor in db.scalars(select(Fornecedor).order_by(Fornecedor.nome)):
+        fornecedores.setdefault(fornecedor.nome.casefold(), []).append(fornecedor)
+    fornecedores_novos: dict[str, Fornecedor] = {}
     linhas: list[_Linha] = []
     for numero, celulas in lidas:
         if isinstance(celulas, str):
@@ -156,13 +164,16 @@ def importar(
             continue
         campos = dict(zip(cabecalho, celulas, strict=False))
         try:
-            linhas.append(_ler(campos, decimal, cadastrados, novos, talhoes))
+            linhas.append(
+                _ler(campos, decimal, cadastrados, novos, talhoes, fornecedores, fornecedores_novos)
+            )
         except ValueError as erro:
             resultado.erros.append(f"Linha {numero}: {erro}")
 
     if not linhas and not resultado.erros:
         resultado.erros.append("Nenhuma movimentação na planilha.")
     _resumir(resultado, linhas)
+    resultado.fornecedores_novos = [f.nome for f in fornecedores_novos.values()]
     resultado.ja_lancadas = _ja_lancadas(db, linhas)
     if resultado.erros or not confirmar:
         return resultado
@@ -176,6 +187,8 @@ def importar(
             motivo=linha.motivo,
             valor_unitario=linha.valor_unitario,
             talhao_id=linha.talhao and linha.talhao.id,
+            # Pela relação, e não pelo id: o fornecedor novo só ganha id ao gravar.
+            fornecedor=linha.fornecedor,
             usuario_id=usuario_id,
         )
         if linha.insumo.id is None:
@@ -184,6 +197,7 @@ def importar(
             movimentacao.insumo_id = linha.insumo.id
             db.add(movimentacao)
     db.add_all(novos.values())
+    db.add_all(fornecedores_novos.values())
     db.commit()
     resultado.importado = True
     return resultado
@@ -420,6 +434,8 @@ def _ler(
     cadastrados: dict[str, list[Insumo]],
     novos: dict[str, Insumo],
     talhoes: dict[str, list[Talhao]],
+    fornecedores: dict[str, list[Fornecedor]],
+    fornecedores_novos: dict[str, Fornecedor],
 ) -> _Linha:
     nome = _texto(campos.get("insumo", ""))
     if not nome:
@@ -476,8 +492,22 @@ def _ler(
                 "talhão só se informa numa saída (retirada para uso): é onde o insumo foi aplicado."
             )
         talhao = _talhao(nome_do_talhao, talhoes)
+    fornecedor = None
+    if nome_do_fornecedor := _texto(campos.get("fornecedor", "")):
+        # De quem se comprou: descarte, retirada, sobra e falta não vieram de revenda.
+        if tipo != "entrada" or motivo is not None:
+            raise ValueError(
+                "fornecedor só se informa numa entrada (compra): é de quem se comprou."
+            )
+        if len(nome_do_fornecedor) > 120:
+            raise ValueError("nome do fornecedor com mais de 120 caracteres.")
+        if not re.fullmatch(SEM_CARACTERE_DE_CONTROLE, nome_do_fornecedor):
+            raise ValueError("o nome do fornecedor tem um caractere inválido.")
+        fornecedor = _fornecedor(nome_do_fornecedor, fornecedores, fornecedores_novos)
     insumo = _insumo(nome, unidade, cadastrados, novos)
-    return _Linha(insumo, tipo, data, quantidade, validade, motivo, valor_unitario, talhao)
+    return _Linha(
+        insumo, tipo, data, quantidade, validade, motivo, valor_unitario, talhao, fornecedor
+    )
 
 
 def _numero(celula: Celula, decimal: str, coluna: str, *, casas: int) -> float:
@@ -518,6 +548,30 @@ def _insumo(
         # Somar kg com saca daria um estoque sem sentido.
         raise ValueError(f'"{nome}" já está cadastrado em {insumo.unidade}, não em {unidade}.')
     return insumo
+
+
+def _fornecedor(
+    nome: str, cadastrados: dict[str, list[Fornecedor]], novos: dict[str, Fornecedor]
+) -> Fornecedor:
+    """Casa o nome com o cadastro, sem diferenciar maiúsculas, como o insumo. O que não
+    existe é cadastrado com a grafia da primeira linha em que aparece: o fornecedor, ao
+    contrário do talhão, só precisa do nome, e a cópia de segurança restaurada num sistema
+    vazio traz de volta de quem foi cada compra sem cadastro à mão. A prévia lista os novos
+    (`fornecedores_novos`), para a grafia ser conferida antes de gravar."""
+    chave = nome.casefold()
+    match cadastrados.get(chave, []):
+        case [fornecedor]:
+            return fornecedor
+        case []:
+            if chave not in novos:
+                novos[chave] = Fornecedor(nome=nome)
+            return novos[chave]
+        case varios:
+            raise ValueError(
+                f'há mais de um fornecedor cadastrado como "{nome}" '
+                f"({', '.join(f.nome for f in varios)}); renomeie um deles na tela de "
+                "Fornecedores."
+            )
 
 
 def _talhao(nome: str, talhoes: dict[str, list[Talhao]]) -> Talhao:
@@ -574,13 +628,14 @@ def _ja_lancadas(db: Session, linhas: list[_Linha]) -> int:
     ids = {linha.insumo.id for linha in linhas if linha.insumo.id is not None}
     if not ids:
         return 0
-    # Preço e talhão contam só quando os dois lados os têm: preço diferente é outra
-    # compra, mas o preço (ou o talhão) que faltava antes completa o lançamento, não faz
-    # dele outro. A mesma compra reimportada, agora com o preço, tem de ser avisada.
+    # Preço, talhão e fornecedor contam só quando os dois lados os têm: preço diferente é
+    # outra compra, mas o preço (ou o talhão, ou o fornecedor) que faltava antes completa o
+    # lançamento, não faz dele outro. A mesma compra reimportada, agora com o preço, tem de
+    # ser avisada.
     no_banco: dict[tuple, list[tuple]] = defaultdict(list)
     for m in db.scalars(select(Movimentacao).where(Movimentacao.insumo_id.in_(ids))):
         chave = (m.insumo_id, m.tipo, m.data, m.quantidade, m.validade, m.motivo)
-        no_banco[chave].append((m.valor_unitario, m.talhao_id))
+        no_banco[chave].append((m.valor_unitario, m.talhao_id, m.fornecedor_id))
     repetidas = 0
     for linha in linhas:
         chave = (
@@ -591,7 +646,12 @@ def _ja_lancadas(db: Session, linhas: list[_Linha]) -> int:
             linha.validade,
             linha.motivo,
         )
-        completa = (linha.valor_unitario, linha.talhao and linha.talhao.id)
+        fornecedor = linha.fornecedor
+        if fornecedor is not None:
+            # O fornecedor que a planilha vai cadastrar ainda não tem id, e não é nenhum dos
+            # gravados: uma marca que não casa com id nenhum, mas também não é "vazio".
+            fornecedor = fornecedor.id or ("novo", fornecedor.nome.casefold())
+        completa = (linha.valor_unitario, linha.talhao and linha.talhao.id, fornecedor)
         candidatos = no_banco[chave]
         for indice, gravada in enumerate(candidatos):
             if all(

@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
-from app.models import Insumo, Talhao
+from app.models import Fornecedor, Insumo, Talhao
 from app.services.importacao import LINHAS_MAXIMAS
 
 # Cores da marca, as mesmas de frontend/src/styles/main.css.
@@ -103,12 +103,24 @@ COLUNAS = (
         "branco se não quiser dizer. Com ele, o CampoCerto calcula o custo por hectare e avisa "
         "até quando não colher, pela carência do defensivo.",
     ),
+    Coluna(
+        "fornecedor",
+        24,
+        "Não",
+        "De quem se comprou, só em entradas (compras). Escolha da lista um fornecedor já "
+        "cadastrado, ou digite um nome novo: ele será cadastrado na importação. Em branco se "
+        "não quiser dizer. Com ele, o CampoCerto compara o preço pago a cada revenda.",
+    ),
 )
 
 
 def gerar(db: Session) -> bytes:
     insumos = list(db.scalars(select(Insumo).order_by(Insumo.nome)))
     talhoes = list(db.scalars(select(Talhao).order_by(Talhao.nome)))
+    # Só os ativos na lista de escolha: o desativado não recebe compra nova.
+    fornecedores = list(
+        db.scalars(select(Fornecedor).where(Fornecedor.ativo).order_by(Fornecedor.nome))
+    )
     referencia = hoje()
     livro = Workbook()
     livro.properties.creator = "CampoCerto"
@@ -119,13 +131,17 @@ def gerar(db: Session) -> bytes:
     movimentacoes.title = "Movimentações"
     movimentacoes.sheet_properties.tabColor = VERDE
     aba_de_movimentacoes(
-        movimentacoes, total_de_insumos=len(insumos), total_de_talhoes=len(talhoes)
+        movimentacoes,
+        total_de_insumos=len(insumos),
+        total_de_talhoes=len(talhoes),
+        total_de_fornecedores=len(fornecedores),
     )
     _aba_de_instrucoes(livro.create_sheet("Como preencher"))
     exemplo = livro.create_sheet("Exemplo")
     aba_de_movimentacoes(exemplo, total_de_insumos=0, linhas=_exemplos(referencia))
     _aba_de_insumos(livro.create_sheet("Insumos cadastrados"), insumos)
     _aba_de_talhoes(livro.create_sheet("Talhões cadastrados"), talhoes)
+    _aba_de_fornecedores(livro.create_sheet("Fornecedores cadastrados"), fornecedores)
 
     arquivo = BytesIO()
     livro.save(arquivo)
@@ -137,6 +153,7 @@ def aba_de_movimentacoes(
     *,
     total_de_insumos: int,
     total_de_talhoes: int = 0,
+    total_de_fornecedores: int = 0,
     linhas: list[tuple] | None = None,
 ) -> None:
     titulos(aba, [coluna.titulo for coluna in COLUNAS])
@@ -156,7 +173,7 @@ def aba_de_movimentacoes(
     for linha in linhas or []:
         aba.append(linha)
     for linha in aba.iter_rows(min_row=2, max_col=len(COLUNAS)):
-        data, *_, validade, valor, _ = linha
+        data, validade, valor = linha[0], linha[5], linha[6]
         data.number_format = validade.number_format = FORMATO_DATA
         data.alignment = validade.alignment = Alignment(horizontal="center")
         valor.number_format = FORMATO_DINHEIRO
@@ -208,6 +225,17 @@ def aba_de_movimentacoes(
             prompt="Só em saída: escolha onde o insumo foi aplicado, ou deixe em branco.",
             showInputMessage=True,
         )
+    if total_de_fornecedores:
+        validar(
+            "fornecedor",
+            type="list",
+            formula1=f"'Fornecedores cadastrados'!$A$2:$A${total_de_fornecedores + 1}",
+            # Fornecedor novo vale, como o insumo novo: a lista sugere, não obriga.
+            showErrorMessage=False,
+            promptTitle="Fornecedor",
+            prompt="Só em entrada: escolha de quem se comprou, ou digite um novo.",
+            showInputMessage=True,
+        )
     validar(
         "unidade",
         type="list",
@@ -257,7 +285,17 @@ def _exemplos(referencia: date) -> list[tuple]:
         return referencia - timedelta(days=dias_atras)
 
     return [
-        (dia(20), "Adubo NPK 20-05-20", "kg", "entrada", 1000, None, 3.2),
+        (
+            dia(20),
+            "Adubo NPK 20-05-20",
+            "kg",
+            "entrada",
+            1000,
+            None,
+            3.2,
+            None,
+            "Revenda Boa Safra",
+        ),
         (dia(13), "Adubo NPK 20-05-20", None, "saída", 25.5, None, None),
         (
             dia(6),
@@ -308,6 +346,8 @@ def _aba_de_instrucoes(aba: Worksheet) -> None:
                 "fora do esperado.",
                 "• Para dizer onde cada insumo foi aplicado (coluna talhao), cadastre os talhões "
                 "na tela de Talhões antes, e baixe o modelo de novo: a lista vem com eles.",
+                "• O fornecedor (coluna fornecedor) que não estiver cadastrado é cadastrado na "
+                "importação, com o nome da planilha: confira a grafia na prévia.",
             ],
         ),
         (
@@ -370,6 +410,24 @@ def _aba_de_talhoes(aba: Worksheet, talhoes: list[Talhao]) -> None:
         )
         aba["A2"].font = fonte(italic=True, color=CINZA)
     # A fonte da lista de escolha da coluna talhao: protegida contra edição sem querer.
+    aba.protection.sheet = True
+
+
+def _aba_de_fornecedores(aba: Worksheet, fornecedores: list[Fornecedor]) -> None:
+    titulos(aba, ["fornecedor", "cidade"])
+    for letra, largura in {"A": 30, "B": 20}.items():
+        aba.column_dimensions[letra].width = largura
+    aba.freeze_panes = "A2"
+    for numero, fornecedor in enumerate(fornecedores, start=2):
+        for coluna, texto in ((1, fornecedor.nome), (2, fornecedor.cidade)):
+            if texto is not None:
+                celula = aba.cell(numero, coluna)
+                celula.value = ILLEGAL_CHARACTERS_RE.sub("", texto)
+                celula.data_type = "s"
+    if not fornecedores:
+        aba["A2"] = "Nenhum fornecedor cadastrado ainda: os da planilha serão cadastrados."
+        aba["A2"].font = fonte(italic=True, color=CINZA)
+    # A fonte da lista de escolha da coluna fornecedor: protegida contra edição sem querer.
     aba.protection.sheet = True
 
 
