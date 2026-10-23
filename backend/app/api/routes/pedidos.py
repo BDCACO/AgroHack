@@ -10,8 +10,10 @@ from app.schemas.compras import (
     Recebimento,
     ResultadoDoRecebimento,
     Situacao,
+    SugestaoDePedido,
 )
 from app.services import pedidos as servico
+from app.services import sugestao_de_pedido
 
 # O funcionário consulta os pedidos e recebe a carga (é ele quem confere no galpão o que
 # chegou); o dono faz, altera e cancela, porque é quem compra e paga.
@@ -31,6 +33,17 @@ def listar_pedidos(
 ) -> list[PedidoResposta]:
     """Os mais recentes primeiro, com o que já chegou e o que falta de cada linha."""
     return servico.listar_pedidos(db, situacao, fornecedor_id, insumo_id, limite)
+
+
+# Antes de /pedidos/{pedido_id}: senão "sugestao" seria lido como o id de um pedido.
+@campo.get("/pedidos/sugestao", response_model=SugestaoDePedido)
+def sugerir_pedido(
+    dias: int = Query(7, ge=0, le=90), db: Session = Depends(get_db)
+) -> SugestaoDePedido:
+    """As reposições para pedir hoje ou nos próximos `dias`, agrupadas pelo fornecedor da
+    última compra de cada insumo, com a quantidade (já descontado o que está a caminho) e o
+    preço estimado. Cada grupo, confirmado, vai para POST /pedidos."""
+    return sugestao_de_pedido.sugerir(db, dias)
 
 
 @gestao.post("/pedidos", response_model=PedidoResposta, status_code=status.HTTP_201_CREATED)

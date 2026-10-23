@@ -53,6 +53,7 @@ MATRIZ = {
     ("GET", "/api/v1/fornecedores/{fornecedor_id}"): FUNCIONARIO,
     ("GET", "/api/v1/pedidos"): FUNCIONARIO,
     ("GET", "/api/v1/pedidos/{pedido_id}"): FUNCIONARIO,
+    ("GET", "/api/v1/pedidos/sugestao"): FUNCIONARIO,
     # O peão confere a carga no galpão e dá a entrada; o pedido em si é do dono.
     ("POST", "/api/v1/pedidos/{pedido_id}/receber"): FUNCIONARIO,
     ("POST", "/api/v1/insumos"): DONO,

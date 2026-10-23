@@ -162,3 +162,37 @@ class ResultadoDoRecebimento(BaseModel):
     movimentacoes: list[MovimentacaoResposta]  # as entradas criadas, na ordem do corpo
     # Não impedem nada: pedem para conferir (a carga que veio a mais que o pedido).
     avisos: list[str]
+
+
+class ItemSugerido(BaseModel):
+    """Uma linha do pedido sugerido. Vai como está para `itens` de POST /pedidos: os campos
+    que o pedido não usa são ignorados."""
+
+    insumo_id: int
+    insumo: str
+    unidade: str
+    # A da reposição: em embalagens fechadas, com o pedido mínimo e descontado o que já está
+    # a caminho.
+    quantidade: float
+    # O preço da última compra com fornecedor; sem ela (ou sem preço nela), o custo médio.
+    valor_unitario: float | None
+    custo_estimado: float | None
+    pedir_em: date
+    pedir_hoje: bool
+    justificativa: str  # a conta da reposição
+
+
+class GrupoSugerido(BaseModel):
+    """Um pedido por revenda: a da última compra de cada insumo."""
+
+    fornecedor_id: int | None  # None: nenhuma compra com fornecedor ativo
+    fornecedor: str | None
+    itens: list[ItemSugerido]
+    custo_estimado: float | None  # dos itens com preço; None se nenhum tem
+
+
+class SugestaoDePedido(BaseModel):
+    referencia: date  # hoje, em Rondônia
+    dias: int  # até quantos dias à frente olhou
+    grupos: list[GrupoSugerido]
+    limitacoes: list[str]
