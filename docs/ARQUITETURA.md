@@ -39,7 +39,7 @@ navegador ──► Vite (:5173) ──/api──► FastAPI (:8000) ──► P
 |---|---|---|
 | `app/domain/estoque.py` | Tipos de entrada (`Insumo`, `Lote`, `Retirada`, `Entrada`), `Alerta` e as regras que não dependem de histórico: estoque abaixo do mínimo, lote vencido ou a vencer, custo médio das compras; e a formatação brasileira de quantidade e dinheiro | **Sem I/O, sem banco, sem `datetime.now()`**: a data de referência entra como parâmetro |
 | `app/domain/talhao.py` | A carência do talhão (quando a colheita fica liberada, o alerta com a conta e o que não se sabe) e o custo do que foi aplicado nele, total, por hectare e por insumo, num período | As mesmas: data de referência e período por parâmetro |
-| `app/analysis/consumo.py` | `analisar(...)`: consumo médio, cobertura em dias, risco de falta, excesso, baixa movimentação, consumo incomum e reposição estimada (em embalagens fechadas, com pedido mínimo e custo, quando cadastrados) | Recebe listas, devolve `Analise` com **justificativa** em cada alerta e as **limitações** dos dados |
+| `app/analysis/consumo.py` | `analisar(...)`: consumo médio, cobertura em dias, risco de falta, excesso, baixa movimentação, consumo incomum e reposição estimada (em embalagens fechadas, com pedido mínimo e custo, quando cadastrados, e descontado o que já foi pedido e não chegou, `a_caminho`) | Recebe listas, devolve `Analise` com **justificativa** em cada alerta e as **limitações** dos dados |
 
 Os limiares (janela de 90 dias, 30 dias para vencimento, 180 de cobertura para excesso, prazo
 padrão de 15 dias...) são constantes no topo de cada módulo, com o porquê ao lado. A análise usa
@@ -53,7 +53,7 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 
 | Caminho | Responsabilidade |
 |---|---|
-| `app/models/estoque.py` | `insumos` (com `embalagem`, `pedido_minimo` e `carencia_dias` opcionais), `talhoes` (nome, `area_ha`, `cultura`) e `movimentacoes` (entrada ou saída, data, quantidade, validade, `motivo`: vazio, `descarte` ou `inventario`, `valor_unitario`, o preço da compra, `uuid`, o identificador gerado pelo app, `talhao_id`, onde a retirada foi aplicada, e `usuario_id`, quem lançou). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só. O custo médio também não: sai das compras |
+| `app/models/estoque.py` | `insumos` (com `embalagem`, `pedido_minimo` e `carencia_dias` opcionais), `talhoes` (nome, `area_ha`, `cultura`) e `movimentacoes` (entrada ou saída, data, quantidade, validade, `motivo`: vazio, `descarte` ou `inventario`, `valor_unitario`, o preço da compra, `uuid`, o identificador gerado pelo app, `talhao_id`, onde a retirada foi aplicada, `usuario_id`, quem lançou, `fornecedor_id`, de quem foi a compra, e `item_do_pedido_id`, o pedido que a entrada recebeu). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só. O custo médio também não: sai das compras |
 | `app/services/estoque.py` | Casos de uso: cadastro, movimentações, a análise de cada insumo a partir do banco e o saldo dia a dia (histórico do gráfico). As rotas falam só com os serviços (este, `importacao`, `planilha_modelo` e `relatorio`) |
 | `app/services/importacao.py` | Importação de movimentações por planilha (Excel ou CSV), ver abaixo |
 | `app/services/planilha_modelo.py` | A planilha modelo da importação e os estilos das planilhas geradas (cores da marca, títulos, impressão) |
@@ -61,6 +61,10 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 | `app/services/talhoes.py` | Cadastro de talhões e a leitura de cada um: carência e custo calculados das aplicações, com o custo médio pela mesma regra da tela do insumo |
 | `app/services/sincronizacao.py` | A fila de lançamentos do app (`POST /movimentacoes/lote`): grava item a item, traduz os erros de validação em frases e calcula os avisos (ver abaixo) |
 | `app/services/resumo.py` | A visão geral em reais (`GET /resumo`): soma o que `estoque.listar_insumos` já analisou, mais as perdas |
+| `app/models/compras.py` | `fornecedores` (nome único, contato, telefone, cidade, observação, `ativo`), `pedidos` (fornecedor, `situacao`, `feito_em`, `previsto_para`, observação, quem fez) e `itens_do_pedido` (insumo, quantidade, preço combinado, `quantidade_recebida`) |
+| `app/services/fornecedores.py` | Cadastro dos fornecedores e o detalhe com as compras recentes e o preço médio pago por insumo |
+| `app/services/pedidos.py` | Pedidos de compra: fazer, alterar, cancelar e receber (a carga vira as entradas); a situação pelo que já chegou |
+| `app/services/sugestao_de_pedido.py` | O pedido sugerido: as reposições do motor, agrupadas pelo fornecedor da última compra, com o preço dela |
 | `app/models/usuario.py` | `usuarios` (login em minúsculas, hash da senha, papel, ativo, falhas seguidas e bloqueio) e `sessoes` (o SHA-256 do token, validade, encerramento, aparelho) |
 | `app/services/autenticacao.py` | Login, a sessão conferida a cada pedido, sair, trocar a senha e o bloqueio por senhas erradas |
 | `app/services/usuarios.py` | Gestão pelo dono: cadastrar, alterar, desativar, redefinir a senha; o último dono ativo |
@@ -163,6 +167,89 @@ alimento, exigência legal e motivo de carga recusada. Decisões:
 - **Migration 0008.** O downgrade apagaria talhões, aplicações e carências: ele se recusa
   enquanto houver algum talhão ou carência cadastrada, e só segue com
   `alembic -x descartar_talhoes=sim downgrade 0007`.
+
+### Fornecedores e pedidos de compra
+
+A análise já dizia "pedir 14 sacos de ureia", mas o ciclo parava aí: o produtor pedia por
+telefone, e no dia seguinte o sistema mandava pedir de novo o que estava a caminho. Agora o
+ciclo fecha: **sugerido → pedido → recebido**, e o recebimento vira a entrada no estoque.
+Decisões:
+
+- **Fornecedor** (`fornecedores`): nome único (`409`), contato, telefone (o WhatsApp da
+  revenda), cidade e observação opcionais; o campo apagado na tela ("") vira vazio. O `PUT`
+  muda só o que veio: desativar não apaga o telefone.
+- **Remover só sem história.** Com compra ou pedido registrado, `DELETE` é `409`, pedindo
+  para desativar (`ativo: false`): apagar levaria de quem foi cada compra e o preço pago a
+  ele, que é o que permite comparar revendas. As FKs são `RESTRICT`. O desativado sai das
+  escolhas (o pedido a ele é `422`, e a sugestão não o usa), mas a compra com ele continua
+  aceita: pode ser antiga, e a cópia de segurança precisa voltar.
+- **De quem se comprou** (`movimentacoes.fornecedor_id`): opcional, só na compra (entrada
+  sem motivo), com o CHECK `ck_movimentacoes_fornecedor_so_em_compra` e a frase no schema;
+  no `POST`, na fila do app (inexistente é `recusada`) e na resposta, com `comprado_de` (o
+  nome, como o `lancado_por`). O reenvio de um uuid com outro fornecedor é `409`.
+- **Preço por fornecedor**: o detalhe do fornecedor traz as compras recentes (20) e, por
+  insumo, o preço médio pago a ele (pela regra do custo médio: ponderado pela quantidade, só
+  as compras com preço), o último preço e a última compra; o detalhe do insumo traz
+  `precos_por_fornecedor`, o mais barato primeiro.
+- **Pedido** (`pedidos` + `itens_do_pedido`): fornecedor opcional (o pedido por telefone a
+  quem não está cadastrado vale), `feito_em` (padrão hoje, não futura), `previsto_para`
+  (opcional, não antes do pedido) e uma linha por insumo (o recebimento aponta para ela sem
+  ambiguidade). `situacao`: `aberto`, `parcial`, `recebido` ou `cancelado`. A resposta traz o
+  que falta de cada linha, o custo pelos preços combinados e `atrasado` (a previsão passou
+  e falta chegar).
+- **Alterar só o aberto**, antes de chegar qualquer coisa (`409` depois): as entradas já
+  gravadas apontam para as linhas, e mudar o pedido as deixaria contando outra história. A
+  linha do mesmo insumo continua a mesma, com a quantidade nova.
+- **Cancelar** não desfaz o que chegou (está no galpão); o que faltava não vem mais. O
+  pedido que chegou inteiro não se cancela (`409`); cancelar de novo não muda nada.
+- **Receber** (`POST /pedidos/{id}/receber`): a data da chegada (padrão hoje, nem futura nem
+  antes do pedido) e, por linha, a quantidade, a validade do lote e o preço se a nota veio
+  com outro. Cada linha vira uma entrada com o fornecedor do pedido, o preço (o combinado
+  ou o da nota), a validade, quem conferiu e `item_do_pedido_id`; a linha soma o recebido e
+  o pedido passa a `parcial` ou `recebido`. Numa transação, com o pedido travado
+  (`FOR UPDATE`): dois celulares recebendo a mesma carga entram um de cada vez.
+- **A carga a mais entra, com aviso** ("confira a nota"), em vez de ser recusada: o que
+  chegou está no galpão, e recusar deixaria o estoque menor que o real ou obrigaria a
+  lançar a sobra à parte, sem fornecedor. `quantidade_recebida` pode passar da quantidade;
+  o que falta nunca fica negativo.
+- **Remover a entrada recebida** (digitada errado) devolve a quantidade à linha, e o pedido
+  volta a parcial ou aberto, na mesma transação. `quantidade_recebida` é coluna, e não a
+  soma das entradas, porque a situação do pedido também é guardada (o filtro por situação
+  é uma consulta simples); os dois mudam juntos no recebimento e na remoção.
+- **O motor sabe do que já foi pedido** (`analisar(..., a_caminho=[Encomenda(...)])`, puro,
+  opcional). A **reposição** conta o que falta chegar dos pedidos abertos e parciais como se
+  estivesse no galpão (a posição de estoque) e diz isso na justificativa ("Desconta os 950
+  kg já pedidos e ainda não recebidos."): não manda comprar de novo. O **alerta de risco de
+  falta** continua aparecendo, porque o estoque físico continua baixo, e diz quanto foi
+  pedido e quando chega; ele só deixa de ser urgente (vira atenção) se o pedido chega antes
+  de o estoque acabar e, com ele, o estoque passa do prazo de reposição. Entrega atrasada
+  (previsão vencida), que chega depois de acabar ou sem data continua urgente; o pedido sem
+  data vira limitação. O insumo ganha `em_pedido` e `chegada_prevista` (aditivos), e o
+  `POST /analises` aceita `a_caminho`, opcional.
+- **Pedido sugerido** (`GET /pedidos/sugestao?dias=7`): as reposições para pedir hoje ou nos
+  próximos dias, agrupadas pelo fornecedor da última compra de cada insumo (o sem fornecedor
+  por último), com a quantidade da reposição e o preço da última compra, que é o que a
+  revenda cobra hoje (sem ele, o custo médio). Cada grupo vai como está para
+  `POST /pedidos`; o que já foi pedido sai da sugestão.
+- **Remover o insumo** leva as linhas de pedido dele (CASCADE, como as movimentações), e o
+  pedido que fica vazio sai junto.
+- **Planilha**: coluna opcional `fornecedor`, só em compra. O fornecedor que não existe é
+  **cadastrado pelo nome**, como o insumo novo, e não recusado como o talhão: o talhão
+  precisa da área, o fornecedor só do nome, e a cópia de segurança restaurada num sistema
+  vazio traz de volta de quem foi cada compra sem cadastro à mão. A prévia lista
+  `fornecedores_novos`, para conferir a grafia. `ja_lancadas` trata o fornecedor como o
+  preço e o talhão. O relatório escreve o fornecedor de cada compra na aba Movimentações e
+  ganha a aba **Pedidos** (o que falta chegar dos abertos e parciais, com a previsão e o
+  atrasado em destaque), que não volta pela importação.
+- **Permissões**: ler fornecedores, pedidos e a sugestão, e **receber** a carga, é do
+  funcionário (é ele quem confere no galpão o que chegou); cadastrar fornecedor e fazer,
+  alterar ou cancelar pedido é do dono, que compra e paga. O preço pago a cada revenda não
+  ficou só com o dono: o funcionário já lê o custo médio e o preço de cada compra, e
+  esconder o preço por fornecedor pediria um schema por papel sem proteger nada que ele já
+  não veja. O relatório, com todos os preços e a cópia de segurança, continua do dono.
+- **Migration 0010.** O downgrade apagaria fornecedores, pedidos e de quem foi cada
+  compra: ele se recusa enquanto houver algum fornecedor ou pedido, e só segue com
+  `alembic -x descartar_compras=sim downgrade 0009`.
 
 ### Lançamento offline do app (sincronização)
 
@@ -287,12 +374,14 @@ dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Dec
 |---|---|---|
 | Pública | qualquer um | `GET /health`, `GET /ready`, `/docs` e `/openapi.json` (fora de produção), `POST /auth/entrar` |
 | Sessão | qualquer usuário logado, sobre si | `POST /auth/sair`, `GET /auth/eu`, `PUT /auth/senha` (exigem login mesmo desligada) |
-| Funcionário | funcionário e dono | `GET /insumos`, `GET /insumos/{id}`, `GET /movimentacoes`, `GET /talhoes`, `GET /talhoes/{id}`, `GET /resumo`; `POST /movimentacoes`, `POST /movimentacoes/lote`, `POST /insumos/{id}/inventario` |
-| Dono | só o dono | `POST`/`PUT`/`DELETE /insumos`, `DELETE /movimentacoes/{id}`, `POST`/`PUT`/`DELETE /talhoes`, `POST /importacoes`, `GET /importacoes/modelo.xlsx`, `GET /relatorio.xlsx`, `POST /analises` |
+| Funcionário | funcionário e dono | `GET /insumos`, `GET /insumos/{id}`, `GET /movimentacoes`, `GET /talhoes`, `GET /talhoes/{id}`, `GET /resumo`, `GET /fornecedores`, `GET /fornecedores/{id}`, `GET /pedidos`, `GET /pedidos/{id}`, `GET /pedidos/sugestao`; `POST /movimentacoes`, `POST /movimentacoes/lote`, `POST /insumos/{id}/inventario`, `POST /pedidos/{id}/receber` |
+| Dono | só o dono | `POST`/`PUT`/`DELETE /insumos`, `DELETE /movimentacoes/{id}`, `POST`/`PUT`/`DELETE /talhoes`, `POST`/`PUT`/`DELETE /fornecedores`, `POST /pedidos`, `PUT /pedidos/{id}`, `POST /pedidos/{id}/cancelar`, `POST /importacoes`, `GET /importacoes/modelo.xlsx`, `GET /relatorio.xlsx`, `POST /analises` |
 | Gestão | só o dono, sempre com login | `GET /usuarios`, `POST /usuarios`, `PUT /usuarios/{id}`, `PUT /usuarios/{id}/senha` |
 
 O funcionário lê os insumos com o custo médio e o valor em estoque (as telas que ele usa são as
-mesmas); o relatório, com todos os preços e a cópia de segurança, é só do dono.
+mesmas), e o preço pago a cada fornecedor; o relatório, com todos os preços e a cópia de
+segurança, é só do dono. O funcionário recebe a carga de um pedido, mas não faz, altera nem
+cancela pedido.
 
 ### Importação de planilha
 
@@ -364,24 +453,33 @@ tem banco a orquestrar e chama o motor direto.
 | `PUT /api/v1/usuarios/{id}` | `nome`, `papel`, `ativo` (o que não vier fica). Desativar derruba as sessões; o último dono ativo não sai (`409`) |
 | `PUT /api/v1/usuarios/{id}/senha` | Redefine a senha (`senha_nova`), derruba as sessões e desfaz o bloqueio (`204`) |
 | `GET /api/v1/ready` | Readiness: `200` com o banco respondendo, `503` sem ele |
-| `GET /api/v1/insumos` | Insumos com estoque atual, `custo_medio`, `valor_em_estoque` e a análise de hoje (alertas com `valor` em R$, reposição com `custo_estimado`, limitações) |
-| `GET /api/v1/insumos/{id}` | Um insumo com a análise, o saldo no fim de cada dia com movimentação (`historico`) e as movimentações |
+| `GET /api/v1/insumos` | Insumos com estoque atual, `custo_medio`, `valor_em_estoque`, `em_pedido` e `chegada_prevista` (o que foi pedido e não chegou) e a análise de hoje (alertas com `valor` em R$, reposição com `custo_estimado` e descontado o que está a caminho, limitações) |
+| `GET /api/v1/insumos/{id}` | Um insumo com a análise, o saldo no fim de cada dia com movimentação (`historico`), as movimentações e o preço médio pago a cada fornecedor (`precos_por_fornecedor`, o mais barato primeiro) |
 | `POST /api/v1/insumos` · `PUT /api/v1/insumos/{id}` | Cadastra / altera insumo (nome, unidade, mínimo, prazo de reposição e, opcionais, `embalagem`, `pedido_minimo` e `carencia_dias`). `409` para nome repetido. No `PUT`, embalagem, pedido mínimo e carência ausentes ficam como estão |
 | `DELETE /api/v1/insumos/{id}` | Remove o insumo cadastrado por engano, com as movimentações dele. `409` se ele foi aplicado em algum talhão: a rastreabilidade e a carência não somem com ele (remova antes as aplicações) |
-| `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (`insumo_id`, `limite`), cada uma com `usuario_id` e `lancado_por` (quem lançou; `null` sem login) |
-| `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo; entrada pode trazer `valor_unitario` (R$ por unidade); a retirada para uso pode trazer `talhao_id` (onde foi aplicada). `422` para data futura, validade ou preço em saída, preço zero ou negativo, descarte em entrada, talhão fora da retirada para uso, insumo ou talhão inexistente. Com `uuid` (opcional, gerado pelo app), reenviar devolve o já gravado com `200`; o mesmo uuid com outro conteúdo é `409` |
+| `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (`insumo_id`, `limite`), cada uma com `usuario_id` e `lancado_por` (quem lançou; `null` sem login), `fornecedor_id` e `comprado_de` (de quem foi a compra) e `item_do_pedido_id` (o pedido que ela recebeu) |
+| `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo; entrada pode trazer `valor_unitario` (R$ por unidade); a compra pode trazer `fornecedor_id`; a retirada para uso pode trazer `talhao_id` (onde foi aplicada). `422` para data futura, validade ou preço em saída, preço zero ou negativo, descarte em entrada, talhão fora da retirada para uso, fornecedor fora da compra, insumo, talhão ou fornecedor inexistente. Com `uuid` (opcional, gerado pelo app), reenviar devolve o já gravado com `200`; o mesmo uuid com outro conteúdo é `409` |
 | `POST /api/v1/movimentacoes/lote` | A fila do app: `{"movimentacoes": [...]}`, até 500, cada uma com `uuid`. Grava na ordem, item a item; devolve para cada uma `gravada`, `ja_existia` ou `recusada` (com os `erros` em frases) e os `avisos`, mais o `resumo`. Sempre `200`, a não ser que o pedido inteiro esteja malformado (`422`) |
 | `POST /api/v1/insumos/{id}/inventario` | Contagem do galpão (`quantidade_contada`, `data` opcional): lança a diferença para o saldo registrado naquele dia como ajuste (`motivo: "inventario"`) e devolve saldo, contagem e diferença. Se bate, nada é lançado |
-| `DELETE /api/v1/movimentacoes/{id}` | Remove lançamento errado (o mesmo uuid, reenviado depois, grava de novo) |
+| `DELETE /api/v1/movimentacoes/{id}` | Remove lançamento errado (o mesmo uuid, reenviado depois, grava de novo). A entrada que recebeu um pedido devolve a quantidade a ele |
 | `GET /api/v1/resumo` | Visão geral em reais: `valor_em_estoque` (`null` se nenhum insumo tem preço), `insumos_sem_preco`, `perdas` (descartes e faltas da contagem pelo custo médio: `ultimos_30_dias` e `total`), `compras_sugeridas` (custo das reposições dos próximos 30 dias, quantas e quantas para hoje), `alertas` por gravidade (só os dos insumos), `talhoes_em_carencia` e as `limitacoes` das somas |
 | `GET /api/v1/talhoes` | Cada talhão com `area_ha`, `cultura`, `colheita_liberada_em`, `em_carencia`, o alerta de carência com a conta, `custo_total`, `custo_por_ha` e as `limitacoes`. `desde` e `ate` (opcionais) recortam o custo |
 | `GET /api/v1/talhoes/{id}` | O mesmo, mais as `aplicacoes` do período (as mais recentes primeiro) e o `consumo` de cada insumo no talhão, com o custo |
 | `POST /api/v1/talhoes` · `PUT /api/v1/talhoes/{id}` | Cadastra / altera talhão (nome, `area_ha` maior que zero, `cultura` opcional). `409` para nome repetido |
 | `DELETE /api/v1/talhoes/{id}` | Remove o talhão sem aplicação; com alguma, `409` |
+| `GET /api/v1/fornecedores` · `POST /api/v1/fornecedores` | Todos os fornecedores, com `ativo` / cadastra (`nome`; `contato`, `telefone`, `cidade`, `observacao` opcionais). `409` para nome repetido |
+| `GET /api/v1/fornecedores/{id}` | O fornecedor, as 20 compras mais recentes e, por insumo, o preço médio pago a ele, o último preço e a última compra (`precos`) |
+| `PUT /api/v1/fornecedores/{id}` · `DELETE /api/v1/fornecedores/{id}` | Altera só o que veio (`{"nome": ..., "ativo": false}` desativa) / remove o fornecedor sem compra nem pedido; com algum, `409` (desative-o) |
+| `GET /api/v1/pedidos` | Pedidos, os mais recentes primeiro (`situacao`, `fornecedor_id`, `insumo_id`, `limite`), cada um com o fornecedor, quem fez, `atrasado`, `custo_estimado` e as linhas com `quantidade_recebida` e `falta_receber` |
+| `GET /api/v1/pedidos/sugestao` | O pedido sugerido: as reposições para pedir hoje ou nos próximos `dias` (padrão 7, até 90), por fornecedor da última compra, com quantidade, preço e custo estimado; cada grupo vai como está para `POST /pedidos` |
+| `POST /api/v1/pedidos` · `GET /api/v1/pedidos/{id}` | Faz o pedido (`fornecedor_id`, `feito_em`, `previsto_para`, `observacao` opcionais; `itens` com `insumo_id`, `quantidade` e `valor_unitario`) / um pedido. `422` para insumo repetido, data futura, previsão antes do pedido, fornecedor desativado ou inexistente |
+| `PUT /api/v1/pedidos/{id}` | Altera o pedido aberto, antes de chegar qualquer coisa (senão `409`): os campos enviados e as linhas |
+| `POST /api/v1/pedidos/{id}/cancelar` | O que falta chegar não vem mais; o que chegou fica. Recebido inteiro é `409` |
+| `POST /api/v1/pedidos/{id}/receber` | A carga que chegou (`data`, padrão hoje; `itens` com `item_id`, `quantidade`, `validade` e `valor_unitario` opcionais): cada linha vira uma entrada com o fornecedor, o preço e quem conferiu; devolve o pedido (`parcial` ou `recebido`), as `movimentacoes` criadas e os `avisos` (carga a mais). Cancelado ou recebido é `409` |
 | `POST /api/v1/importacoes` | Movimentações de uma planilha: `xlsx` (base64) ou `conteudo` (texto do CSV). Sem `confirmar`, só confere e resume, com o total de cada insumo; com erro, nada é gravado e a resposta lista os erros por linha |
 | `GET /api/v1/importacoes/modelo.xlsx` | Planilha modelo formatada, com os insumos cadastrados para escolher da lista |
-| `GET /api/v1/relatorio.xlsx` | Relatório do estoque em Excel, com a aba Talhões. A aba Movimentações tem o formato da importação (com o talhão de cada aplicação): é também a cópia de segurança, e volta pela mesma tela |
-| `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período; `custo_medio`, `embalagem` e `pedido_minimo` opcionais) e devolve alertas, reposição e limitações. `422` para entrada inválida |
+| `GET /api/v1/relatorio.xlsx` | Relatório do estoque em Excel, com as abas Pedidos (o que falta chegar) e Talhões. A aba Movimentações tem o formato da importação (com o talhão de cada aplicação e o fornecedor de cada compra): é também a cópia de segurança, e volta pela mesma tela |
+| `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período; `custo_medio`, `embalagem`, `pedido_minimo` e `a_caminho`, o que já foi pedido, opcionais) e devolve alertas, reposição e limitações. `422` para entrada inválida |
 | `GET /api/v1/docs` | Swagger UI (desligado em `production`) |
 | `GET /api/v1/openapi.json` | Schema OpenAPI (desligado em `production`) |
 
@@ -614,6 +712,18 @@ tecnologias que não se aplicam.
    app ainda não têm a tela de Talhões, o campo de carência no cadastro do insumo nem a escolha do
    talhão ao lançar uma retirada. Hoje, o talhão em carência aparece no relatório (aba Talhões) e
    no `/docs`.
+6. **Compras nas telas.** A API já tem fornecedores, pedidos, a sugestão de pedido, o
+   recebimento e o `em_pedido` de cada insumo (seção 2, "Fornecedores e pedidos de
+   compra"); o site e o app ainda não têm a tela. O site precisa de: Fornecedores
+   (cadastro, desativar, o preço pago por insumo); o campo fornecedor ao lançar uma compra;
+   "Fazer pedido" a partir da sugestão (`GET /pedidos/sugestao`, confirmar e
+   `POST /pedidos`, no lugar ou ao lado da lista do WhatsApp); a lista de pedidos com
+   cancelar; mostrar `em_pedido` e `chegada_prevista` no insumo e `precos_por_fornecedor` na
+   página dele. O app precisa, no mínimo, de "Receber pedido": a lista dos abertos e
+   parciais, a quantidade que chegou por linha (com validade), e `POST
+   /pedidos/{id}/receber` com os `avisos` na tela. O recebimento não está na fila offline:
+   precisa de sinal (o servidor trava o pedido e confere o que já chegou). Enquanto isso, o
+   relatório (aba Pedidos) e o `/docs` mostram tudo.
 
 Decididas desde a versão anterior deste documento: a autenticação existe (dono e funcionário,
 obrigatória em produção, seção 2); a importação de planilha existe (Excel e

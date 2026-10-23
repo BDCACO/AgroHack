@@ -15,15 +15,16 @@ diz a linha e o que corrigir.
 
 ## A planilha modelo
 
-É gerada na hora do download, com cinco abas:
+É gerada na hora do download, com seis abas:
 
 | Aba | Para quê |
 |---|---|
-| **Movimentações** | A que você preenche, e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade, tipo e talhão. O próprio Excel avisa se a data for futura, se o tipo não for entrada, saída ou descarte e se a quantidade ou o valor não forem maiores que zero. |
+| **Movimentações** | A que você preenche, e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade, tipo, talhão e fornecedor. O próprio Excel avisa se a data for futura, se o tipo não for entrada, saída ou descarte e se a quantidade ou o valor não forem maiores que zero. |
 | **Como preencher** | As instruções, resumidas. |
 | **Exemplo** | Três linhas preenchidas do jeito certo. |
 | **Insumos cadastrados** | Os insumos que já estão no CampoCerto, com a unidade de cada um. É de onde vem a lista de escolha da coluna `insumo`: depois de cadastrar outros, baixe o modelo de novo. |
 | **Talhões cadastrados** | Os talhões cadastrados na tela de Talhões, com a área e a cultura. Alimenta a lista de escolha da coluna `talhao`. |
+| **Fornecedores cadastrados** | Os fornecedores ativos, com a cidade. Alimenta a lista de escolha da coluna `fornecedor`, que só sugere: um nome novo vale. |
 
 Passe o mouse sobre o título de uma coluna para ver a explicação dela.
 
@@ -39,9 +40,11 @@ Passe o mouse sobre o título de uma coluna para ver a explicação dela.
 | `validade` | Não | Validade do lote, só em entradas. Em branco se o produto não vence. | 30/06/2027 |
 | `talhao` | Não | Onde o insumo foi aplicado, **só em saídas** (retirada para uso). O talhão precisa estar cadastrado na tela de Talhões (com a área); maiúsculas não importam. `talhão`, com acento, também vale como título. Em branco se não quiser dizer. | Talhão Norte |
 | `valor` | Não | Preço pago **por unidade** do insumo (R$ por kg, por litro, por saca), só em entradas (compras). Não é o total da nota: 1.000 kg a R$ 3,20 o quilo é `3,20`. `R$ 3,20` também vale. Em branco se não souber. | 3,20 |
+| `fornecedor` | Não | De quem se comprou, **só em entradas** (compras). Maiúsculas não importam. Um nome que não existe vira fornecedor novo, como o insumo novo: a prévia lista os que serão cadastrados, para você conferir a grafia. Em branco se não quiser dizer. | Revenda Boa Safra |
 
-Pode haver outras colunas (observação, fornecedor, nota fiscal), desde que tenham título na
-linha 1: a importação ignora as que não conhece.
+Pode haver outras colunas (observação, nota fiscal), desde que tenham título na linha 1: a
+importação ignora as que não conhece. A coluna `fornecedor` não é mais ignorada: ela diz de
+quem foi cada compra.
 
 **Para que serve o valor.** Com o preço das compras, o CampoCerto calcula o custo médio de cada
 insumo (a média do que se pagou, ponderada pela quantidade) e passa a falar em reais: quanto vale
@@ -53,6 +56,11 @@ custo médio, e a análise diz quantas ficaram.
 que foi aplicado em cada talhão, no total e por hectare, e avisa até quando não colher: a
 carência do defensivo (cadastrada no insumo) conta a partir do dia da aplicação. Sem talhão, a
 retirada vale para o estoque como sempre.
+
+**Para que serve o fornecedor.** Com o fornecedor de cada compra, o CampoCerto mostra quanto
+se pagou a cada revenda por cada insumo (para comparar), e a sugestão de pedido manda cada
+insumo para a revenda da última compra. Sem fornecedor, a compra vale para o estoque como
+sempre.
 
 ## Excel ou CSV
 
@@ -86,15 +94,17 @@ prévia**: um número lido errado aparece ali, antes de gravar.
 
 O **relatório em Excel** (botão *Baixar relatório* no Painel) traz, na aba **Movimentações**,
 todas as entradas e saídas no formato da importação, inclusive descartes, ajustes de inventário
-e o preço de cada compra, com o talhão de cada aplicação. Guarde-o: num CampoCerto novo,
-importá-lo traz de volta os insumos e as movimentações, e com elas o custo médio. **Cadastre os talhões
+e o preço de cada compra, com o talhão de cada aplicação e o fornecedor de cada compra.
+Guarde-o: num CampoCerto novo, importá-lo traz de volta os insumos, os fornecedores (pelo
+nome) e as movimentações, e com elas o custo médio. **Cadastre os talhões
 antes** (a aba **Talhões** do relatório tem a área e a cultura de cada um): sem eles, a importação
 diz quais faltam e não grava nada.
 
 O que **não** volta: o estoque mínimo, o prazo de entrega, a embalagem, o pedido mínimo e a
 carência de cada insumo (o mínimo e o prazo estão na aba **Estoque** do relatório; lance-os de novo na tela de
-Insumos, porque sem eles os alertas e a reposição mudam), os insumos sem nenhuma movimentação e a
-marca de dados de demonstração.
+Insumos, porque sem eles os alertas e a reposição mudam), os insumos sem nenhuma movimentação, o
+contato e o telefone dos fornecedores, os **pedidos de compra** (a aba **Pedidos** do relatório
+mostra o que faltava chegar: faça-os de novo) e a marca de dados de demonstração.
 Importado no mesmo sistema, a prévia avisa que todas as linhas já estão lá e não oferece o botão
 de importar, só um "importar mesmo assim", que pede confirmação.
 
@@ -104,9 +114,9 @@ de importar, só um "importar mesmo assim", que pede confirmação.
   errado sem ninguém perceber.
 - **Soma, não substitui.** Cada importação acrescenta ao que já está no sistema. Importar a mesma
   planilha duas vezes duplica o consumo; por isso a prévia avisa quando há linhas iguais a
-  movimentações já lançadas. A mesma planilha reimportada só com o preço ou o talhão
-  preenchidos também é avisada: eles completam o lançamento, não fazem dele outro (já preço
-  diferente, R$ 2,50 contra R$ 2,60, é outra compra).
+  movimentações já lançadas. A mesma planilha reimportada só com o preço, o talhão ou o
+  fornecedor preenchidos também é avisada: eles completam o lançamento, não fazem dele outro
+  (já preço ou fornecedor diferente, R$ 2,50 contra R$ 2,60, é outra compra).
 - **Uma coluna chamada `valor` é lida como preço por unidade.** Numa planilha sua que já tenha
   uma coluna `valor` com o total da nota, renomeie-a antes de importar: senão o total vira o
   preço de cada quilo e o custo médio sai errado.
@@ -134,6 +144,9 @@ de importar, só um "importar mesmo assim", que pede confirmação.
 | talhão "Talhão Leste" não cadastrado | Cadastre o talhão na tela de Talhões (com a área) e importe de novo, ou corrija o nome. |
 | talhão só se informa numa saída (retirada para uso) | O talhão diz onde o insumo foi aplicado: apague-o da linha de entrada, descarte, sobra ou falta. |
 | valor só se informa numa entrada (compra) | O preço é o que se pagou numa compra: apague o valor da linha de saída, descarte, sobra ou falta. |
+| fornecedor só se informa numa entrada (compra) | O fornecedor é de quem se comprou: apague-o da linha de saída, descarte, sobra ou falta. |
+| o nome do fornecedor tem um caractere inválido | Como no nome do insumo: apague a célula e digite o nome de novo. |
+| há mais de um fornecedor cadastrado como "…" | Renomeie um deles na tela de Fornecedores. |
 | valor "caro" não é um número / valor deve ser maior que zero | Escreva o preço por unidade como número: 3,20. |
 | há valores na coluna H, que não tem título na linha 1 | Dê um título à coluna (na linha 1) ou apague os valores dela. |
 | o nome do insumo tem um caractere inválido | Há um caractere invisível no nome (comum em texto colado de outro programa): apague a célula e digite o nome de novo. |

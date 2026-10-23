@@ -32,6 +32,11 @@ volte `AUTENTICACAO=false` para as telas funcionarem.
 | Fungicida azoxistrobina | Baixa movimentação | Ninguém retira há mais de 3 meses |
 | Semente de milho híbrido | Nenhum | Contraste: o que está em dia não grita |
 
+As compras vêm de três fornecedores fictícios (Revenda Boa Safra, Cooperativa Vale Verde,
+AgroVet Pioneiro): a ureia foi comprada na cooperativa a R$ 2,90 e, por último, na revenda a
+R$ 3,30. Há um pedido aberto: 500 kg de sal mineral à AgroVet, feito ontem, previsto para
+daqui a 5 dias.
+
 E os talhões (as retiradas da fazenda foram aplicadas neles; carências fictícias):
 
 | Talhão | Situação | Para falar |
@@ -65,6 +70,14 @@ E os talhões (as retiradas da fazenda foram aplicadas neles; carências fictíc
    importar: a prévia mostra quanto entra e sai de cada insumo antes de gravar. Depois, escolher
    `planilha-com-erros.csv`: nada é gravado, e cada erro diz a linha e o que corrigir (data que
    não existe, "dez" no lugar de 10, unidade diferente da cadastrada, insumo novo sem unidade).
+6b. **Do sugerido ao recebido** (as telas ainda não têm; pelo `/docs`, 1 minuto). Em
+   `GET /pedidos/sugestao`, a ureia já vem num pedido para a Revenda Boa Safra, com os 14
+   sacos e o preço da última compra. `POST /pedidos` com esse grupo e `previsto_para` daqui
+   a 3 dias; em `GET /insumos/{id}` da ureia: `em_pedido` 700, a reposição não manda mais
+   pedir hoje ("Desconta os 700 kg já pedidos") e o risco de falta continua, mas como
+   atenção, dizendo quando o pedido chega. O sistema não manda comprar de novo o que está a
+   caminho. `POST /pedidos/{id}/receber` com a carga: vira a entrada, com a revenda e o preço.
+   Para mostrar sem gastar o roteiro, faça isto **depois** do passo 3.
 7. **Lançar uma movimentação** (página da ureia → "Lançar movimentação"): uma entrada de 700 kg
    com a data de hoje, e os alertas da ureia somem do Painel na hora.
 8. **Talhão em carência** (segurança do alimento). O site e o app ainda não têm a tela de
@@ -77,8 +90,14 @@ E os talhões (as retiradas da fazenda foram aplicadas neles; carências fictíc
    resíduo acima do permitido é recusada; o CampoCerto avisa antes da colheita.
 9. **Fechamento.** O que vem depois: a tela de login no site e no app (a API já tem dono e
    funcionário), sazonalidade da safra no consumo,
-   o resumo em reais (valor em estoque, perdas, compras do mês) e os talhões nas telas do site
-   e do app.
+   o resumo em reais (valor em estoque, perdas, compras do mês), os talhões e os pedidos de
+   compra nas telas do site e do app.
+
+**Ideia deixada de fora de propósito.** O pedido a caminho da demonstração poderia ser o da
+ureia, e o Painel já mostraria o alerta dela dizendo quando a carga chega. Mas isso tira o
+"pedir hoje" e baixa o risco de falta para atenção, e o roteiro (2 urgentes, a ureia pedindo
+compra hoje) mudaria. Por isso o pedido da demonstração é do sal mineral, e o da ureia é feito
+ao vivo no passo 6b.
 
 Depois da apresentação, `make demo-limpar` apaga a fazenda fictícia, com os talhões dela (um
 talhão de demonstração em que se lançou a aplicação de um insumo real fica, para não perder
