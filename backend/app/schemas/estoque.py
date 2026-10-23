@@ -84,6 +84,11 @@ class InsumoResposta(_Insumo):
     # nenhuma compra com preço.
     custo_medio: float | None
     valor_em_estoque: float | None  # estoque atual (se positivo) × custo médio
+    # O que já foi pedido (pedidos abertos ou parciais) e ainda não chegou. A análise o
+    # desconta da reposição, e o alerta de falta diz se ele chega a tempo.
+    em_pedido: float = 0
+    # A previsão de chegada mais distante entre esses pedidos (None sem pedido com data).
+    chegada_prevista: date | None = None
     analise: Analise
 
 

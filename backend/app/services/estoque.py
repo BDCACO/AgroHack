@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -13,7 +13,7 @@ from app.analysis.consumo import analisar
 from app.core.database import violou_nome_unico
 from app.core.relogio import hoje
 from app.domain import estoque as dominio
-from app.models import Fornecedor, Insumo, Movimentacao, Talhao
+from app.models import Fornecedor, Insumo, ItemDoPedido, Movimentacao, Pedido, Talhao
 from app.schemas.estoque import (
     AjusteDeInventario,
     ContagemDeInventario,
@@ -96,7 +96,8 @@ def listar_insumos(db: Session) -> list[InsumoResposta]:
         select(Insumo).options(selectinload(Insumo.movimentacoes)).order_by(Insumo.nome)
     )
     referencia = hoje()
-    return [_resposta(insumo, referencia) for insumo in insumos]
+    pedidos = a_caminho(db)
+    return [_resposta(insumo, referencia, pedidos.get(insumo.id, [])) for insumo in insumos]
 
 
 def criar_insumo(db: Session, dados: InsumoCadastro) -> InsumoResposta:
@@ -113,7 +114,25 @@ def atualizar_insumo(db: Session, insumo_id: int, dados: InsumoCadastro) -> Insu
             continue
         setattr(insumo, campo, valor)
     _salvar(db)
-    return _resposta(insumo, hoje())
+    return _resposta(insumo, hoje(), a_caminho(db, insumo_id).get(insumo_id, []))
+
+
+def a_caminho(db: Session, insumo_id: int | None = None) -> dict[int, list[dominio.Encomenda]]:
+    """O que foi pedido e não chegou, por insumo: a parte que falta de cada linha dos
+    pedidos abertos ou parciais. O cancelado não vem mais, e o que veio a mais não conta."""
+    consulta = (
+        select(ItemDoPedido, Pedido.previsto_para)
+        .join(Pedido)
+        .where(Pedido.situacao.in_(("aberto", "parcial")))
+    )
+    if insumo_id is not None:
+        consulta = consulta.where(ItemDoPedido.insumo_id == insumo_id)
+    por_insumo: dict[int, list[dominio.Encomenda]] = {}
+    for item, previsto_para in db.execute(consulta):
+        if item.falta_receber > 0:
+            encomenda = dominio.Encomenda(item.falta_receber, previsto_para)
+            por_insumo.setdefault(item.insumo_id, []).append(encomenda)
+    return por_insumo
 
 
 def detalhar_insumo(db: Session, insumo_id: int) -> InsumoDetalhe:
@@ -125,7 +144,7 @@ def detalhar_insumo(db: Session, insumo_id: int) -> InsumoDetalhe:
         # Vários lançamentos no mesmo dia: vale o saldo depois do último.
         por_dia[m.data] = round(saldo, 3)
     return InsumoDetalhe(
-        **dict(_resposta(insumo, hoje())),
+        **dict(_resposta(insumo, hoje(), a_caminho(db, insumo_id).get(insumo_id, []))),
         historico=[PontoDeEstoque(data=dia, saldo=valor) for dia, valor in por_dia.items()],
         movimentacoes=[MovimentacaoResposta.model_validate(m) for m in reversed(movimentacoes)],
         precos_por_fornecedor=sorted(
@@ -181,8 +200,14 @@ def remover_insumo(db: Session, insumo_id: int) -> None:
     ).all()
     if talhoes:
         raise InsumoAplicadoEmTalhao(insumo.nome, list(talhoes))
-    # As outras movimentações vão junto pelo ON DELETE CASCADE.
+    # As outras movimentações vão junto pelo ON DELETE CASCADE, e as linhas de pedido dele
+    # também. O pedido que fica sem linha nenhuma não diz mais nada: sai junto.
     db.delete(insumo)
+    db.flush()
+    db.execute(
+        delete(Pedido).where(~exists().where(ItemDoPedido.pedido_id == Pedido.id)),
+        execution_options={"synchronize_session": False},
+    )
     db.commit()
 
 
@@ -310,7 +335,9 @@ def _salvar(db: Session) -> None:
         raise
 
 
-def _resposta(insumo: Insumo, referencia: date) -> InsumoResposta:
+def _resposta(
+    insumo: Insumo, referencia: date, pedidos: list[dominio.Encomenda] = ()
+) -> InsumoResposta:
     entradas = [
         dominio.Entrada(m.data, m.quantidade, m.validade, m.valor_unitario)
         for m in insumo.movimentacoes
@@ -346,6 +373,7 @@ def _resposta(insumo: Insumo, referencia: date) -> InsumoResposta:
         registros_desde=min(registros_desde, referencia),
         referencia=referencia,
         custo_medio=custo_medio,
+        a_caminho=pedidos,
     )
     compras = [m for m in insumo.movimentacoes if m.tipo == "entrada" and m.motivo is None]
     com_preco = sum(m.valor_unitario is not None for m in compras)
@@ -381,5 +409,9 @@ def _resposta(insumo: Insumo, referencia: date) -> InsumoResposta:
         custo_medio=None if custo_medio is None else round(custo_medio, 4),
         # Estoque negativo é registro faltando, não dívida: vale zero.
         valor_em_estoque=None if custo_medio is None else round(max(estoque, 0) * custo_medio, 2),
+        em_pedido=round(sum(e.quantidade for e in pedidos), 3),
+        chegada_prevista=max(
+            (e.previsto_para for e in pedidos if e.previsto_para is not None), default=None
+        ),
         analise=analise,
     )

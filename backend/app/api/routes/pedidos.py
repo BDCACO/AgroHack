@@ -1,0 +1,77 @@
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+
+from app.api.permissoes import usuario_atual
+from app.core.database import get_db
+from app.models import Usuario
+from app.schemas.compras import PedidoEntrada, PedidoResposta, Situacao
+from app.services import pedidos as servico
+
+# O funcionário consulta os pedidos (a carga que vai chegar); o dono faz, altera e cancela,
+# porque é quem compra e paga.
+campo = APIRouter(tags=["pedidos"])
+gestao = APIRouter(tags=["pedidos"])
+
+_INEXISTENTE = HTTPException(status.HTTP_404_NOT_FOUND, "Pedido não encontrado.")
+
+
+@campo.get("/pedidos", response_model=list[PedidoResposta])
+def listar_pedidos(
+    situacao: Situacao | None = None,
+    fornecedor_id: int | None = None,
+    insumo_id: int | None = None,
+    limite: int = Query(200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+) -> list[PedidoResposta]:
+    """Os mais recentes primeiro, com o que já chegou e o que falta de cada linha."""
+    return servico.listar_pedidos(db, situacao, fornecedor_id, insumo_id, limite)
+
+
+@gestao.post("/pedidos", response_model=PedidoResposta, status_code=status.HTTP_201_CREATED)
+def criar_pedido(
+    dados: PedidoEntrada,
+    db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(usuario_atual),
+) -> PedidoResposta:
+    """O pedido feito à revenda. Enquanto não chega, o que falta entra na análise de cada
+    insumo (`em_pedido`): a reposição o desconta."""
+    try:
+        return servico.criar_pedido(db, dados, None if usuario is None else usuario.id)
+    except servico.DadoInvalido as erro:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erro)) from None
+
+
+@campo.get("/pedidos/{pedido_id}", response_model=PedidoResposta)
+def detalhar_pedido(pedido_id: int, db: Session = Depends(get_db)) -> PedidoResposta:
+    try:
+        return servico.detalhar_pedido(db, pedido_id)
+    except servico.PedidoInexistente:
+        raise _INEXISTENTE from None
+
+
+@gestao.put("/pedidos/{pedido_id}", response_model=PedidoResposta)
+def atualizar_pedido(
+    pedido_id: int, dados: PedidoEntrada, db: Session = Depends(get_db)
+) -> PedidoResposta:
+    """Só o pedido aberto, antes de chegar qualquer coisa (senão `409`). Muda os campos
+    enviados e troca as linhas pelas do corpo."""
+    try:
+        return servico.atualizar_pedido(db, pedido_id, dados)
+    except servico.PedidoInexistente:
+        raise _INEXISTENTE from None
+    except servico.PedidoFechado as erro:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(erro)) from None
+    except servico.DadoInvalido as erro:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erro)) from None
+
+
+@gestao.post("/pedidos/{pedido_id}/cancelar", response_model=PedidoResposta)
+def cancelar_pedido(pedido_id: int, db: Session = Depends(get_db)) -> PedidoResposta:
+    """O que falta chegar não vem mais; o que já chegou fica no estoque. O pedido que chegou
+    inteiro não se cancela (`409`)."""
+    try:
+        return servico.cancelar_pedido(db, pedido_id)
+    except servico.PedidoInexistente:
+        raise _INEXISTENTE from None
+    except servico.PedidoFechado as erro:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(erro)) from None

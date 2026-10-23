@@ -16,6 +16,7 @@ from app.api.routes import (
     estoque,
     fornecedores,
     health,
+    pedidos,
     talhoes,
     usuarios,
 )
@@ -30,5 +31,7 @@ api_router.include_router(talhoes.campo, dependencies=[Depends(exigir_funcionari
 api_router.include_router(talhoes.gestao, dependencies=[Depends(exigir_dono)])
 api_router.include_router(fornecedores.campo, dependencies=[Depends(exigir_funcionario)])
 api_router.include_router(fornecedores.gestao, dependencies=[Depends(exigir_dono)])
+api_router.include_router(pedidos.campo, dependencies=[Depends(exigir_funcionario)])
+api_router.include_router(pedidos.gestao, dependencies=[Depends(exigir_dono)])
 api_router.include_router(analises.router, dependencies=[Depends(exigir_dono)])
 api_router.include_router(usuarios.router, dependencies=[Depends(exigir_dono_com_login)])
