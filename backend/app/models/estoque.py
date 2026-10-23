@@ -5,6 +5,7 @@ Guardar o saldo seria ter duas fontes da verdade, que um dia discordam.
 """
 
 from datetime import date
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, Uuid, false
@@ -12,6 +13,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 from app.models.usuario import Usuario
+
+if TYPE_CHECKING:
+    # app.models.compras importa os tipos de coluna daqui.
+    from app.models.compras import Fornecedor
 
 # Exata no banco, com 3 casas (grama no kg, mililitro no litro); float no Python,
 # que é o que o motor de análise usa.
@@ -78,6 +83,16 @@ class Movimentacao(Base):
             "talhao_id IS NULL OR (tipo = 'saida' AND motivo IS NULL)",
             name="talhao_so_em_aplicacao",
         ),
+        # De quem se comprou, e de qual pedido veio: só a compra tem. Descarte, retirada e
+        # a sobra da contagem não vieram de revenda nenhuma.
+        CheckConstraint(
+            "fornecedor_id IS NULL OR (tipo = 'entrada' AND motivo IS NULL)",
+            name="fornecedor_so_em_compra",
+        ),
+        CheckConstraint(
+            "item_do_pedido_id IS NULL OR (tipo = 'entrada' AND motivo IS NULL)",
+            name="pedido_so_em_compra",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -106,12 +121,29 @@ class Movimentacao(Base):
         ForeignKey("usuarios.id", ondelete="RESTRICT"), index=True
     )
 
+    # De quem se comprou. Opcional: a compra sem fornecedor vale como sempre. RESTRICT: o
+    # fornecedor com compra não se apaga, desativa, e o preço pago a cada um continua.
+    fornecedor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("fornecedores.id", ondelete="RESTRICT"), index=True
+    )
+    # A linha do pedido de compra que esta entrada recebeu (POST /pedidos/{id}/receber),
+    # para rastrear. SET NULL: o item só some com o insumo, e aí a entrada vai junto.
+    item_do_pedido_id: Mapped[int | None] = mapped_column(
+        ForeignKey("itens_do_pedido.id", ondelete="SET NULL"), index=True
+    )
+
     usuario: Mapped[Usuario | None] = relationship(lazy="joined")
+    fornecedor: Mapped[Fornecedor | None] = relationship(lazy="joined")
 
     @property
     def lancado_por(self) -> str | None:
         """O nome de quem lançou, para a tela não precisar de outra consulta."""
         return None if self.usuario is None else self.usuario.nome
+
+    @property
+    def comprado_de(self) -> str | None:
+        """O nome do fornecedor, pelo mesmo motivo."""
+        return None if self.fornecedor is None else self.fornecedor.nome
 
 
 class Talhao(Base):

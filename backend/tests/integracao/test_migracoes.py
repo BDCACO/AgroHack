@@ -11,9 +11,11 @@ from tests.integracao.conftest import alembic
 
 
 def test_migrations_descem_e_sobem_e_batem_com_os_modelos(banco: Engine) -> None:
-    # O banco da sessão pode ter preços, uuids, talhões e usuários de outro teste:
-    # descartá-los é o pedido aqui.
+    # O banco da sessão pode ter preços, uuids, talhões, usuários e compras de outro
+    # teste: descartá-los é o pedido aqui.
     alembic(
+        "-x",
+        "descartar_compras=sim",
         "-x",
         "descartar_precos=sim",
         "-x",
@@ -252,3 +254,91 @@ def test_banco_recusa_talhao_fora_da_retirada_para_uso(
         banco.begin() as conexao,
     ):
         conexao.execute(text("DELETE FROM talhoes"))
+
+
+def test_downgrade_nao_descarta_fornecedores_e_pedidos_sem_pedir(banco: Engine) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(
+            text("TRUNCATE insumos, fornecedores, pedidos, usuarios RESTART IDENTITY CASCADE")
+        )
+        conexao.execute(text("INSERT INTO fornecedores (nome) VALUES ('Revenda Boa Safra')"))
+
+    with pytest.raises(subprocess.CalledProcessError) as recusa:
+        alembic("downgrade", "0009")
+    assert "descartar_compras=sim" in recusa.value.stderr
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT nome FROM fornecedores")) == "Revenda Boa Safra"
+
+    alembic("-x", "descartar_compras=sim", "downgrade", "0009")
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT to_regclass('fornecedores')")) is None
+        assert conexao.scalar(text("SELECT to_regclass('pedidos')")) is None
+    alembic("upgrade", "head")
+
+
+@pytest.mark.parametrize(
+    ("tipo", "motivo"), [("saida", None), ("saida", "descarte"), ("entrada", "inventario")]
+)
+def test_banco_recusa_fornecedor_e_pedido_fora_da_compra(
+    banco: Engine, tipo: str, motivo: str | None
+) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, fornecedores, pedidos RESTART IDENTITY CASCADE"))
+        conexao.execute(text("INSERT INTO insumos (nome, unidade) VALUES ('Ureia', 'kg')"))
+        conexao.execute(text("INSERT INTO fornecedores (nome) VALUES ('Revenda')"))
+        conexao.execute(
+            text(
+                "INSERT INTO pedidos (fornecedor_id, situacao, feito_em)"
+                " VALUES (1, 'aberto', '2026-10-01')"
+            )
+        )
+        conexao.execute(
+            text("INSERT INTO itens_do_pedido (pedido_id, insumo_id, quantidade) VALUES (1, 1, 50)")
+        )
+    inserir = text(
+        "INSERT INTO movimentacoes"
+        " (insumo_id, tipo, data, quantidade, motivo, fornecedor_id, item_do_pedido_id)"
+        " VALUES (1, :tipo, '2026-10-01', 1, :motivo, :fornecedor, :item)"
+    )
+    for fornecedor, item, restricao in (
+        (1, None, "ck_movimentacoes_fornecedor_so_em_compra"),
+        (None, 1, "ck_movimentacoes_pedido_so_em_compra"),
+    ):
+        with pytest.raises(IntegrityError, match=restricao), banco.begin() as conexao:
+            conexao.execute(
+                inserir, {"tipo": tipo, "motivo": motivo, "fornecedor": fornecedor, "item": item}
+            )
+    # A compra aceita os dois; e o fornecedor com compra ou pedido não se apaga, nem fora
+    # da API.
+    with banco.begin() as conexao:
+        conexao.execute(inserir, {"tipo": "entrada", "motivo": None, "fornecedor": 1, "item": 1})
+    with (
+        pytest.raises(
+            IntegrityError, match=r"fk_(movimentacoes|pedidos)_fornecedor_id_fornecedores"
+        ),
+        banco.begin() as conexao,
+    ):
+        conexao.execute(text("DELETE FROM fornecedores"))
+
+
+@pytest.mark.parametrize(
+    ("situacao", "previsto_para", "restricao"),
+    [
+        ("perdido", None, "ck_pedidos_situacao_valida"),
+        ("aberto", "2026-09-30", "ck_pedidos_previsto_depois_de_feito"),
+    ],
+)
+def test_banco_recusa_pedido_incoerente_mesmo_fora_da_api(
+    banco: Engine, situacao: str, previsto_para: str | None, restricao: str
+) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE pedidos RESTART IDENTITY CASCADE"))
+
+    with pytest.raises(IntegrityError, match=restricao), banco.begin() as conexao:
+        conexao.execute(
+            text(
+                "INSERT INTO pedidos (situacao, feito_em, previsto_para)"
+                " VALUES (:situacao, '2026-10-01', :previsto_para)"
+            ),
+            {"situacao": situacao, "previsto_para": previsto_para},
+        )
