@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.schemas.estoque import SEM_CARACTERE_DE_CONTROLE
+from app.schemas.estoque import SEM_CARACTERE_DE_CONTROLE, MovimentacaoResposta, PrecoPago
 
 # A observação é texto corrido e pode ter quebra de linha e tabulação; o resto dos
 # caracteres de controle (o NUL, que o PostgreSQL nem aceita) não.
@@ -38,3 +38,8 @@ class FornecedorResposta(_Fornecedor):
 
     id: int
     demonstracao: bool
+
+
+class FornecedorDetalhe(FornecedorResposta):
+    compras: list[MovimentacaoResposta]  # as mais recentes primeiro, até 20
+    precos: list[PrecoPago]  # o que se pagou a ele por cada insumo, pelo nome do insumo

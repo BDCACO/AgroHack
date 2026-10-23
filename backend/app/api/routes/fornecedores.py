@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models import Fornecedor
-from app.schemas.compras import FornecedorCadastro, FornecedorResposta
+from app.schemas.compras import FornecedorCadastro, FornecedorDetalhe, FornecedorResposta
 from app.services import fornecedores as servico
 
 # O funcionário consulta (confere de quem é a carga que chegou, liga para a revenda); o
@@ -31,8 +31,10 @@ def criar_fornecedor(dados: FornecedorCadastro, db: Session = Depends(get_db)) -
         raise _NOME_DUPLICADO from None
 
 
-@campo.get("/fornecedores/{fornecedor_id}", response_model=FornecedorResposta)
-def detalhar_fornecedor(fornecedor_id: int, db: Session = Depends(get_db)) -> FornecedorResposta:
+@campo.get("/fornecedores/{fornecedor_id}", response_model=FornecedorDetalhe)
+def detalhar_fornecedor(fornecedor_id: int, db: Session = Depends(get_db)) -> FornecedorDetalhe:
+    """O fornecedor, as compras recentes e o preço médio pago a ele por insumo, para
+    comparar com as outras revendas."""
     try:
         return servico.detalhar_fornecedor(db, fornecedor_id)
     except servico.FornecedorInexistente:

@@ -13,7 +13,7 @@ from app.analysis.consumo import analisar
 from app.core.database import violou_nome_unico
 from app.core.relogio import hoje
 from app.domain import estoque as dominio
-from app.models import Insumo, Movimentacao, Talhao
+from app.models import Fornecedor, Insumo, Movimentacao, Talhao
 from app.schemas.estoque import (
     AjusteDeInventario,
     ContagemDeInventario,
@@ -23,6 +23,7 @@ from app.schemas.estoque import (
     MovimentacaoEntrada,
     MovimentacaoResposta,
     PontoDeEstoque,
+    PrecoPago,
     como_o_banco,
 )
 
@@ -40,6 +41,7 @@ _CONTEUDO_DO_LANCAMENTO = {
     "motivo": None,
     "valor_unitario": 4,
     "talhao_id": None,
+    "fornecedor_id": None,
 }
 
 
@@ -52,6 +54,10 @@ class InsumoInexistente(Exception):
 
 
 class TalhaoInexistente(Exception):
+    pass
+
+
+class FornecedorInexistente(Exception):
     pass
 
 
@@ -122,7 +128,46 @@ def detalhar_insumo(db: Session, insumo_id: int) -> InsumoDetalhe:
         **dict(_resposta(insumo, hoje())),
         historico=[PontoDeEstoque(data=dia, saldo=valor) for dia, valor in por_dia.items()],
         movimentacoes=[MovimentacaoResposta.model_validate(m) for m in reversed(movimentacoes)],
+        precos_por_fornecedor=sorted(
+            precos_pagos([(m, insumo) for m in movimentacoes]),
+            # O mais barato primeiro; quem não tem preço vai para o fim.
+            key=lambda p: (p.preco_medio is None, p.preco_medio or 0, p.fornecedor),
+        ),
     )
+
+
+def precos_pagos(compras: list[tuple[Movimentacao, Insumo]]) -> list[PrecoPago]:
+    """O que se pagou a cada fornecedor por cada insumo, na ordem em que aparecem. Só as
+    compras com fornecedor; o preço médio pela mesma regra do custo médio."""
+    grupos: dict[tuple[int, int], list[Movimentacao]] = {}
+    insumos: dict[int, Insumo] = {}
+    for m, insumo in compras:
+        if m.fornecedor_id is not None and m.tipo == "entrada" and m.motivo is None:
+            grupos.setdefault((insumo.id, m.fornecedor_id), []).append(m)
+            insumos[insumo.id] = insumo
+    precos = []
+    for (insumo_id, fornecedor_id), grupo in grupos.items():
+        movimentacoes = sorted(grupo, key=lambda m: (m.data, m.id))
+        insumo = insumos[insumo_id]
+        com_preco = [m for m in movimentacoes if m.valor_unitario is not None]
+        precos.append(
+            PrecoPago(
+                insumo_id=insumo_id,
+                insumo=insumo.nome,
+                unidade=insumo.unidade,
+                fornecedor_id=fornecedor_id,
+                fornecedor=movimentacoes[0].comprado_de,
+                compras=len(movimentacoes),
+                quantidade=round(sum(m.quantidade for m in movimentacoes), 3),
+                preco_medio=dominio.custo_medio(
+                    dominio.Entrada(m.data, m.quantidade, valor_unitario=m.valor_unitario)
+                    for m in com_preco
+                ),
+                ultimo_preco=com_preco[-1].valor_unitario if com_preco else None,
+                ultima_compra=movimentacoes[-1].data,
+            )
+        )
+    return precos
 
 
 def remover_insumo(db: Session, insumo_id: int) -> None:
@@ -157,6 +202,9 @@ def registrar_movimentacao(
     _buscar_insumo(db, dados.insumo_id)
     if dados.talhao_id is not None and db.get(Talhao, dados.talhao_id) is None:
         raise TalhaoInexistente
+    # Desativado vale: desativar tira das escolhas novas, e a compra pode ser antiga.
+    if dados.fornecedor_id is not None and db.get(Fornecedor, dados.fornecedor_id) is None:
+        raise FornecedorInexistente
     if dados.uuid is not None and (existente := _pelo_uuid(db, dados.uuid)) is not None:
         return _reenvio(existente, dados)
     movimentacao = Movimentacao(**dados.model_dump(), usuario_id=usuario_id)

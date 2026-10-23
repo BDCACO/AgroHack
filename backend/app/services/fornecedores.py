@@ -5,8 +5,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import violou_nome_unico
-from app.models import Fornecedor, Movimentacao, Pedido
-from app.schemas.compras import FornecedorCadastro, FornecedorResposta
+from app.models import Fornecedor, Insumo, Movimentacao, Pedido
+from app.schemas.compras import FornecedorCadastro, FornecedorDetalhe, FornecedorResposta
+from app.schemas.estoque import MovimentacaoResposta
+from app.services.estoque import precos_pagos
+
+# Compras no detalhe do fornecedor: as recentes bastam para conferir; o preço por insumo
+# resume todas.
+COMPRAS_RECENTES = 20
 
 
 class NomeDuplicado(Exception):
@@ -31,7 +37,7 @@ class FornecedorComHistoria(Exception):
             if quantas
         ]
         super().__init__(
-            f"{nome} tem {' e '.join(partes)} registrados: removê-lo apagaria de quem foi cada "
+            f"{nome} tem {' e '.join(partes)} no histórico: removê-lo apagaria de quem foi cada "
             "compra e o preço pago a ele. Desative-o (ativo: false): ele sai das escolhas, e a "
             "história fica."
         )
@@ -57,8 +63,20 @@ def atualizar_fornecedor(db: Session, fornecedor_id: int, dados: FornecedorCadas
     return fornecedor
 
 
-def detalhar_fornecedor(db: Session, fornecedor_id: int) -> FornecedorResposta:
-    return FornecedorResposta.model_validate(buscar_fornecedor(db, fornecedor_id))
+def detalhar_fornecedor(db: Session, fornecedor_id: int) -> FornecedorDetalhe:
+    """O fornecedor, as compras recentes e o preço médio pago a ele por cada insumo."""
+    fornecedor = buscar_fornecedor(db, fornecedor_id)
+    compras = db.execute(
+        select(Movimentacao, Insumo)
+        .join(Insumo)
+        .where(Movimentacao.fornecedor_id == fornecedor_id)
+        .order_by(Movimentacao.data.desc(), Movimentacao.id.desc())
+    ).all()
+    return FornecedorDetalhe(
+        **FornecedorResposta.model_validate(fornecedor).model_dump(),
+        compras=[MovimentacaoResposta.model_validate(m) for m, _ in compras[:COMPRAS_RECENTES]],
+        precos=sorted(precos_pagos([(m, insumo) for m, insumo in compras]), key=lambda p: p.insumo),
+    )
 
 
 def remover_fornecedor(db: Session, fornecedor_id: int) -> None:

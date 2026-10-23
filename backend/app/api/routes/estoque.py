@@ -132,6 +132,10 @@ def registrar_movimentacao(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "Talhão não encontrado."
         ) from None
+    except servico.FornecedorInexistente:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Fornecedor não encontrado."
+        ) from None
     except servico.LancamentoDiferente as erro:
         raise HTTPException(status.HTTP_409_CONFLICT, str(erro)) from None
     if not registro.nova:

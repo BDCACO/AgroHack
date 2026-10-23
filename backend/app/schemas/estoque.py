@@ -104,6 +104,8 @@ class _Movimentacao(BaseModel):
     # Onde o insumo foi aplicado, só numa retirada para uso. Opcional: o site e o app de
     # antes não mandam, e a retirada sem talhão vale como sempre.
     talhao_id: int | None = None
+    # De quem se comprou, só numa compra. Opcional, como o talhão.
+    fornecedor_id: int | None = None
 
 
 class MovimentacaoEntrada(_Movimentacao):
@@ -123,6 +125,8 @@ class MovimentacaoEntrada(_Movimentacao):
             raise ValueError(
                 "talhão só se informa numa retirada para uso: é onde o insumo foi aplicado"
             )
+        if self.fornecedor_id is not None and (self.tipo != "entrada" or self.motivo is not None):
+            raise ValueError("fornecedor só se informa numa compra (entrada): é de quem se comprou")
         # Ano digitado errado (2062 por 2026) jogaria a movimentação no futuro.
         if self.data > hoje():
             raise ValueError("a data da movimentação não pode ser futura")
@@ -137,6 +141,10 @@ class MovimentacaoResposta(_Movimentacao):
     # pedido diz ser. Vazio no que veio sem login (autenticação desligada) ou de antes dela.
     usuario_id: int | None = None
     lancado_por: str | None = None  # o nome dele, para a tela não precisar de outra consulta
+    comprado_de: str | None = None  # o nome do fornecedor, pelo mesmo motivo
+    # A linha do pedido de compra que esta entrada recebeu (POST /pedidos/{id}/receber).
+    # Só na resposta: a entrada de um pedido nasce do recebimento, que confere o pedido.
+    item_do_pedido_id: int | None = None
 
 
 class MovimentacaoDoLote(MovimentacaoEntrada):
@@ -197,10 +205,29 @@ class PontoDeEstoque(BaseModel):
     saldo: float  # no fim do dia
 
 
+class PrecoPago(BaseModel):
+    """O que se pagou a um fornecedor por um insumo: é o que permite comparar revendas."""
+
+    insumo_id: int
+    insumo: str
+    unidade: str
+    fornecedor_id: int
+    fornecedor: str
+    compras: int
+    quantidade: float  # o total comprado dele
+    # Média do preço pago ponderada pela quantidade, das compras com preço (a mesma regra do
+    # custo médio). None se nenhuma compra dele tem preço.
+    preco_medio: float | None
+    ultimo_preco: float | None  # o da compra com preço mais recente
+    ultima_compra: date
+
+
 class InsumoDetalhe(InsumoResposta):
     # Um ponto por dia com movimentação, do mais antigo ao mais recente.
     historico: list[PontoDeEstoque]
     movimentacoes: list[MovimentacaoResposta]  # as mais recentes primeiro
+    # O preço médio pago a cada fornecedor, o mais barato primeiro.
+    precos_por_fornecedor: list[PrecoPago] = []
 
 
 class AlertasPorGravidade(BaseModel):
