@@ -13,6 +13,8 @@ from statistics import mean, stdev
 
 from app.domain.estoque import (
     Alerta,
+    Encomenda,
+    Gravidade,
     Insumo,
     Lote,
     Retirada,
@@ -68,13 +70,17 @@ def analisar(
     referencia: date,
     lotes: Iterable[Lote] = (),
     custo_medio: float | None = None,
+    a_caminho: Iterable[Encomenda] = (),
 ) -> Analise:
     """Analisa o insumo na data de referência.
 
     `registros_desde` é a data a partir da qual as retiradas estão completas: é o que
     separa "não houve consumo" de "não havia registro". `custo_medio` (R$ por unidade) é
     opcional: com ele, os alertas e a reposição dizem também quanto dinheiro está em jogo.
+    `a_caminho` é o que já foi pedido e não chegou: a reposição o desconta, para não mandar
+    comprar de novo, e o alerta de falta diz se ele chega antes de o estoque acabar.
     """
+    a_caminho = [e for e in a_caminho if e.quantidade > 0]
     alertas = alertas_de_validade(lotes, referencia, insumo.unidade, custo_medio)
     if (alerta := alerta_estoque_minimo(insumo)) is not None:
         alertas.append(alerta)
@@ -86,6 +92,11 @@ def analisar(
         )
     if insumo.estoque_atual < 0:
         limitacoes.append("Estoque atual negativo: há entrada ou saída faltando nos registros.")
+    if any(e.previsto_para is None for e in a_caminho):
+        limitacoes.append(
+            "Pedido a caminho sem data prevista de chegada: a reposição o desconta, mas não dá "
+            "para saber se ele chega antes de o estoque acabar."
+        )
 
     retiradas = [r for r in retiradas if registros_desde <= r.data <= referencia]
     dias_historico = (referencia - registros_desde).days + 1
@@ -127,14 +138,19 @@ def analisar(
     cobertura = max(insumo.estoque_atual, 0) / consumo
     ritmo = f"{quantidade_legivel(consumo, insumo.unidade)}/dia"
     if cobertura <= prazo:
-        alertas.append(
-            Alerta(
-                "risco_de_falta",
-                "alta",
-                f"No ritmo atual ({ritmo}), o estoque dura cerca de {dias_legivel(cobertura)}"
-                f", menos que o prazo de reposição de {dias_legivel(prazo)}.",
-            )
+        texto = (
+            f"No ritmo atual ({ritmo}), o estoque dura cerca de {dias_legivel(cobertura)}"
+            f", menos que o prazo de reposição de {dias_legivel(prazo)}."
         )
+        gravidade: Gravidade = "alta"
+        if a_caminho:
+            # O estoque físico continua baixo, e o alerta fica; o pedido a caminho só tira
+            # a urgência se chega antes de acabar e, com ele, o estoque passa do prazo.
+            gravidade, sobre_o_pedido = _pedido_no_risco(
+                insumo, a_caminho, consumo, cobertura, prazo, referencia
+            )
+            texto += sobre_o_pedido
+        alertas.append(Alerta("risco_de_falta", gravidade, texto))
     elif cobertura > COBERTURA_EXCESSO_DIAS:
         texto = (
             f"No ritmo atual ({ritmo}), o estoque dura cerca de {dias_legivel(cobertura)}"
@@ -164,7 +180,8 @@ def analisar(
     ]
     if faltam:
         limitacoes.append(f"A quantidade sugerida não considera {' nem '.join(faltam)}.")
-    reposicao = _reposicao(insumo, consumo, prazo, referencia, custo_medio)
+    em_pedido = round(sum(e.quantidade for e in a_caminho), 3)
+    reposicao = _reposicao(insumo, consumo, prazo, referencia, custo_medio, em_pedido)
     return resultado(consumo=consumo, cobertura=cobertura, reposicao=reposicao)
 
 
@@ -229,14 +246,72 @@ def _consumo_incomum(
     ]
 
 
+def _pedido_no_risco(
+    insumo: Insumo,
+    a_caminho: list[Encomenda],
+    consumo: float,
+    cobertura: float,
+    prazo: int,
+    referencia: date,
+) -> tuple[Gravidade, str]:
+    """A gravidade do risco de falta com o pedido a caminho, e a frase que diz por quê."""
+    unidade = insumo.unidade
+
+    def total(encomendas: list[Encomenda]) -> str:
+        return quantidade_legivel(sum(e.quantidade for e in encomendas), unidade)
+
+    # O último dia com estoque: o que chega até ele evita a falta.
+    acaba_em = referencia + timedelta(days=math.floor(cobertura))
+    com_data = [e for e in a_caminho if e.previsto_para is not None]
+    a_tempo = [e for e in com_data if referencia <= e.previsto_para <= acaba_em]
+    # Previsto para antes de hoje e não recebido: a entrega está atrasada.
+    atrasados = [e for e in com_data if e.previsto_para < referencia]
+    tarde = [e for e in com_data if e.previsto_para > acaba_em]
+    sem_data = [e for e in a_caminho if e.previsto_para is None]
+
+    gravidade: Gravidade = "alta"
+    texto = f" Já foram pedidos {total(a_caminho)}."
+    if a_tempo:
+        chega = sum(e.quantidade for e in a_tempo)
+        dura = (max(insumo.estoque_atual, 0) + chega) / consumo
+        ultima = max(e.previsto_para for e in a_tempo)
+        texto += f" Chegam {total(a_tempo)} até {ultima:%d/%m/%Y}, antes de o estoque acabar"
+        if dura > prazo:
+            gravidade = "media"
+            texto += f", e com eles ele dura cerca de {dias_legivel(dura)}: confira a entrega."
+        else:
+            texto += f", mas com eles ele dura só cerca de {dias_legivel(dura)}."
+    if atrasados:
+        previsto = min(e.previsto_para for e in atrasados)
+        texto += (
+            f" {total(atrasados)} estavam previstos para {previsto:%d/%m/%Y} e ainda não "
+            "chegaram: cobre a revenda."
+        )
+    if tarde:
+        texto += (
+            f" {total(tarde)} só chegam em {min(e.previsto_para for e in tarde):%d/%m/%Y}, "
+            "depois de o estoque acabar."
+        )
+    if sem_data:
+        texto += f" {total(sem_data)} não têm data prevista de chegada."
+    return gravidade, texto
+
+
 def _reposicao(
-    insumo: Insumo, consumo: float, prazo: int, referencia: date, custo_medio: float | None
+    insumo: Insumo,
+    consumo: float,
+    prazo: int,
+    referencia: date,
+    custo_medio: float | None,
+    em_pedido: float = 0.0,
 ) -> Reposicao:
     minimo = insumo.estoque_minimo or 0.0
-    estoque = max(insumo.estoque_atual, 0.0)
+    # O que já foi pedido conta como se estivesse no galpão: sem isso, a sugestão manda
+    # comprar de novo o que está a caminho. Se ele chega a tempo é assunto do alerta de falta.
+    posicao = max(insumo.estoque_atual, 0.0) + em_pedido
     # Pedir no dia em que o estoque acima do mínimo cobre exatamente o prazo de entrega.
-    dias_ate_pedir = max(0, math.floor((estoque - minimo) / consumo - prazo))
-    no_pedido = estoque - consumo * dias_ate_pedir
+    dias_ate_pedir = max(0, math.floor((posicao - minimo) / consumo - prazo))
+    no_pedido = posicao - consumo * dias_ate_pedir
     # Se acabar antes da entrega, a falta não é recuperada: chega-se com zero, não negativo.
     na_chegada = max(0.0, no_pedido - consumo * prazo)
     # Para cima e inteiro: não se compra 29,32 sacas. O round tira o resíduo do float,
@@ -275,6 +350,11 @@ def _reposicao(
         justificativa += (
             f" A conta dá {quantidade_legivel(pela_conta, unidade)}; a quantidade "
             f"{' e '.join(ajustes)}."
+        )
+    if em_pedido:
+        justificativa += (
+            f" Desconta os {quantidade_legivel(em_pedido, unidade)} já pedidos e ainda não "
+            "recebidos."
         )
     custo = None
     if custo_medio is not None:

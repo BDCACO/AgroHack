@@ -8,6 +8,7 @@ import pytest
 from app.analysis.consumo import analisar
 from app.domain.estoque import (
     Descarte,
+    Encomenda,
     Entrada,
     Insumo,
     Lote,
@@ -320,13 +321,14 @@ def ureia(**cadastro: float) -> Insumo:
     return Insumo("Ureia", "kg", 20, estoque_minimo=10, prazo_reposicao_dias=15, **cadastro)
 
 
-def repor(insumo: Insumo, custo_medio: float | None = None):
+def repor(insumo: Insumo, custo_medio: float | None = None, a_caminho: list[Encomenda] = ()):
     return analisar(
         insumo,
         diarias(2, 120),
         registros_desde=DESDE_120_DIAS,
         referencia=REF,
         custo_medio=custo_medio,
+        a_caminho=a_caminho,
     )
 
 
@@ -387,3 +389,98 @@ def test_limitacao_da_reposicao_diz_so_o_que_falta() -> None:
         "A quantidade sugerida não considera embalagem."
     ]
     assert sobre_a_quantidade(repor(ureia(embalagem=50), custo_medio=3)) == []
+
+
+def risco(analise):
+    return next(a for a in analise.alertas if a.tipo == "risco_de_falta")
+
+
+def test_reposicao_desconta_o_que_ja_foi_pedido() -> None:
+    analise = repor(ureia(), a_caminho=[Encomenda(70, REF + timedelta(days=5))])
+
+    # Com os 70 kg a caminho, a posição é de 90 kg: (90 - 10) / 2 = 40 dias acima do
+    # mínimo, menos 15 de entrega → pedir em 25 dias, e não hoje. Restam 40 kg no pedido,
+    # 10 na chegada, e a conta cobre 30 × 2 kg.
+    reposicao = analise.reposicao
+    assert (reposicao.pedir_hoje, reposicao.pedir_em) == (False, REF + timedelta(days=25))
+    assert reposicao.quantidade == pytest.approx(60)
+    assert "Desconta os 70 kg já pedidos e ainda não recebidos." in reposicao.justificativa
+    # Sem pedido a caminho, a mesma conta manda pedir hoje, e o texto não fala em pedido.
+    sem_pedido = repor(ureia()).reposicao
+    assert sem_pedido.pedir_hoje is True
+    assert "pedidos" not in sem_pedido.justificativa
+
+
+def test_desconto_do_pedido_vem_antes_do_custo_no_texto() -> None:
+    reposicao = repor(
+        ureia(embalagem=50), custo_medio=3, a_caminho=[Encomenda(10, REF + timedelta(days=2))]
+    ).reposicao
+
+    assert reposicao.justificativa.endswith(
+        "Desconta os 10 kg já pedidos e ainda não recebidos. Pelo custo médio de R$ 3,00/kg, "
+        "a compra fica em cerca de R$ 300,00."
+    )
+
+
+def test_pedido_que_chega_antes_de_acabar_baixa_a_gravidade_do_risco() -> None:
+    analise = repor(ureia(), a_caminho=[Encomenda(70, REF + timedelta(days=5))])
+
+    # O estoque físico continua durando 10 dias: o alerta fica, mas com o pedido chegando
+    # no dia 5 ele passa a durar (20 + 70) / 2 = 45 dias.
+    alerta = risco(analise)
+    assert alerta.gravidade == "media"
+    assert alerta.justificativa == (
+        "No ritmo atual (2 kg/dia), o estoque dura cerca de 10 dias, menos que o prazo de "
+        "reposição de 15 dias. Já foram pedidos 70 kg. Chegam 70 kg até 05/07/2026, antes de o "
+        "estoque acabar, e com eles ele dura cerca de 45 dias: confira a entrega."
+    )
+
+
+def test_pedido_que_chega_a_tempo_mas_nao_basta_continua_urgente() -> None:
+    analise = repor(ureia(), a_caminho=[Encomenda(5, REF + timedelta(days=5))])
+
+    # (20 + 5) / 2 = 12,5 dias, ainda menos que os 15 de entrega.
+    alerta = risco(analise)
+    assert alerta.gravidade == "alta"
+    assert alerta.justificativa.endswith(
+        "Chegam 5 kg até 05/07/2026, antes de o estoque acabar, mas com eles ele dura só cerca "
+        "de 12 dias."
+    )
+    assert analise.reposicao.pedir_hoje is True
+
+
+def test_pedido_que_chega_depois_de_acabar_continua_urgente() -> None:
+    analise = repor(ureia(), a_caminho=[Encomenda(70, REF + timedelta(days=12))])
+
+    alerta = risco(analise)
+    assert alerta.gravidade == "alta"
+    assert alerta.justificativa.endswith(
+        "Já foram pedidos 70 kg. 70 kg só chegam em 12/07/2026, depois de o estoque acabar."
+    )
+
+
+def test_pedido_atrasado_continua_urgente_e_pede_para_cobrar() -> None:
+    analise = repor(ureia(), a_caminho=[Encomenda(70, REF - timedelta(days=1))])
+
+    alerta = risco(analise)
+    assert alerta.gravidade == "alta"
+    assert alerta.justificativa.endswith(
+        "70 kg estavam previstos para 29/06/2026 e ainda não chegaram: cobre a revenda."
+    )
+
+
+def test_pedido_sem_data_prevista_continua_urgente_e_vira_limitacao() -> None:
+    analise = repor(ureia(), a_caminho=[Encomenda(70)])
+
+    alerta = risco(analise)
+    assert alerta.gravidade == "alta"
+    assert alerta.justificativa.endswith("70 kg não têm data prevista de chegada.")
+    assert (
+        "Pedido a caminho sem data prevista de chegada: a reposição o desconta, mas não dá "
+        "para saber se ele chega antes de o estoque acabar."
+    ) in analise.limitacoes
+    # A reposição o desconta mesmo assim: o produto foi pedido.
+    assert analise.reposicao.pedir_hoje is False
+    # Com data, a limitação some.
+    com_data = repor(ureia(), a_caminho=[Encomenda(70, REF + timedelta(days=5))])
+    assert not any("sem data prevista" in t for t in com_data.limitacoes)

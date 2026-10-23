@@ -72,6 +72,17 @@ class Entrada:
 
 
 @dataclass(frozen=True)
+class Encomenda:
+    """O que já foi pedido à revenda e ainda não chegou: a parte que falta receber de um
+    item de pedido de compra."""
+
+    quantidade: float
+    # Sem data, a reposição o desconta igual, mas o alerta de falta não sabe se ele chega
+    # antes de o estoque acabar, e a análise diz isso.
+    previsto_para: date | None = None
+
+
+@dataclass(frozen=True)
 class Alerta:
     tipo: TipoAlerta
     gravidade: Gravidade

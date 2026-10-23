@@ -23,10 +23,17 @@ class LoteEntrada(BaseModel):
     validade: date
 
 
+class EncomendaEntrada(BaseModel):
+    quantidade: float = Field(gt=0)
+    previsto_para: date | None = None
+
+
 class PedidoDeAnalise(BaseModel):
     insumo: InsumoEntrada
     retiradas: list[RetiradaEntrada] = Field(default=[], max_length=100_000)
     lotes: list[LoteEntrada] = Field(default=[], max_length=1_000)
+    # O que já foi pedido e não chegou. Opcional: sem ele, a análise é a de antes.
+    a_caminho: list[EncomendaEntrada] = Field(default=[], max_length=1_000)
     # Desde quando as retiradas estão completas: separa "não houve consumo" de
     # "não havia registro".
     registros_desde: date
