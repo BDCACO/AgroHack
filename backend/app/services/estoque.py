@@ -26,6 +26,7 @@ from app.schemas.estoque import (
     PrecoPago,
     como_o_banco,
 )
+from app.services import pedidos
 
 # Campos que vieram depois do site e do app: um PUT que não os manda (de uma versão que
 # não os conhece) mantém o que está gravado, em vez de apagá-los.
@@ -289,6 +290,18 @@ def remover_movimentacao(db: Session, movimentacao_id: int) -> bool:
     movimentacao = db.get(Movimentacao, movimentacao_id)
     if movimentacao is None:
         return False
+    if movimentacao.item_do_pedido_id is not None:
+        # A entrada recebeu parte de um pedido: removida (digitada errado), essa parte volta
+        # a faltar, e o pedido volta a parcial ou aberto. Na mesma transação.
+        # Trava o pedido antes de ler a linha, na mesma ordem do recebimento: os dois ao
+        # mesmo tempo entram um de cada vez, sem se travar um ao outro.
+        item = db.get(ItemDoPedido, movimentacao.item_do_pedido_id)
+        pedido = pedidos.buscar_pedido(db, item.pedido_id, travar=True)
+        db.refresh(item)
+        item.quantidade_recebida = max(
+            round(item.quantidade_recebida - movimentacao.quantidade, 3), 0
+        )
+        pedido.situacao = pedidos.situacao_pelo_recebido(pedido)
     db.delete(movimentacao)
     db.commit()
     return True

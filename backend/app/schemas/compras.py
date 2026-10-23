@@ -129,3 +129,36 @@ class PedidoResposta(BaseModel):
     # Soma de quantidade × preço combinado das linhas com preço; None se nenhuma tem.
     custo_estimado: float | None
     itens: list[ItemDoPedidoResposta]
+
+
+class ItemRecebido(BaseModel):
+    item_id: int  # a linha do pedido (`itens[].id` na resposta do pedido)
+    quantidade: NaColunaDeQuantidade = Field(gt=0, le=QUANTIDADE_MAXIMA)
+    validade: date | None = None  # a do lote que chegou, se o produto vence
+    # Só se a nota veio com outro preço; sem ele, vale o combinado no pedido.
+    valor_unitario: NaColunaDePreco | None = Field(default=None, gt=0, le=VALOR_UNITARIO_MAXIMO)
+
+
+class Recebimento(BaseModel):
+    """O que chegou da carga, conferido no galpão: cada linha vira uma entrada no estoque."""
+
+    data: date = Field(default_factory=hoje)  # o dia em que a carga chegou
+    itens: list[ItemRecebido] = Field(min_length=1, max_length=ITENS_MAXIMOS)
+
+    @model_validator(mode="after")
+    def _coerente(self) -> Self:
+        if self.data > hoje():
+            raise ValueError("a data de chegada não pode ser futura")
+        linhas = [item.item_id for item in self.itens]
+        if len(set(linhas)) < len(linhas):
+            raise ValueError(
+                "a mesma linha do pedido aparece mais de uma vez: some as quantidades numa linha só"
+            )
+        return self
+
+
+class ResultadoDoRecebimento(BaseModel):
+    pedido: PedidoResposta  # com a situação nova (parcial ou recebido)
+    movimentacoes: list[MovimentacaoResposta]  # as entradas criadas, na ordem do corpo
+    # Não impedem nada: pedem para conferir (a carga que veio a mais que o pedido).
+    avisos: list[str]

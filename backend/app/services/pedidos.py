@@ -11,13 +11,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
-from app.models import Fornecedor, Insumo, ItemDoPedido, Pedido
+from app.domain.estoque import quantidade_legivel
+from app.models import Fornecedor, Insumo, ItemDoPedido, Movimentacao, Pedido
 from app.schemas.compras import (
     ItemDoPedidoResposta,
     PedidoEntrada,
     PedidoResposta,
+    Recebimento,
+    ResultadoDoRecebimento,
     Situacao,
 )
+from app.schemas.estoque import MovimentacaoResposta
 
 # Situações em que ainda falta chegar alguma coisa.
 EM_ANDAMENTO = ("aberto", "parcial")
@@ -121,6 +125,83 @@ def cancelar_pedido(db: Session, pedido_id: int) -> PedidoResposta:
     pedido.situacao = "cancelado"
     db.commit()
     return resposta(pedido, hoje())
+
+
+def receber_pedido(
+    db: Session, pedido_id: int, dados: Recebimento, usuario_id: int | None
+) -> ResultadoDoRecebimento:
+    """A carga chegou: cada linha recebida vira uma entrada (com o fornecedor do pedido, o
+    preço combinado ou o da nota, a validade e quem conferiu), e o pedido passa a parcial
+    ou recebido. Tudo numa transação: ou entra a carga inteira, ou nada.
+
+    O que veio a mais que o pedido entra, com aviso: está no galpão, e recusar deixaria o
+    estoque menor que o real."""
+    pedido = buscar_pedido(db, pedido_id, travar=True)
+    if pedido.situacao == "cancelado":
+        raise PedidoFechado(
+            "Este pedido está cancelado: não há o que receber. Se a carga chegou mesmo assim, "
+            "lance a entrada como uma compra."
+        )
+    if pedido.situacao == "recebido":
+        raise PedidoFechado("Este pedido já chegou inteiro: lance a carga a mais como uma compra.")
+    if dados.data < pedido.feito_em:
+        raise DadoInvalido(
+            f"A carga não chega antes do pedido: o pedido é de {pedido.feito_em:%d/%m/%Y}."
+        )
+    linhas = {item.id: item for item in pedido.itens}
+    for recebido in dados.itens:
+        if recebido.item_id not in linhas:
+            raise DadoInvalido(f"A linha {recebido.item_id} não é deste pedido.")
+
+    entradas, avisos = [], []
+    for recebido in dados.itens:
+        item = linhas[recebido.item_id]
+        preco = recebido.valor_unitario
+        entrada = Movimentacao(
+            insumo_id=item.insumo_id,
+            tipo="entrada",
+            data=dados.data,
+            quantidade=recebido.quantidade,
+            validade=recebido.validade,
+            valor_unitario=item.valor_unitario if preco is None else preco,
+            fornecedor_id=pedido.fornecedor_id,
+            item_do_pedido_id=item.id,
+            usuario_id=usuario_id,
+        )
+        db.add(entrada)
+        entradas.append(entrada)
+        item.quantidade_recebida = round(item.quantidade_recebida + recebido.quantidade, 3)
+        if item.quantidade_recebida > item.quantidade:
+            unidade = item.insumo.unidade
+            avisos.append(
+                f"Chegaram {quantidade_legivel(item.quantidade_recebida, unidade)} de "
+                f"{item.insumo.nome}, "
+                f"{quantidade_legivel(item.quantidade_recebida - item.quantidade, unidade)} a "
+                f"mais que o pedido ({quantidade_legivel(item.quantidade, unidade)}): confira a "
+                "nota."
+            )
+    pedido.situacao = situacao_pelo_recebido(pedido)
+    db.commit()
+    for entrada in entradas:
+        # O que o banco guardou (quantidade em 3 casas), com quem lançou e o fornecedor.
+        db.refresh(entrada)
+    return ResultadoDoRecebimento(
+        pedido=resposta(pedido, hoje()),
+        movimentacoes=[MovimentacaoResposta.model_validate(e) for e in entradas],
+        avisos=avisos,
+    )
+
+
+def situacao_pelo_recebido(pedido: Pedido) -> str:
+    """Aberto, parcial ou recebido, pelo que já chegou de cada linha. O cancelado continua
+    cancelado: o que faltava não vem mais, chegue o que chegar."""
+    if pedido.situacao == "cancelado":
+        return "cancelado"
+    if all(item.quantidade_recebida >= item.quantidade for item in pedido.itens):
+        return "recebido"
+    if any(item.quantidade_recebida for item in pedido.itens):
+        return "parcial"
+    return "aberto"
 
 
 def buscar_pedido(db: Session, pedido_id: int, *, travar: bool = False) -> Pedido:

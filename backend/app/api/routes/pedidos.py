@@ -4,11 +4,17 @@ from sqlalchemy.orm import Session
 from app.api.permissoes import usuario_atual
 from app.core.database import get_db
 from app.models import Usuario
-from app.schemas.compras import PedidoEntrada, PedidoResposta, Situacao
+from app.schemas.compras import (
+    PedidoEntrada,
+    PedidoResposta,
+    Recebimento,
+    ResultadoDoRecebimento,
+    Situacao,
+)
 from app.services import pedidos as servico
 
-# O funcionário consulta os pedidos (a carga que vai chegar); o dono faz, altera e cancela,
-# porque é quem compra e paga.
+# O funcionário consulta os pedidos e recebe a carga (é ele quem confere no galpão o que
+# chegou); o dono faz, altera e cancela, porque é quem compra e paga.
 campo = APIRouter(tags=["pedidos"])
 gestao = APIRouter(tags=["pedidos"])
 
@@ -75,3 +81,24 @@ def cancelar_pedido(pedido_id: int, db: Session = Depends(get_db)) -> PedidoResp
         raise _INEXISTENTE from None
     except servico.PedidoFechado as erro:
         raise HTTPException(status.HTTP_409_CONFLICT, str(erro)) from None
+
+
+@campo.post("/pedidos/{pedido_id}/receber", response_model=ResultadoDoRecebimento)
+def receber_pedido(
+    pedido_id: int,
+    dados: Recebimento,
+    db: Session = Depends(get_db),
+    usuario: Usuario | None = Depends(usuario_atual),
+) -> ResultadoDoRecebimento:
+    """A carga que chegou (`data`, padrão hoje, nunca futura): cada linha vira uma entrada
+    no estoque, com o fornecedor, o preço (o combinado, ou o da nota se mudou), a validade e
+    quem conferiu, e o pedido passa a `parcial` ou `recebido`, numa transação só. O que
+    veio a mais entra, com aviso. Pedido cancelado ou já recebido é `409`."""
+    try:
+        return servico.receber_pedido(db, pedido_id, dados, None if usuario is None else usuario.id)
+    except servico.PedidoInexistente:
+        raise _INEXISTENTE from None
+    except servico.PedidoFechado as erro:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(erro)) from None
+    except servico.DadoInvalido as erro:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erro)) from None
