@@ -82,6 +82,8 @@ MATRIZ = {
     ("POST", "/api/v1/usuarios"): GESTAO,
     ("PUT", "/api/v1/usuarios/{usuario_id}"): GESTAO,
     ("PUT", "/api/v1/usuarios/{usuario_id}/senha"): GESTAO,
+    # A trilha diz quem tentou entrar e de onde: como os usuários, nunca aberta sem login.
+    ("GET", "/api/v1/auditoria"): GESTAO,
 }
 
 # A dependência que marca cada nível (aplicada no include_router, em app/api/router.py).

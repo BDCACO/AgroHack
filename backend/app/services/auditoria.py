@@ -11,11 +11,14 @@ não há evento; se o evento falha, a ação não acontece.
 """
 
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Literal
 
 from pydantic_core import to_jsonable_python
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.relogio import FUSO_RONDONIA
 from app.models import EventoDeAuditoria, Movimentacao
 
 # Os códigos são estáveis: a tela e os filtros dependem deles. Um novo entra aqui.
@@ -92,6 +95,76 @@ def registrar(
     )
     db.add(evento)
     return evento
+
+
+class AcaoDesconhecida(Exception):
+    def __init__(self) -> None:
+        grupos = ", ".join(sorted({acao.split(".")[0] for acao in ACOES}))
+        super().__init__(
+            "Ação desconhecida. Use o código de uma ação (como usuario.criado) ou o grupo "
+            f"(como usuario): {grupos}."
+        )
+
+
+@dataclass(frozen=True)
+class FiltroDeEventos:
+    """Os recortes da consulta, todos opcionais e somados. `acao` é o código inteiro
+    ("usuario.criado") ou o grupo ("usuario", ou "usuario."). `desde` e `ate` são dias de
+    Rondônia, inclusive."""
+
+    acao: str | None = None
+    usuario_id: int | None = None
+    entidade: str | None = None
+    entidade_id: int | None = None
+    desde: date | None = None
+    ate: date | None = None
+
+
+def listar(
+    db: Session, filtro: FiltroDeEventos, limite: int, deslocamento: int = 0
+) -> tuple[list[EventoDeAuditoria], int]:
+    """Uma página dos eventos, os mais recentes primeiro, e quantos há com os mesmos
+    filtros. O id desempata o mesmo instante, como na lista de movimentações."""
+    e = EventoDeAuditoria
+    condicoes = [
+        coluna == valor
+        for coluna, valor in (
+            (e.usuario_id, filtro.usuario_id),
+            (e.entidade, filtro.entidade),
+            (e.entidade_id, filtro.entidade_id),
+        )
+        if valor is not None
+    ]
+    if filtro.acao is not None:
+        # O grupo vira a lista dos códigos dele, e não um LIKE: o índice (acao, ...) serve
+        # sem depender da collation, e o grupo que não existe é erro, e não lista vazia.
+        condicoes.append(e.acao.in_(_acoes_do_filtro(filtro.acao)))
+    # O dia é o de Rondônia (o do produtor), comparado em UTC, como o instante é gravado.
+    if filtro.desde is not None:
+        condicoes.append(e.ocorrido_em >= _inicio_do_dia(filtro.desde))
+    if filtro.ate is not None:
+        condicoes.append(e.ocorrido_em < _inicio_do_dia(filtro.ate + timedelta(days=1)))
+    consulta = (
+        select(e)
+        .where(*condicoes)
+        .order_by(e.ocorrido_em.desc(), e.id.desc())
+        .limit(limite)
+        .offset(deslocamento)
+    )
+    total = db.scalar(select(func.count()).select_from(e).where(*condicoes))
+    return list(db.scalars(consulta)), total
+
+
+def _acoes_do_filtro(acao: str) -> list[str]:
+    grupo = acao.removesuffix(".")
+    acoes = [a for a in ACOES if a == acao or a.split(".")[0] == grupo]
+    if not acoes:
+        raise AcaoDesconhecida
+    return acoes
+
+
+def _inicio_do_dia(dia: date) -> datetime:
+    return datetime.combine(dia, time(), FUSO_RONDONIA).astimezone(UTC)
 
 
 def diferencas(antes: dict[str, Any], depois: dict[str, Any]) -> dict[str, Any] | None:

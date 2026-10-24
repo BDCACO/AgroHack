@@ -12,6 +12,7 @@ from app.api.permissoes import (
 )
 from app.api.routes import (
     analises,
+    auditoria,
     autenticacao,
     categorias,
     estoque,
@@ -40,3 +41,4 @@ api_router.include_router(pedidos.gestao, dependencies=[Depends(exigir_dono)])
 api_router.include_router(relatorios.campo, dependencies=[Depends(exigir_funcionario)])
 api_router.include_router(analises.router, dependencies=[Depends(exigir_dono)])
 api_router.include_router(usuarios.router, dependencies=[Depends(exigir_dono_com_login)])
+api_router.include_router(auditoria.router, dependencies=[Depends(exigir_dono_com_login)])

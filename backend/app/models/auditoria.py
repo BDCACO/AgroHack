@@ -72,3 +72,8 @@ class EventoDeAuditoria(Base):
     dispositivo: Mapped[str | None] = mapped_column(String(120))
 
     usuario: Mapped[Usuario | None] = relationship(lazy="joined")
+
+    @property
+    def feito_por(self) -> str | None:
+        """O nome de quem fez, como o `lancado_por` da movimentação."""
+        return None if self.usuario is None else self.usuario.nome
