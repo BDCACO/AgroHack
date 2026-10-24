@@ -37,6 +37,7 @@ describe('navegação', () => {
       'Painel',
       'Insumos',
       'Movimentações',
+      'Talhões',
       'Importar dados',
       'Sistema',
     ])
@@ -46,6 +47,7 @@ describe('navegação', () => {
     ['/', 'Painel'],
     ['/insumos', 'Insumos'],
     ['/movimentacoes', 'Movimentações'],
+    ['/talhoes', 'Talhões'],
     ['/importar', 'Importar dados'],
     ['/sistema', 'Sistema'],
     ['/nao-existe', 'Página não encontrada'],
@@ -70,6 +72,7 @@ describe('navegação', () => {
       'Painel',
       'Insumos',
       'Movimentos',
+      'Talhões',
       'Importar',
       'Sistema',
     ])
@@ -77,6 +80,7 @@ describe('navegação', () => {
       undefined,
       undefined,
       'page',
+      undefined,
       undefined,
       undefined,
     ])

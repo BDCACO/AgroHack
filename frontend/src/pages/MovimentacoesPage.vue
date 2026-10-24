@@ -10,11 +10,13 @@ import EstadoVazio from '@/components/EstadoVazio.vue'
 import { reais } from '@/formatos'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import { useSessaoStore } from '@/stores/sessao'
+import { useTalhoesStore } from '@/stores/talhoes'
 import type { Movimentacao, MovimentacaoEntrada } from '@/types/api'
 
 const estoque = useEstoqueStore()
 const sessao = useSessaoStore()
-onMounted(() => estoque.carregar())
+const talhoes = useTalhoesStore()
+onMounted(() => Promise.all([estoque.carregar(), talhoes.carregar()]))
 
 // AAAA-MM-DD no fuso do navegador (o do produtor); 'sv-SE' formata exatamente assim.
 const hoje = () => new Date().toLocaleDateString('sv-SE')
@@ -29,6 +31,8 @@ const form = reactive({
   validade: '',
   // R$ por unidade do insumo, o que se pagou nesta compra.
   preco: '' as number | '',
+  // Onde a retirada foi aplicada: dá a carência e o custo por talhão.
+  talhaoId: '' as number | '',
 })
 const salvando = ref(false)
 // A linha recém-lançada acende na tabela e volta ao normal: mostra onde ela entrou.
@@ -45,6 +49,8 @@ watch(
     if (tipo === 'saida') {
       form.validade = ''
       form.preco = ''
+    } else {
+      form.talhaoId = ''
     }
   },
 )
@@ -65,11 +71,13 @@ async function lancar() {
       quantidade: form.quantidade,
       validade: form.validade || null,
       valor_unitario: form.preco === '' ? null : form.preco,
+      talhao_id: form.talhaoId === '' ? null : form.talhaoId,
     })
     destacada.value = criada.id
     const insumo = estoque.insumoPorId.get(criada.insumo_id)
     const preco = criada.valor_unitario ? `, a ${precoPor(criada.valor_unitario, insumo?.unidade)}` : ''
-    confirmacao.value = `${rotulo[criada.tipo]} de ${numero(criada.quantidade)} ${insumo?.unidade ?? ''} de ${insumo?.nome ?? 'insumo'}${preco} lançada.`
+    const talhao = criada.talhao_id ? ` no ${nomeDoTalhao(criada.talhao_id)}` : ''
+    confirmacao.value = `${rotulo[criada.tipo]} de ${numero(criada.quantidade)} ${insumo?.unidade ?? ''} de ${insumo?.nome ?? 'insumo'}${preco}${talhao} lançada.`
     // No celular Android, uma vibração curta confirma sem precisar olhar.
     navigator.vibrate?.(20)
     // Mantém tipo, insumo e data: lançamentos em sequência costumam repetir os três.
@@ -97,6 +105,7 @@ function textoDaRemocao(movimentacao: Movimentacao) {
 const rotulo = { entrada: 'Entrada', saida: 'Saída' } as const
 const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
 const dataBr = (data: string) => data.split('-').reverse().join('/')
+const nomeDoTalhao = (id: number) => talhoes.talhaoPorId.get(id)?.nome ?? 'talhão'
 const precoPor = (valor: number, unidade?: string) => `${reais(valor)}${unidade ? `/${unidade}` : ''}`
 
 // No celular, a lista vem agrupada por dia, como um extrato: "Hoje", "Ontem", e depois o
@@ -253,6 +262,28 @@ const porDia = computed(() => {
           class="campo"
         >
       </label>
+      <label
+        v-if="form.tipo === 'saida' && talhoes.talhoes.length"
+        class="text-sm font-medium text-stone-700 lg:col-span-2"
+      >
+        Aplicado no talhão <span class="font-normal text-stone-500">(se foi para a lavoura)</span>
+        <select
+          v-model.number="form.talhaoId"
+          class="campo"
+          data-teste="talhao"
+        >
+          <option value="">
+            Nenhum
+          </option>
+          <option
+            v-for="talhao in talhoes.talhoes"
+            :key="talhao.id"
+            :value="talhao.id"
+          >
+            {{ talhao.nome }}
+          </option>
+        </select>
+      </label>
       <p
         v-if="erroDoForm"
         role="alert"
@@ -338,6 +369,8 @@ const porDia = computed(() => {
                     · {{ precoPor(mov.valor_unitario, estoque.insumoPorId.get(mov.insumo_id)?.unidade) }}
                   </template><template v-if="mov.validade">
                     · validade {{ dataBr(mov.validade) }}
+                  </template><template v-if="mov.talhao_id">
+                    · {{ nomeDoTalhao(mov.talhao_id) }}
                   </template><template v-if="mov.lancado_por">
                     · por {{ mov.lancado_por }}
                   </template>
@@ -415,9 +448,9 @@ const porDia = computed(() => {
                   {{ estoque.insumoPorId.get(mov.insumo_id)?.nome }}
                 </RouterLink>
                 <span
-                  v-if="mov.lancado_por"
+                  v-if="mov.talhao_id || mov.lancado_por"
                   class="block text-xs font-normal text-stone-500"
-                >por {{ mov.lancado_por }}</span>
+                >{{ [mov.talhao_id ? nomeDoTalhao(mov.talhao_id) : '', mov.lancado_por ? `por ${mov.lancado_por}` : ''].filter(Boolean).join(' · ') }}</span>
               </td>
               <td class="px-4 py-3">
                 <!-- Entrada aponta para o galpão (desce), saída para fora (sobe). -->

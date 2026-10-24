@@ -22,6 +22,7 @@ const vazio = {
   prazo: '' as number | '',
   embalagem: '' as number | '',
   pedido_minimo: '' as number | '',
+  carencia: '' as number | '',
 }
 const form = reactive({ ...vazio })
 const aberto = ref(false)
@@ -41,6 +42,7 @@ function abrir(insumo?: Insumo) {
           prazo: insumo.prazo_reposicao_dias ?? '',
           embalagem: insumo.embalagem ?? '',
           pedido_minimo: insumo.pedido_minimo ?? '',
+          carencia: insumo.carencia_dias ?? '',
         }
       : vazio,
   )
@@ -64,6 +66,7 @@ async function salvar() {
         prazo_reposicao_dias: form.prazo === '' ? null : form.prazo,
         embalagem: form.embalagem === '' ? null : form.embalagem,
         pedido_minimo: form.pedido_minimo === '' ? null : form.pedido_minimo,
+        carencia_dias: form.carencia === '' ? null : form.carencia,
       },
       editandoId.value,
     )
@@ -178,11 +181,24 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         class="campo"
       >
     </label>
+    <label class="text-sm font-medium text-stone-700">
+      Carência, em dias <span class="font-normal text-stone-500">(defensivos)</span>
+      <input
+        v-model.number="form.carencia"
+        type="number"
+        min="0"
+        max="365"
+        step="1"
+        class="campo"
+      >
+    </label>
     <p class="text-xs text-stone-500 sm:col-span-2 lg:col-span-4">
       O mínimo dispara o alerta de estoque baixo e vira margem de segurança na reposição. O prazo
       é quanto o fornecedor leva para entregar; sem ele, a análise assume 15 dias e avisa. Com a
       embalagem (50 para o saco de 50 kg) e o pedido mínimo da revenda, a reposição sai em
-      embalagens fechadas. O preço entra ao lançar cada compra, em Movimentações.
+      embalagens fechadas. O preço entra ao lançar cada compra, em Movimentações. A carência é
+      quantos dias depois de aplicar se pode colher ou abater (está na bula ou no receituário);
+      0 se não tem, como a ureia. Com ela, os talhões avisam até quando não colher.
     </p>
     <p
       v-if="erroDoForm"

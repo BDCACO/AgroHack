@@ -21,6 +21,7 @@ export type TipoAlerta =
   | 'excesso'
   | 'baixa_movimentacao'
   | 'consumo_incomum'
+  | 'carencia' // do talhão: colher antes da data é proibido
 
 export interface Alerta {
   tipo: TipoAlerta
@@ -52,12 +53,13 @@ export interface InsumoCadastro {
   // Na unidade do insumo (50 para o saco de 50 kg): a reposição sai em embalagens fechadas.
   embalagem: number | null
   pedido_minimo: number | null
+  // Dias entre aplicar e poder colher ou abater; 0 = não tem carência; null = não informada.
+  carencia_dias: number | null
 }
 
 export interface Insumo extends InsumoCadastro {
   id: number
   demonstracao: boolean // gerado por `make demo`: não é dado real
-  carencia_dias: number | null
   estoque_atual: number
   custo_medio: number | null // R$ por unidade, das compras com preço
   valor_em_estoque: number | null // estoque atual (se positivo) × custo médio
@@ -71,6 +73,7 @@ export interface MovimentacaoEntrada {
   quantidade: number
   validade: string | null
   valor_unitario?: number | null // R$ por unidade, só numa entrada (o preço da compra)
+  talhao_id?: number | null // onde foi aplicado, só numa saída (retirada para uso)
 }
 
 export interface Movimentacao extends MovimentacaoEntrada {
@@ -143,4 +146,40 @@ export interface Entrada {
   token: string
   expira_em: string
   usuario: Usuario
+}
+
+export interface TalhaoCadastro {
+  nome: string
+  area_ha: number // maior que zero: divide o custo por hectare
+  cultura: string | null
+}
+
+export interface Talhao extends TalhaoCadastro {
+  id: number
+  demonstracao: boolean
+  colheita_liberada_em: string | null // AAAA-MM-DD; null: nada com carência aplicado
+  em_carencia: boolean // colher hoje é proibido
+  alertas: Alerta[] // a carência, com a conta; vazio quando liberado
+  custo_total: number | null // R$ do que foi aplicado no período; null sem preço
+  custo_por_ha: number | null
+  limitacoes: string[]
+}
+
+export interface ConsumoNoTalhao {
+  insumo_id: number
+  insumo: string
+  unidade: string
+  quantidade: number
+  custo: number | null
+}
+
+export interface TalhaoDetalhe extends Talhao {
+  aplicacoes: Movimentacao[] // do período, as mais recentes primeiro
+  consumo: ConsumoNoTalhao[] // por insumo, o que mais custou primeiro
+}
+
+/** Recorte de uma safra no custo e nas aplicações (a carência olha todas). AAAA-MM-DD. */
+export interface Periodo {
+  desde?: string
+  ate?: string
 }

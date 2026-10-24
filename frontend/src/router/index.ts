@@ -28,6 +28,8 @@ declare module 'vue-router' {
 const InsumosPage = () => import('@/pages/InsumosPage.vue')
 const InsumoPage = () => import('@/pages/InsumoPage.vue')
 const MovimentacoesPage = () => import('@/pages/MovimentacoesPage.vue')
+const TalhoesPage = () => import('@/pages/TalhoesPage.vue')
+const TalhaoPage = () => import('@/pages/TalhaoPage.vue')
 const ImportarPage = () => import('@/pages/ImportarPage.vue')
 const SistemaPage = () => import('@/pages/SistemaPage.vue')
 const NaoEncontradoPage = () => import('@/pages/NaoEncontradoPage.vue')
@@ -61,6 +63,12 @@ const telas: RouteRecordRaw[] = [
     name: 'movimentacoes',
     component: MovimentacoesPage,
     meta: { titulo: 'Movimentações', menu: { icone: 'movimentacoes', curto: 'Movimentos' } },
+  },
+  {
+    path: 'talhoes',
+    name: 'talhoes',
+    component: TalhoesPage,
+    meta: { titulo: 'Talhões', menu: { icone: 'talhoes' } },
   },
   {
     path: 'importar',
@@ -117,6 +125,13 @@ export const routes: RouteRecordRaw[] = [
         component: InsumoPage,
         props: (rota) => ({ id: Number(rota.params.id) }),
         meta: { titulo: 'Insumo', secao: 'insumos' },
+      },
+      {
+        path: 'talhoes/:id(\\d+)',
+        name: 'talhao',
+        component: TalhaoPage,
+        props: (rota) => ({ id: Number(rota.params.id) }),
+        meta: { titulo: 'Talhão', secao: 'talhoes' },
       },
       {
         path: ':caminho(.*)*',

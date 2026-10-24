@@ -248,7 +248,7 @@ describe('o funcionário', () => {
     expect(router.currentRoute.value.name).toBe('painel')
     const menu = wrapper.findAll('[data-teste="rotulo-menu"]').map((item) => item.text())
     expect(menu).not.toContain('Importar dados')
-    expect(wrapper.findAll('[data-teste="aba"]')).toHaveLength(4)
+    expect(wrapper.findAll('[data-teste="aba"]')).toHaveLength(5)
   })
 
   it('consulta e lança, mas não cadastra, não altera, não remove nem baixa o relatório', async () => {

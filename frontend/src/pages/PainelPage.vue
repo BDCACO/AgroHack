@@ -12,12 +12,14 @@ import { reais } from '@/formatos'
 import { baixarRelatorio } from '@/services/estoque'
 import { useEstoqueStore } from '@/stores/estoque'
 import { useSessaoStore } from '@/stores/sessao'
+import { useTalhoesStore } from '@/stores/talhoes'
 import type { Gravidade, Reposicao } from '@/types/api'
 
 // Só exibe: quem decide alerta, justificativa, reposição e limitação é o backend.
 const estoque = useEstoqueStore()
 const sessao = useSessaoStore()
-onMounted(() => Promise.all([estoque.carregar(), estoque.carregarResumo()]))
+const talhoes = useTalhoesStore()
+onMounted(() => Promise.all([estoque.carregar(), estoque.carregarResumo(), talhoes.carregar()]))
 
 const hoje = new Date()
 const dataDeHoje = hoje.toLocaleDateString('pt-BR', {
@@ -322,6 +324,46 @@ async function copiar() {
       :insumos="estoque.insumos"
       class="mt-6 animate-surgir [animation-delay:150ms]"
     />
+
+    <!-- À parte dos alertas dos insumos (e fora dos cartões de gravidade), como a API os
+         conta: colher num talhão em carência é proibido, e não tem conserto. -->
+    <section
+      v-if="talhoes.emCarencia.length"
+      aria-labelledby="titulo-carencia"
+      class="mt-8"
+      data-teste="talhoes-em-carencia"
+    >
+      <h2
+        id="titulo-carencia"
+        class="text-base font-semibold text-stone-900"
+      >
+        Não colher
+        <span class="ml-1 text-sm font-normal text-stone-500 tabular-nums">{{ talhoes.emCarencia.length }}</span>
+      </h2>
+      <ul class="mt-3 space-y-2">
+        <li
+          v-for="talhao in talhoes.emCarencia"
+          :key="talhao.id"
+          class="cartao flex gap-3 border-red-200 bg-red-50/60 p-4 text-sm"
+        >
+          <IconeSvg
+            nome="talhoes"
+            class="mt-0.5 h-5 w-5 shrink-0 text-red-600"
+          />
+          <div>
+            <RouterLink
+              :to="{ name: 'talhao', params: { id: talhao.id } }"
+              class="font-semibold text-red-800 hover:underline"
+            >
+              {{ talhao.nome }} em carência
+            </RouterLink>
+            <p class="mt-0.5 text-red-900/80">
+              {{ talhao.alertas[0]?.justificativa }}
+            </p>
+          </div>
+        </li>
+      </ul>
+    </section>
 
     <section
       aria-labelledby="titulo-alertas"
