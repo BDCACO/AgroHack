@@ -67,18 +67,19 @@ E os talhões (as retiradas da fazenda foram aplicadas neles; carências fictíc
    não existe, "dez" no lugar de 10, unidade diferente da cadastrada, insumo novo sem unidade).
 7. **Lançar uma movimentação** (página da ureia → "Lançar movimentação"): uma entrada de 700 kg
    com a data de hoje, e os alertas da ureia somem do Painel na hora.
-8. **Talhão em carência** (segurança do alimento). O site e o app ainda não têm a tela de
-   talhões: mostre no relatório em Excel, aba **Talhões**, ou em
-   `http://localhost:5173/api/v1/docs` → `GET /talhoes`. O Talhão Norte aparece em vermelho:
+8. **Talhão em carência** (segurança do alimento). O Painel já avisa em "Não colher"; abra a
+   tela **Talhões** (no app, ainda não há: lá, mostre o relatório em Excel, aba Talhões). O
+   Talhão Norte aparece em vermelho:
    "não colher nem abater antes de" uma data daqui a 5 dias, porque o glifosato foi aplicado há
    2 dias e a carência dele é de 7. É a mesma ideia dos alertas: a data vem com a conta. Ao lado,
    o custo do que foi aplicado em cada talhão, total e por hectare, e o que a conta não sabe (o
    calcário do Pasto 1 sem carência cadastrada; o custo pelo custo médio de hoje). Carga com
-   resíduo acima do permitido é recusada; o CampoCerto avisa antes da colheita.
+   resíduo acima do permitido é recusada; o CampoCerto avisa antes da colheita. Na página do
+   talhão, cada aplicação (data, insumo, quantidade, quem lançou) e o período para recortar a
+   safra.
 9. **Fechamento.** O que vem depois: a tela de login no app e a de Usuários no site (a API já
-   tem dono e funcionário), sazonalidade da safra no consumo,
-   o resumo em reais (valor em estoque, perdas, compras do mês) e os talhões nas telas do site
-   e do app.
+   tem dono e funcionário), sazonalidade da safra no consumo, e o resumo em reais e os
+   talhões também no app.
 
 Depois da apresentação, `make demo-limpar` apaga a fazenda fictícia, com os talhões dela (um
 talhão de demonstração em que se lançou a aplicação de um insumo real fica, para não perder
