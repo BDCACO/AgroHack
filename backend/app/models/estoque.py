@@ -28,6 +28,17 @@ Area = Numeric(10, 2, asdecimal=False)
 ValorUnitario = Numeric(14, 4, asdecimal=False)
 
 
+class Categoria(Base):
+    """O agrupamento do insumo (fertilizante, defensivo, nutrição animal...): para filtrar
+    as listas e somar o gasto e as perdas por tipo de produto. A migration 0011 já cria as
+    de partida; o dono cadastra outras."""
+
+    __tablename__ = "categorias"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nome: Mapped[str] = mapped_column(String(60), unique=True)
+
+
 class Insumo(Base):
     __tablename__ = "insumos"
     __table_args__ = (
@@ -50,12 +61,18 @@ class Insumo(Base):
     # Dias mínimos entre aplicar e colher ou abater (a bula do defensivo). 0 = não tem;
     # vazio = não informada, e a carência do talhão diz que não a considerou.
     carencia_dias: Mapped[int | None]
+    # Opcional: o insumo sem categoria vale como sempre. RESTRICT: a categoria com insumo
+    # não se apaga (a tela pede para mudar os insumos de categoria antes).
+    categoria_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categorias.id", ondelete="RESTRICT"), index=True
+    )
     # Gerado por `python -m app.demo`: a tela avisa, e `limpar` apaga só estes.
     demonstracao: Mapped[bool] = mapped_column(default=False, server_default=false())
 
     movimentacoes: Mapped[list[Movimentacao]] = relationship(
         cascade="all, delete-orphan", passive_deletes=True
     )
+    categoria: Mapped[Categoria | None] = relationship(lazy="joined")
 
 
 class Movimentacao(Base):

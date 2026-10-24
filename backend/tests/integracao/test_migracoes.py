@@ -11,9 +11,11 @@ from tests.integracao.conftest import alembic
 
 
 def test_migrations_descem_e_sobem_e_batem_com_os_modelos(banco: Engine) -> None:
-    # O banco da sessão pode ter preços, uuids, talhões, usuários e compras de outro
-    # teste: descartá-los é o pedido aqui.
+    # O banco da sessão pode ter preços, uuids, talhões, usuários, compras e categorias de
+    # outro teste: descartá-los é o pedido aqui.
     alembic(
+        "-x",
+        "descartar_categorias=sim",
         "-x",
         "descartar_compras=sim",
         "-x",
@@ -342,3 +344,62 @@ def test_banco_recusa_pedido_incoerente_mesmo_fora_da_api(
             ),
             {"situacao": situacao, "previsto_para": previsto_para},
         )
+
+
+def test_a_migration_cria_as_categorias_de_partida(banco: Engine) -> None:
+    alembic("-x", "descartar_categorias=sim", "downgrade", "0010")
+    alembic("upgrade", "head")
+
+    with banco.connect() as conexao:
+        nomes = conexao.scalars(text("SELECT nome FROM categorias ORDER BY id")).all()
+    assert nomes[:3] == ["Fertilizante", "Corretivo de solo", "Defensivo agrícola"]
+    assert "Nutrição animal" in nomes
+
+
+@pytest.mark.parametrize("o_que", ["insumo com categoria", "categoria cadastrada pelo dono"])
+def test_downgrade_nao_descarta_categorias_sem_pedir(banco: Engine, o_que: str) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, categorias RESTART IDENTITY CASCADE"))
+        conexao.execute(text("INSERT INTO categorias (nome) VALUES ('Fertilizante')"))
+        if o_que == "insumo com categoria":
+            conexao.execute(
+                text("INSERT INTO insumos (nome, unidade, categoria_id) VALUES ('Ureia', 'kg', 1)")
+            )
+        else:
+            conexao.execute(text("INSERT INTO categorias (nome) VALUES ('Sementes de pasto')"))
+
+    with pytest.raises(subprocess.CalledProcessError) as recusa:
+        alembic("downgrade", "0010")
+    assert "descartar_categorias=sim" in recusa.value.stderr
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT count(*) FROM categorias")) >= 1
+
+    alembic("-x", "descartar_categorias=sim", "downgrade", "0010")
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT to_regclass('categorias')")) is None
+    alembic("upgrade", "head")
+
+
+def test_so_as_categorias_de_partida_descem_sem_pedir(banco: Engine) -> None:
+    # Recriadas pela própria migration ao subir: descê-las não perde nada.
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, categorias RESTART IDENTITY CASCADE"))
+        conexao.execute(text("INSERT INTO categorias (nome) VALUES ('Fertilizante'), ('Outros')"))
+
+    alembic("downgrade", "0010")
+    alembic("upgrade", "head")
+
+
+def test_categoria_com_insumo_nao_se_apaga_nem_fora_da_api(banco: Engine) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, categorias RESTART IDENTITY CASCADE"))
+        conexao.execute(text("INSERT INTO categorias (nome) VALUES ('Fertilizante')"))
+        conexao.execute(
+            text("INSERT INTO insumos (nome, unidade, categoria_id) VALUES ('Ureia', 'kg', 1)")
+        )
+
+    with (
+        pytest.raises(IntegrityError, match="fk_insumos_categoria_id_categorias"),
+        banco.begin() as conexao,
+    ):
+        conexao.execute(text("DELETE FROM categorias"))
