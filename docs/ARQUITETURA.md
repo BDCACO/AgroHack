@@ -73,6 +73,8 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 | `app/services/autenticacao.py` | Login, a sessão conferida a cada pedido, sair, trocar a senha e o bloqueio por senhas erradas |
 | `app/services/usuarios.py` | Gestão pelo dono: cadastrar, alterar, desativar, redefinir a senha; o último dono ativo |
 | `app/usuarios.py` | O comando que cria o primeiro dono no servidor (`make usuario-dono`) |
+| `app/models/auditoria.py` | `eventos_de_auditoria`: quem, quando, a ação, sobre o quê, o conteúdo em JSONB e de onde; somente acrescentar |
+| `app/services/auditoria.py` | Grava o evento na transação da ação (sem commit, sem segredo) e o consulta (`GET /auditoria`) |
 | `app/demo.py` | Fazenda fictícia para a apresentação (`make demo`): insumos e talhões marcados com `demonstracao`, que a tela sinaliza e `make demo-limpar` apaga sozinhos (menos o talhão em que se lançou a aplicação de um insumo real) |
 | `app/core/relogio.py` | `hoje()` na data de Rondônia (UTC−4 fixo, sem horário de verão), não na do servidor |
 
@@ -462,7 +464,8 @@ dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Dec
   diz ser; a resposta traz `usuario_id` e `lancado_por` (o nome), aditivos. O reenvio de um
   uuid mantém quem lançou primeiro. Sem login, os dois vêm `null`, como no que foi lançado
   antes. O relatório e a planilha não levam o autor: a aba Movimentações é o formato da
-  importação.
+  importação. O que é removido, alterado e as tentativas de login vão para a trilha de
+  auditoria (abaixo).
 - **As permissões ficam no `include_router`** (`app/api/router.py`), e não rota a rota: as rotas
   de estoque e de talhões se dividem em `campo` e `gestao`. `tests/test_permissoes.py` percorre
   todas as rotas do app e exige que cada uma esteja na matriz abaixo: rota nova não nasce aberta
@@ -479,12 +482,101 @@ dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Dec
 | Sessão | qualquer usuário logado, sobre si | `POST /auth/sair`, `GET /auth/eu`, `PUT /auth/senha` (exigem login mesmo desligada) |
 | Funcionário | funcionário e dono | `GET /insumos`, `GET /insumos/{id}`, `GET /movimentacoes`, `GET /talhoes`, `GET /talhoes/{id}`, `GET /resumo`, `GET /categorias`, `GET /relatorios/periodo`, `GET /fornecedores`, `GET /fornecedores/{id}`, `GET /pedidos`, `GET /pedidos/{id}`, `GET /pedidos/sugestao`; `POST /movimentacoes`, `POST /movimentacoes/lote`, `POST /insumos/{id}/inventario`, `POST /pedidos/{id}/receber` |
 | Dono | só o dono | `POST`/`PUT`/`DELETE /insumos`, `DELETE /movimentacoes/{id}`, `POST`/`PUT`/`DELETE /talhoes`, `POST`/`PUT`/`DELETE /categorias`, `POST`/`PUT`/`DELETE /fornecedores`, `POST /pedidos`, `PUT /pedidos/{id}`, `POST /pedidos/{id}/cancelar`, `POST /importacoes`, `GET /importacoes/modelo.xlsx`, `GET /relatorio.xlsx`, `POST /analises` |
-| Gestão | só o dono, sempre com login | `GET /usuarios`, `POST /usuarios`, `PUT /usuarios/{id}`, `PUT /usuarios/{id}/senha` |
+| Gestão | só o dono, sempre com login | `GET /usuarios`, `POST /usuarios`, `PUT /usuarios/{id}`, `PUT /usuarios/{id}/senha`, `GET /auditoria` |
 
 O funcionário lê os insumos com o custo médio e o valor em estoque (as telas que ele usa são as
 mesmas), e o preço pago a cada fornecedor; o relatório, com todos os preços e a cópia de
 segurança, é só do dono. O funcionário recebe a carga de um pedido, mas não faz, altera nem
 cancela pedido.
+
+### Trilha de auditoria
+
+Apagar uma movimentação, um insumo ou um usuário não deixava rastro: ninguém sabia quem apagou
+os 200 kg de ureia lançados ontem, nem quem deu a si mesmo o papel de dono. Agora o que é
+sensível ou destrutivo grava um evento em `eventos_de_auditoria` (`app/models/auditoria.py`,
+`app/services/auditoria.py`), que o dono lê em `GET /auditoria`. Decisões:
+
+- **O que entra.** O que apaga, o que muda um cadastro de que outros dependem, o que mexe em
+  quem entra no sistema e as tentativas de entrar à força. Cada ação tem um código estável (a
+  tela e os filtros dependem dele; um código novo entra em `ACOES`, e um desconhecido é
+  recusado):
+
+  | Ação | `dados` |
+  |---|---|
+  | `movimentacao.removida` | O conteúdo inteiro, o bastante para relançá-la à mão: insumo, tipo, data, quantidade, validade, motivo, preço, talhão, fornecedor, uuid, quem lançou e a linha de pedido, com os nomes ao lado dos ids (podem não existir mais quando alguém ler) |
+  | `insumo.removido` | O cadastro, cada movimentação que saiu junto (no mesmo formato), as linhas de pedido e os pedidos que ficaram vazios |
+  | `talhao.removido` · `categoria.removida` · `fornecedor.removido` | O cadastro inteiro |
+  | `insumo.alterado` · `talhao.alterado` · `categoria.alterada` · `fornecedor.alterado` · `pedido.alterado` | O antes e o depois **só do que mudou**; nada mudou, nada é gravado |
+  | `pedido.cancelado` | A situação de antes, a revenda e o que faltava chegar de cada linha |
+  | `importacao.confirmada` | O resumo (formato, linhas, entradas e saídas, período, total por insumo, insumos, fornecedores e categorias novos, quantas já estavam lançadas), e não cada linha: são milhares, a planilha é a cópia delas e cada movimentação já diz quem a lançou |
+  | `usuario.criado` · `usuario.alterado` | Login, nome e papel; na alteração, o antes e o depois (virar dono, ser desativado) |
+  | `usuario.senha_redefinida` · `usuario.senha_trocada` | O login (e, na redefinida, se desfez um bloqueio). Quem redefine a senha de alguém pode entrar como ele; a sessão roubada que troca a senha tranca o dono fora |
+  | `login.recusado` · `login.bloqueado` | O login e o motivo (`senha_incorreta`, `bloqueado`, `usuario_desativado`, `senha_atual_incorreta`), que a resposta não conta a quem tentou; no bloqueio, até quando |
+  | `demo.carregada` · `demo.limpa` | Quanto saiu e quanto entrou (a demonstração apaga e cria em massa) |
+
+- **O que não entra, de propósito.** A leitura (o relatório inclusive). O lançamento comum
+  (`POST /movimentacoes`, a fila do app, a contagem do galpão, o recebimento do pedido): a
+  movimentação já guarda quem a lançou (`usuario_id`), e um evento por lançamento só repetiria
+  isso. A carga **a mais** no recebimento também não: a entrada fica, com quem conferiu e a
+  linha do pedido, e o excesso se vê comparando `quantidade_recebida` com `quantidade`; se
+  alguém a remover depois, aí sim há evento. O cadastro novo (insumo, talhão, pedido...): ele
+  mesmo é o registro, e nada se perde. O login aceito e o sair: a sessão (`sessoes`) já guarda
+  quem, quando, o aparelho e quando foi encerrada. O login que **não existe**: não há a quem
+  atribuir, e o que se digitou no campo do login pode ser a senha. A prévia da importação e a
+  planilha com erro: nada é gravado. Não há rota que apague pedido (ele se cancela, e o
+  cancelamento entra).
+- **Quem e de onde.** `usuario_id` de quem está logado (vazio com a autenticação desligada, num
+  comando no servidor e no login recusado, em que quem tentou não é conhecido: o alvo vai em
+  `entidade_id`). `origem`: `api` ou `terminal` (a demonstração e o `criar-dono`). `ip`: o que
+  o uvicorn viu (`request.client.host`). O `X-Forwarded-For` **não** é lido: qualquer um o
+  escreve, e um IP forjado na trilha é pior que nenhum. Atrás de um proxy, o IP é o do proxy,
+  a não ser que o uvicorn confie nele (`--forwarded-allow-ips`) e troque pelo do cliente.
+  `dispositivo`: o que o aparelho disse ser no login ("Celular do Zé"), declarado, não prova.
+  `ocorrido_em`: o relógio do servidor, nunca o do pedido.
+- **Atômico.** `registrar` põe o evento na sessão do serviço e **não faz commit**: ele vai junto
+  com a ação. Falhou a ação (o `409` do talhão com aplicação, o nome repetido), não há evento;
+  falhou o evento (um segredo nos dados, o banco recusando o `INSERT`), a ação não acontece. O
+  login recusado e o bloqueio entram na mesma transação da contagem de falhas. A remoção trava
+  a linha (`FOR UPDATE`): duas remoções ao mesmo tempo não deixam dois eventos, e o lançamento
+  feito no meio não some no `CASCADE` sem estar no evento.
+- **Nunca segredo.** `registrar` recusa (`ValueError`, e a ação não acontece) `senha`,
+  `senha_hash`, `senha_atual`, `senha_nova`, `token` e `token_hash` em qualquer nível dos
+  dados, e os serviços montam os dados à mão, campo a campo, sem o modelo inteiro. Quem lê a
+  auditoria não pode sair com uma senha nem com um login aberto.
+- **Somente acrescentar, em três camadas.** Um rastro que quem apagou pode apagar não prova
+  nada:
+  1. o papel da aplicação só tem `INSERT` e `SELECT` na tabela. A migration 0012 tira o
+     `UPDATE`, `DELETE` e `TRUNCATE` que o `ALTER DEFAULT PRIVILEGES` lhe daria ao nascer;
+  2. `python -m app.papel_da_aplicacao`, a cada subida, refaz o `GRANT` em todas as tabelas e
+     logo depois os tira de novo desta (`SOMENTE_ACRESCENTAR`);
+  3. um gatilho (`somente_acrescentar`) recusa `UPDATE` e `DELETE` de **qualquer um**, o dono
+     inclusive. Escolhido porque o dono é quem roda migration e abre o `psql`: o `DELETE` à mão
+     por engano, ou a migration futura que "limpa" dados, não apagam o rastro. O dono ainda
+     pode derrubar o gatilho (é dono), mas não sem querer. O `TRUNCATE` (que não dispara
+     gatilho de linha) fica só com o dono: é como os testes esvaziam o banco descartável.
+
+  Provado no PostgreSQL real (`tests/integracao/test_fluxo_auditoria.py`): conectado como o
+  papel da aplicação, `UPDATE`, `DELETE` e `TRUNCATE` dão `42501`; o dono leva a recusa do
+  gatilho.
+- **`GET /auditoria`, só do dono e sempre com login** (como a gestão de usuários: a trilha diz
+  quem tentou entrar e de onde). Os mais recentes primeiro (`ocorrido_em`, desempate pelo id),
+  com `feito_por` (o nome) ao lado do `usuario_id`. Filtros que se somam: `acao` (o código, ou
+  o grupo, como `usuario` ou `login`; o grupo vira a lista dos códigos dele, e não um `LIKE`, e
+  o que não existe é `422` com os grupos, e não uma lista vazia que parece "nada aconteceu"),
+  `usuario_id`, `entidade` e `entidade_id`, `desde` e `ate` (dias de Rondônia, inclusive).
+  Página: `limite` (padrão 200, até 1000) e `deslocamento`, com o total em `X-Total-Count`.
+- **Índices** na ordem da consulta: `(ocorrido_em, id)`, `(acao, ocorrido_em, id)`,
+  `(usuario_id, ocorrido_em, id)` (serve também à FK) e `(entidade, entidade_id, ocorrido_em,
+  id)`. São poucas gravações (ações raras), e quatro índices custam pouco.
+- **`usuario_id` com FK `RESTRICT`**: usuário não se apaga, desativa; e um `SET NULL` seria um
+  `UPDATE`, que o gatilho recusa.
+- **Migration 0012.** O downgrade apagaria a trilha inteira: ele se recusa enquanto houver
+  evento, e só segue com `alembic -x descartar_auditoria=sim downgrade 0011`.
+- **Sem retenção, por ora.** A tabela só cresce, devagar, porque as ações são raras; o que pode
+  crescer rápido é `login.recusado` de um ataque a um login que existe (cada tentativa
+  durante o bloqueio também grava, para o dono ver que continuam). Cada tentativa gasta o hash
+  lento da senha, o que limita o ritmo, mas não há limite por IP: é a próxima decisão se a API
+  for exposta à internet.
 
 ### Importação de planilha
 
@@ -558,7 +650,9 @@ conexão e as travas para sempre, e a API ficava pendurada. Decisões:
   não cria papel nem banco, não é dono de nada, não tem `CREATE` no schema nem no banco; só
   `SELECT, INSERT, UPDATE, DELETE` nas tabelas e `USAGE, SELECT` nas sequências de `public`.
   Sem `TRUNCATE`, `REFERENCES`, `TRIGGER`, `ALTER`, `DROP`. Da `alembic_version`, só lê (para
-  conferir um dia se o banco está em dia; quem a grava é o Alembic). `NOINHERIT`: posto dentro
+  conferir um dia se o banco está em dia; quem a grava é o Alembic). Na trilha de auditoria
+  (`eventos_de_auditoria`), só acrescenta e lê: `INSERT` e `SELECT`, sem `UPDATE` nem `DELETE`
+  (ver Trilha de auditoria). `NOINHERIT`: posto dentro
   de outro papel por engano, não herda os poderes de lá.
 - **A demonstração e o `criar-dono` usam o papel da aplicação.** Só fazem `INSERT` e `DELETE`,
   como a API: não há motivo para darem a um script os poderes que a API não tem.
@@ -660,6 +754,7 @@ conexão e as travas para sempre, e a API ficava pendurada. Decisões:
 | `POST /api/v1/importacoes` | Movimentações de uma planilha: `xlsx` (base64) ou `conteudo` (texto do CSV). Sem `confirmar`, só confere e resume, com o total de cada insumo; com erro, nada é gravado e a resposta lista os erros por linha |
 | `GET /api/v1/importacoes/modelo.xlsx` | Planilha modelo formatada, com os insumos cadastrados para escolher da lista |
 | `GET /api/v1/relatorio.xlsx` | Relatório do estoque em Excel, com as abas Pedidos (o que falta chegar), Talhões e Por mês (os últimos 12 meses em reais). A aba Movimentações tem o formato da importação (com o talhão de cada aplicação e o fornecedor de cada compra): é também a cópia de segurança, e volta pela mesma tela |
+| `GET /api/v1/auditoria` | Só o dono, sempre com login: os eventos de auditoria, os mais recentes primeiro (`id`, `ocorrido_em`, `usuario_id`, `feito_por`, `acao`, `entidade`, `entidade_id`, `dados`, `origem`, `ip`, `dispositivo`). Filtros: `acao` (código ou grupo; desconhecida, `422`), `usuario_id`, `entidade`, `entidade_id`, `desde`, `ate`; página com `limite` e `deslocamento`, total em `X-Total-Count` |
 | `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período; `custo_medio`, `embalagem`, `pedido_minimo` e `a_caminho`, o que já foi pedido, opcionais) e devolve alertas, reposição e limitações. `422` para entrada inválida |
 | `GET /api/v1/docs` | Swagger UI (desligado em `production`) |
 | `GET /api/v1/openapi.json` | Schema OpenAPI (desligado em `production`) |
@@ -689,6 +784,14 @@ login com a frase da API; no `403`, mostrar a frase sem deslogar; esconder dos f
 (`usuario.papel`) o que é do dono (cadastro, remover, importar, relatório, Usuários); tela de
 Usuários para o dono e "Trocar senha" para todos; "Sair" chama `POST /auth/sair`. Mostrar
 `lancado_por` nas movimentações.
+
+**Para a trilha de auditoria** (seção 2, "Trilha de auditoria"), uma tela só do dono, escondida
+do funcionário: a lista de `GET /auditoria` com quando, quem (`feito_por`; vazio é "sistema" ou
+"login recusado"), a ação traduzida pelo código, o aparelho e o IP, com o filtro por grupo de
+ação, por usuário e por período, e as páginas pelo `X-Total-Count`. Ao abrir um evento, mostrar
+`dados`: o conteúdo do que foi apagado (na movimentação removida, um botão "lançar de novo"
+pode preencher o formulário com ele) ou o antes e o depois. O app não precisa de nada: o que o
+funcionário faz no campo não entra na trilha, e ele não a lê.
 
 Regras: componente `.vue` **não chama axios** (passa por `services/`) e **não decide** regra de
 negócio: mostra o que a API calculou.
