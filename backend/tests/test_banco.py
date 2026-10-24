@@ -2,11 +2,22 @@
 cortada, a trava que desiste) está em tests/integracao/test_banco_privilegio_e_tempos.py;
 aqui, o que a configuração manda ao driver."""
 
+import logging
+from typing import Any
+from uuid import uuid4
+
+import psycopg
 import pytest
+import sqlalchemy.exc
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.database import argumentos_do_engine
+from app.core.relogio import hoje
+from app.services import estoque
 
 POSTGRES = "postgresql+psycopg://campocerto_app:abc123@db:5432/campocerto"
 
@@ -68,3 +79,91 @@ def test_sqlite_dos_testes_nao_recebe_opcoes_do_postgres() -> None:
     settings = Settings(environment="test", database_url="sqlite://")
 
     assert argumentos_do_engine(settings) == {"pool_pre_ping": True}
+
+
+def _rota_que_estoura(client: TestClient, erro: Exception) -> None:
+    def estourar() -> None:
+        raise erro
+
+    client.app.add_api_route("/api/v1/teste-estoura", estourar)
+
+
+@pytest.mark.parametrize(
+    ("causa", "frase"),
+    [
+        (psycopg.errors.QueryCanceled("canceling statement due to statement timeout"), "demorou"),
+        (psycopg.errors.LockNotAvailable("canceling statement due to lock timeout"), "outro"),
+    ],
+)
+def test_tempo_limite_do_banco_vira_503_com_retry_after(
+    client: TestClient, caplog: pytest.LogCaptureFixture, causa: Exception, frase: str
+) -> None:
+    # Não é defeito do servidor nem do pedido: é espera, e passa. 503 com Retry-After diz
+    # "tente de novo daqui a pouco", e a frase vai para a tela do site e do app.
+    _rota_que_estoura(client, OperationalError("SELECT 'segredo'", {"senha": "x"}, causa))
+
+    with caplog.at_level(logging.WARNING):
+        resposta = client.get("/api/v1/teste-estoura")
+
+    assert resposta.status_code == 503
+    assert resposta.headers["Retry-After"] == "5"
+    assert frase in resposta.json()["detail"].lower()
+    assert "tente de novo" in resposta.json()["detail"].lower()
+    # O log diz o que houve, sem a consulta nem os valores dela.
+    assert causa.sqlstate in caplog.text
+    assert "segredo" not in caplog.text
+
+
+def test_pool_sem_conexao_livre_vira_503(client: TestClient) -> None:
+    _rota_que_estoura(client, sqlalchemy.exc.TimeoutError("QueuePool limit reached"))
+
+    resposta = client.get("/api/v1/teste-estoura")
+
+    assert resposta.status_code == 503
+    assert resposta.headers["Retry-After"] == "5"
+
+
+def test_outro_erro_operacional_continua_erro_do_servidor(client: TestClient) -> None:
+    # Banco fora do ar, senha errada: não é espera que passa sozinha, e esconder num 503
+    # "tente de novo" atrasaria quem precisa consertar.
+    _rota_que_estoura(client, OperationalError("SELECT 1", {}, Exception("conexão recusada")))
+
+    with pytest.raises(OperationalError):
+        client.get("/api/v1/teste-estoura")
+
+
+def test_lote_que_estoura_o_tempo_para_e_o_app_reenvia(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """O item que estoura o tempo não vira `recusada`: o dado dele está certo, só esperou
+    demais, e `recusada` pede ao produtor que confira e lance de novo. O lote inteiro
+    responde 503; o que já foi gravado fica (cada item tem a sua transação), e o reenvio,
+    que o app faz sozinho, devolve-o como `ja_existia`."""
+    insumo = client.post("/api/v1/insumos", json={"nome": "Ureia", "unidade": "kg"}).json()["id"]
+    lote = [
+        {
+            "uuid": str(uuid4()),
+            "insumo_id": insumo,
+            "tipo": "entrada",
+            "data": str(hoje()),
+            "quantidade": quantidade,
+        }
+        for quantidade in (10, 20)
+    ]
+    original = estoque.registrar_movimentacao
+
+    def segunda_espera_demais(db: Session, dados: Any, usuario_id: int | None) -> Any:
+        if dados.quantidade == 20:
+            trava = psycopg.errors.LockNotAvailable("canceling statement due to lock timeout")
+            raise OperationalError("INSERT", {}, trava)
+        return original(db, dados, usuario_id)
+
+    monkeypatch.setattr(estoque, "registrar_movimentacao", segunda_espera_demais)
+    resposta = client.post("/api/v1/movimentacoes/lote", json={"movimentacoes": lote})
+
+    assert resposta.status_code == 503
+    assert resposta.headers["Retry-After"] == "5"
+
+    monkeypatch.setattr(estoque, "registrar_movimentacao", original)
+    reenvio = client.post("/api/v1/movimentacoes/lote", json={"movimentacoes": lote}).json()
+    assert [r["situacao"] for r in reenvio["resultados"]] == ["ja_existia", "gravada"]
