@@ -13,7 +13,15 @@ from app.analysis.consumo import analisar
 from app.core.database import violou_nome_unico
 from app.core.relogio import hoje
 from app.domain import estoque as dominio
-from app.models import Fornecedor, Insumo, ItemDoPedido, Movimentacao, Pedido, Talhao
+from app.models import (
+    Categoria,
+    Fornecedor,
+    Insumo,
+    ItemDoPedido,
+    Movimentacao,
+    Pedido,
+    Talhao,
+)
 from app.schemas.estoque import (
     AjusteDeInventario,
     ContagemDeInventario,
@@ -30,7 +38,7 @@ from app.services import pedidos
 
 # Campos que vieram depois do site e do app: um PUT que não os manda (de uma versão que
 # não os conhece) mantém o que está gravado, em vez de apagá-los.
-_CAMPOS_OPCIONAIS_NOVOS = {"embalagem", "pedido_minimo", "carencia_dias"}
+_CAMPOS_OPCIONAIS_NOVOS = {"embalagem", "pedido_minimo", "carencia_dias", "categoria_id"}
 # O que faz dois envios com o mesmo uuid serem o mesmo lançamento. Com as casas que o banco
 # guarda: 2,0004 kg vira 2 kg na coluna, e o reenvio de 2,0004 ainda é o mesmo lançamento.
 _CONTEUDO_DO_LANCAMENTO = {
@@ -59,6 +67,10 @@ class TalhaoInexistente(Exception):
 
 
 class FornecedorInexistente(Exception):
+    pass
+
+
+class CategoriaInexistente(Exception):
     pass
 
 
@@ -102,19 +114,23 @@ def listar_insumos(db: Session) -> list[InsumoResposta]:
 
 
 def criar_insumo(db: Session, dados: InsumoCadastro) -> InsumoResposta:
+    _conferir_categoria(db, dados.categoria_id)
     insumo = Insumo(**dados.model_dump())
     db.add(insumo)
     _salvar(db)
+    _recarregar_categoria(db, insumo)
     return _resposta(insumo, hoje())
 
 
 def atualizar_insumo(db: Session, insumo_id: int, dados: InsumoCadastro) -> InsumoResposta:
     insumo = _buscar_insumo(db, insumo_id)
+    _conferir_categoria(db, dados.categoria_id)
     for campo, valor in dados.model_dump().items():
         if campo in _CAMPOS_OPCIONAIS_NOVOS and campo not in dados.model_fields_set:
             continue
         setattr(insumo, campo, valor)
     _salvar(db)
+    _recarregar_categoria(db, insumo)
     return _resposta(insumo, hoje(), a_caminho(db, insumo_id).get(insumo_id, []))
 
 
@@ -336,6 +352,17 @@ def _buscar_insumo(db: Session, insumo_id: int) -> Insumo:
     return insumo
 
 
+def _conferir_categoria(db: Session, categoria_id: int | None) -> None:
+    if categoria_id is not None and db.get(Categoria, categoria_id) is None:
+        raise CategoriaInexistente
+
+
+def _recarregar_categoria(db: Session, insumo: Insumo) -> None:
+    # A sessão não expira o que foi gravado (expire_on_commit=False): sem isto, a resposta
+    # diria o nome da categoria de antes da troca.
+    db.refresh(insumo, ["categoria"])
+
+
 def _salvar(db: Session) -> None:
     try:
         db.commit()
@@ -418,6 +445,8 @@ def _resposta(
         embalagem=insumo.embalagem,
         pedido_minimo=insumo.pedido_minimo,
         carencia_dias=insumo.carencia_dias,
+        categoria_id=insumo.categoria_id,
+        categoria=None if insumo.categoria is None else insumo.categoria.nome,
         estoque_atual=estoque,
         custo_medio=None if custo_medio is None else round(custo_medio, 4),
         # Estoque negativo é registro faltando, não dívida: vale zero.

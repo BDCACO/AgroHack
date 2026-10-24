@@ -13,6 +13,7 @@ from app.api.permissoes import (
 from app.api.routes import (
     analises,
     autenticacao,
+    categorias,
     estoque,
     fornecedores,
     health,
@@ -27,6 +28,8 @@ api_router.include_router(autenticacao.publico)
 api_router.include_router(autenticacao.router, dependencies=[Depends(exigir_sessao)])
 api_router.include_router(estoque.campo, dependencies=[Depends(exigir_funcionario)])
 api_router.include_router(estoque.gestao, dependencies=[Depends(exigir_dono)])
+api_router.include_router(categorias.campo, dependencies=[Depends(exigir_funcionario)])
+api_router.include_router(categorias.gestao, dependencies=[Depends(exigir_dono)])
 api_router.include_router(talhoes.campo, dependencies=[Depends(exigir_funcionario)])
 api_router.include_router(talhoes.gestao, dependencies=[Depends(exigir_dono)])
 api_router.include_router(fornecedores.campo, dependencies=[Depends(exigir_funcionario)])

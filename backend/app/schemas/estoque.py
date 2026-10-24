@@ -73,12 +73,17 @@ class InsumoCadastro(DadosDoInsumo):
     # ureia); vazio = não informada. Fica fora do motor de análise (e de POST /analises):
     # é regra do talhão onde o insumo foi aplicado, não do estoque.
     carencia_dias: int | None = Field(default=None, ge=0, le=365)
+    # Fertilizante, defensivo, nutrição animal... (GET /categorias). Opcional, e como a
+    # embalagem: o PUT sem ela mantém a gravada.
+    categoria_id: int | None = None
 
 
 class InsumoResposta(_Insumo):
     id: int
     demonstracao: bool
     carencia_dias: int | None
+    categoria_id: int | None = None
+    categoria: str | None = None  # o nome, para a tela não precisar de outra consulta
     estoque_atual: float
     # R$ por unidade, média das compras com preço ponderada pela quantidade. None sem
     # nenhuma compra com preço.

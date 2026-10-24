@@ -29,6 +29,10 @@ gestao = APIRouter(tags=["estoque"])
 
 _NOME_DUPLICADO = HTTPException(status.HTTP_409_CONFLICT, "Já existe um insumo com esse nome.")
 _INSUMO_INEXISTENTE = "Insumo não encontrado."
+# 422, e não 404: o insumo da URL existe; o que está errado é o corpo.
+_CATEGORIA_INEXISTENTE = HTTPException(
+    status.HTTP_422_UNPROCESSABLE_CONTENT, "Categoria não encontrada."
+)
 _XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
@@ -51,6 +55,8 @@ def criar_insumo(dados: InsumoCadastro, db: Session = Depends(get_db)) -> Insumo
         return servico.criar_insumo(db, dados)
     except servico.NomeDuplicado:
         raise _NOME_DUPLICADO from None
+    except servico.CategoriaInexistente:
+        raise _CATEGORIA_INEXISTENTE from None
 
 
 @gestao.put("/insumos/{insumo_id}", response_model=InsumoResposta)
@@ -63,6 +69,8 @@ def atualizar_insumo(
         raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
     except servico.NomeDuplicado:
         raise _NOME_DUPLICADO from None
+    except servico.CategoriaInexistente:
+        raise _CATEGORIA_INEXISTENTE from None
 
 
 @campo.get("/insumos/{insumo_id}", response_model=InsumoDetalhe)
