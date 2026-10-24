@@ -162,3 +162,28 @@ def test_limpar_mantem_fornecedor_com_compra_real(client: TestClient, db: Sessio
     ]
     carregar(db, hoje())  # e a próxima carga o reaproveita
     assert len(client.get("/api/v1/fornecedores").json()) == 3
+
+
+def test_cada_insumo_na_sua_categoria(client: TestClient, db: Session) -> None:
+    # A categoria que já existe (a migration cria as de partida) é reaproveitada pelo nome.
+    adubo = client.post("/api/v1/categorias", json={"nome": "Fertilizante"}).json()
+    carregar(db, hoje())
+    carregar(db, hoje())  # recarregar não duplica categoria
+
+    insumos = {i["nome"]: i for i in client.get("/api/v1/insumos").json()}
+
+    assert {nome: i["categoria"] for nome, i in insumos.items()} == {
+        "Calcário dolomítico": "Corretivo de solo",
+        "Fungicida azoxistrobina": "Defensivo agrícola",
+        "Glifosato 480": "Defensivo agrícola",
+        "Ivermectina 1%": "Medicamento veterinário",
+        "Sal mineral 80P": "Nutrição animal",
+        "Semente de milho híbrido": "Semente e muda",
+        "Ureia agrícola": "Fertilizante",
+    }
+    assert insumos["Ureia agrícola"]["categoria_id"] == adubo["id"]
+    categorias = client.get("/api/v1/categorias").json()
+    assert len(categorias) == 6
+    # Limpar não apaga categoria: são as de partida, e o dono pode usá-las nos insumos reais.
+    limpar(db)
+    assert len(client.get("/api/v1/categorias").json()) == 6

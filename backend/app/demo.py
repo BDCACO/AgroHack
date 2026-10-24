@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_sessionmaker
 from app.core.relogio import hoje
-from app.models import Fornecedor, Insumo, ItemDoPedido, Movimentacao, Pedido, Talhao
+from app.models import Categoria, Fornecedor, Insumo, ItemDoPedido, Movimentacao, Pedido, Talhao
 
 DIAS_DE_HISTORICO = 180
 TALHOES = (
@@ -37,6 +37,17 @@ FORNECEDORES = (
     ("Cooperativa Vale Verde", "Ariquemes"),
     ("AgroVet Pioneiro", "Cacaulândia"),
 )
+# Insumo → categoria, com os nomes das de partida da migration 0011: num banco migrado,
+# todas já existem, e a demonstração não cria categoria nenhuma.
+CATEGORIAS = {
+    "Ureia agrícola": "Fertilizante",
+    "Glifosato 480": "Defensivo agrícola",
+    "Calcário dolomítico": "Corretivo de solo",
+    "Fungicida azoxistrobina": "Defensivo agrícola",
+    "Sal mineral 80P": "Nutrição animal",
+    "Ivermectina 1%": "Medicamento veterinário",
+    "Semente de milho híbrido": "Semente e muda",
+}
 
 
 def carregar(db: Session, referencia: date) -> int:
@@ -69,6 +80,7 @@ def carregar(db: Session, referencia: date) -> int:
     insumos = _fazenda(
         referencia, {nome: talhao.id for nome, talhao in talhoes.items()}, fornecedores
     )
+    _categorizar(db, insumos)
     db.add_all(insumos)
     db.add(_pedido_a_caminho(referencia, insumos, fornecedores))
     db.commit()
@@ -89,6 +101,20 @@ def _pedido_a_caminho(
         observacao="20 sacos de 25 kg, combinado por telefone.",
         itens=[ItemDoPedido(insumo=sal, quantidade=500, valor_unitario=4.8)],
     )
+
+
+def _categorizar(db: Session, insumos: list[Insumo]) -> None:
+    """Põe cada insumo na sua categoria, reaproveitando a que já existe pelo nome. Só
+    marca: a categoria não entra na análise, e os alertas do roteiro não mudam. A que
+    faltar (o dono a removeu, ou o banco não veio da migration) é criada; sem marca de
+    demonstração, porque é uma das de partida, e o `limpar` não a apaga."""
+    existentes = {
+        c.nome: c
+        for c in db.scalars(select(Categoria).where(Categoria.nome.in_(CATEGORIAS.values())))
+    }
+    for insumo in insumos:
+        nome = CATEGORIAS[insumo.nome]
+        insumo.categoria = existentes.setdefault(nome, Categoria(nome=nome))
 
 
 def limpar(db: Session) -> None:
