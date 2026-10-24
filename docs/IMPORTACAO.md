@@ -15,16 +15,17 @@ diz a linha e o que corrigir.
 
 ## A planilha modelo
 
-É gerada na hora do download, com seis abas:
+É gerada na hora do download, com sete abas:
 
 | Aba | Para quê |
 |---|---|
-| **Movimentações** | A que você preenche, e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade, tipo, talhão e fornecedor. O próprio Excel avisa se a data for futura, se o tipo não for entrada, saída ou descarte e se a quantidade ou o valor não forem maiores que zero. |
+| **Movimentações** | A que você preenche, e a que a importação lê. Títulos na linha 1, datas em DD/MM/AAAA e listas de escolha para insumo, unidade, tipo, talhão, fornecedor e categoria. O próprio Excel avisa se a data for futura, se o tipo não for entrada, saída ou descarte e se a quantidade ou o valor não forem maiores que zero. |
 | **Como preencher** | As instruções, resumidas. |
 | **Exemplo** | Três linhas preenchidas do jeito certo. |
 | **Insumos cadastrados** | Os insumos que já estão no CampoCerto, com a unidade de cada um. É de onde vem a lista de escolha da coluna `insumo`: depois de cadastrar outros, baixe o modelo de novo. |
 | **Talhões cadastrados** | Os talhões cadastrados na tela de Talhões, com a área e a cultura. Alimenta a lista de escolha da coluna `talhao`. |
 | **Fornecedores cadastrados** | Os fornecedores ativos, com a cidade. Alimenta a lista de escolha da coluna `fornecedor`, que só sugere: um nome novo vale. |
+| **Categorias cadastradas** | As categorias de insumo (Fertilizante, Defensivo agrícola, Nutrição animal...). Alimenta a lista de escolha da coluna `categoria`, que só sugere: um nome novo vale. |
 
 Passe o mouse sobre o título de uma coluna para ver a explicação dela.
 
@@ -41,6 +42,7 @@ Passe o mouse sobre o título de uma coluna para ver a explicação dela.
 | `talhao` | Não | Onde o insumo foi aplicado, **só em saídas** (retirada para uso). O talhão precisa estar cadastrado na tela de Talhões (com a área); maiúsculas não importam. `talhão`, com acento, também vale como título. Em branco se não quiser dizer. | Talhão Norte |
 | `valor` | Não | Preço pago **por unidade** do insumo (R$ por kg, por litro, por saca), só em entradas (compras). Não é o total da nota: 1.000 kg a R$ 3,20 o quilo é `3,20`. `R$ 3,20` também vale. Em branco se não souber. | 3,20 |
 | `fornecedor` | Não | De quem se comprou, **só em entradas** (compras). Maiúsculas não importam. Um nome que não existe vira fornecedor novo, como o insumo novo: a prévia lista os que serão cadastrados, para você conferir a grafia. Em branco se não quiser dizer. | Revenda Boa Safra |
+| `categoria` | Não | A categoria do insumo, **só para insumo novo**: o já cadastrado fica com a categoria da tela de Insumos, e a coluna é ignorada nas linhas dele. Maiúsculas não importam. Uma categoria que não existe é cadastrada, como o fornecedor novo: a prévia lista as que serão cadastradas (`categorias_novas`). Em branco, o insumo novo fica sem categoria. | Fertilizante |
 
 Pode haver outras colunas (observação, nota fiscal), desde que tenham título na linha 1: a
 importação ignora as que não conhece. A coluna `fornecedor` não é mais ignorada: ela diz de
@@ -56,6 +58,12 @@ custo médio, e a análise diz quantas ficaram.
 que foi aplicado em cada talhão, no total e por hectare, e avisa até quando não colher: a
 carência do defensivo (cadastrada no insumo) conta a partir do dia da aplicação. Sem talhão, a
 retirada vale para o estoque como sempre.
+
+**Para que serve a categoria.** Com a categoria de cada insumo, as listas se filtram por ela, e o
+relatório por período soma o gasto, o consumo e as perdas em reais de cada categoria
+(fertilizante, defensivo, nutrição animal...). Ela é do cadastro do insumo, e não da movimentação:
+por isso só vale para o insumo que a planilha cadastra. Mudar a de um insumo já cadastrado é na tela
+de Insumos.
 
 **Para que serve o fornecedor.** Com o fornecedor de cada compra, o CampoCerto mostra quanto
 se pagou a cada revenda por cada insumo (para comparar), e a sugestão de pedido manda cada
@@ -94,9 +102,11 @@ prévia**: um número lido errado aparece ali, antes de gravar.
 
 O **relatório em Excel** (botão *Baixar relatório* no Painel) traz, na aba **Movimentações**,
 todas as entradas e saídas no formato da importação, inclusive descartes, ajustes de inventário
-e o preço de cada compra, com o talhão de cada aplicação e o fornecedor de cada compra.
-Guarde-o: num CampoCerto novo, importá-lo traz de volta os insumos, os fornecedores (pelo
-nome) e as movimentações, e com elas o custo médio. **Cadastre os talhões
+e o preço de cada compra, com o talhão de cada aplicação, o fornecedor de cada compra e a
+categoria de cada insumo. Guarde-o: num CampoCerto novo, importá-lo traz de volta os insumos (cada
+um na sua categoria), os fornecedores e as categorias que faltarem (pelo nome) e as movimentações, e
+com elas o custo médio. As abas **Pedidos** e **Por mês** são só para ler: a importação lê apenas a
+aba Movimentações. **Cadastre os talhões
 antes** (a aba **Talhões** do relatório tem a área e a cultura de cada um): sem eles, a importação
 diz quais faltam e não grava nada.
 
@@ -147,6 +157,8 @@ de importar, só um "importar mesmo assim", que pede confirmação.
 | fornecedor só se informa numa entrada (compra) | O fornecedor é de quem se comprou: apague-o da linha de saída, descarte, sobra ou falta. |
 | o nome do fornecedor tem um caractere inválido | Como no nome do insumo: apague a célula e digite o nome de novo. |
 | há mais de um fornecedor cadastrado como "…" | Renomeie um deles na tela de Fornecedores. |
+| "Ureia" já está na categoria Fertilizante em outra linha, não em … | O mesmo insumo novo veio com duas categorias: deixe uma só (ou só na primeira linha dele). |
+| o nome da categoria tem um caractere inválido / nome da categoria com mais de 60 caracteres | Apague a célula e digite o nome de novo, curto: ele aparece no filtro e na legenda do gráfico. |
 | valor "caro" não é um número / valor deve ser maior que zero | Escreva o preço por unidade como número: 3,20. |
 | há valores na coluna H, que não tem título na linha 1 | Dê um título à coluna (na linha 1) ou apague os valores dela. |
 | o nome do insumo tem um caractere inválido | Há um caractere invisível no nome (comum em texto colado de outro programa): apague a célula e digite o nome de novo. |

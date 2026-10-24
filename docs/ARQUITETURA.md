@@ -39,6 +39,7 @@ navegador ──► Vite (:5173) ──/api──► FastAPI (:8000) ──► P
 |---|---|---|
 | `app/domain/estoque.py` | Tipos de entrada (`Insumo`, `Lote`, `Retirada`, `Entrada`), `Alerta` e as regras que não dependem de histórico: estoque abaixo do mínimo, lote vencido ou a vencer, custo médio das compras; e a formatação brasileira de quantidade e dinheiro | **Sem I/O, sem banco, sem `datetime.now()`**: a data de referência entra como parâmetro |
 | `app/domain/talhao.py` | A carência do talhão (quando a colheita fica liberada, o alerta com a conta e o que não se sabe) e o custo do que foi aplicado nele, total, por hectare e por insumo, num período | As mesmas: data de referência e período por parâmetro |
+| `app/domain/relatorio_por_periodo.py` | O relatório por período: os meses, semanas ou dias de um intervalo (cortados nas pontas, com teto de 400) e, em cada um, o consumo por insumo, o gasto, as perdas e os totais por categoria e por fornecedor | As mesmas: recebe os lançamentos e os insumos já lidos, devolve as somas |
 | `app/analysis/consumo.py` | `analisar(...)`: consumo médio, cobertura em dias, risco de falta, excesso, baixa movimentação, consumo incomum e reposição estimada (em embalagens fechadas, com pedido mínimo e custo, quando cadastrados, e descontado o que já foi pedido e não chegou, `a_caminho`) | Recebe listas, devolve `Analise` com **justificativa** em cada alerta e as **limitações** dos dados |
 
 Os limiares (janela de 90 dias, 30 dias para vencimento, 180 de cobertura para excesso, prazo
@@ -53,13 +54,15 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 
 | Caminho | Responsabilidade |
 |---|---|
-| `app/models/estoque.py` | `insumos` (com `embalagem`, `pedido_minimo` e `carencia_dias` opcionais), `talhoes` (nome, `area_ha`, `cultura`) e `movimentacoes` (entrada ou saída, data, quantidade, validade, `motivo`: vazio, `descarte` ou `inventario`, `valor_unitario`, o preço da compra, `uuid`, o identificador gerado pelo app, `talhao_id`, onde a retirada foi aplicada, `usuario_id`, quem lançou, `fornecedor_id`, de quem foi a compra, e `item_do_pedido_id`, o pedido que a entrada recebeu). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só. O custo médio também não: sai das compras |
+| `app/models/estoque.py` | `categorias` (nome único), `insumos` (com `embalagem`, `pedido_minimo`, `carencia_dias` e `categoria_id` opcionais), `talhoes` (nome, `area_ha`, `cultura`) e `movimentacoes` (entrada ou saída, data, quantidade, validade, `motivo`: vazio, `descarte` ou `inventario`, `valor_unitario`, o preço da compra, `uuid`, o identificador gerado pelo app, `talhao_id`, onde a retirada foi aplicada, `usuario_id`, quem lançou, `fornecedor_id`, de quem foi a compra, e `item_do_pedido_id`, o pedido que a entrada recebeu). **O estoque atual não é coluna**: é a soma das movimentações, calculada na leitura. Uma fonte da verdade só. O custo médio também não: sai das compras |
 | `app/services/estoque.py` | Casos de uso: cadastro, movimentações, a análise de cada insumo a partir do banco e o saldo dia a dia (histórico do gráfico). As rotas falam só com os serviços (este, `importacao`, `planilha_modelo` e `relatorio`) |
 | `app/services/importacao.py` | Importação de movimentações por planilha (Excel ou CSV), ver abaixo |
 | `app/services/planilha_modelo.py` | A planilha modelo da importação e os estilos das planilhas geradas (cores da marca, títulos, impressão) |
 | `app/services/relatorio.py` | O relatório em Excel: resumo (com os totais em reais), alertas, reposição, situação de cada insumo, talhões (carência e custo) e todas as movimentações |
 | `app/services/talhoes.py` | Cadastro de talhões e a leitura de cada um: carência e custo calculados das aplicações, com o custo médio pela mesma regra da tela do insumo |
 | `app/services/sincronizacao.py` | A fila de lançamentos do app (`POST /movimentacoes/lote`): grava item a item, traduz os erros de validação em frases e calcula os avisos (ver abaixo) |
+| `app/services/categorias.py` | Cadastro das categorias, com quantos insumos cada uma tem |
+| `app/services/relatorio_por_periodo.py` | O relatório por período a partir do banco, em três consultas: as movimentações do período (com os filtros da lista), os insumos delas e as compras com preço, para o custo médio |
 | `app/services/resumo.py` | A visão geral em reais (`GET /resumo`): soma o que `estoque.listar_insumos` já analisou, mais as perdas |
 | `app/models/compras.py` | `fornecedores` (nome único, contato, telefone, cidade, observação, `ativo`), `pedidos` (fornecedor, `situacao`, `feito_em`, `previsto_para`, observação, quem fez) e `itens_do_pedido` (insumo, quantidade, preço combinado, `quantidade_recebida`) |
 | `app/services/fornecedores.py` | Cadastro dos fornecedores e o detalhe com as compras recentes e o preço médio pago por insumo |
@@ -251,6 +254,105 @@ Decisões:
   compra: ele se recusa enquanto houver algum fornecedor ou pedido, e só segue com
   `alembic -x descartar_compras=sim downgrade 0009`.
 
+### Categorias, filtros e relatório por período
+
+Com dezenas de insumos e anos de movimentações, a lista inteira deixa de servir: o produtor quer
+"os defensivos", "o que a revenda X vendeu em março", "quanto gastei por mês". Decisões:
+
+- **Categoria** (`categorias`, nome único): a migration 0011 já cria as de partida de uma
+  propriedade de Rondônia, com lavoura (soja, milho, café) e gado: Fertilizante, **Corretivo de
+  solo** (à parte: o calcário é a maior compra de quem abre área em solo ácido, e somado ao adubo
+  esconderia os dois), Defensivo agrícola, Semente e muda (o café conilon se planta por muda),
+  Medicamento veterinário, Nutrição animal, Combustível e lubrificante (o diesel do trator) e
+  Outros. O dono cadastra, renomeia e remove outras (`/categorias`); a resposta diz quantos
+  insumos cada uma tem.
+- **No insumo**, `categoria_id` é opcional (FK `RESTRICT`), e a resposta traz também o nome
+  (`categoria`). Como a embalagem, o `PUT` sem o campo mantém o gravado; `null` de propósito tira.
+  Categoria inexistente é `422`. **Remover a categoria com insumo é `409`**: os insumos ficariam
+  sem categoria calados, e os totais por categoria mudariam sem ninguém pedir.
+- **Filtros de `GET /insumos`** (opcionais, somados): `categoria_id`, `busca`, `gravidade` (quem
+  tem algum alerta dela) e `com_alerta`. Os de alerta filtram a lista já analisada: o alerta não
+  é coluna, e a análise de cada insumo lê as movimentações dele de qualquer jeito.
+- **Busca sem diferenciar maiúsculas nem acentos** ("ureia" acha "Uréia"), feita em Python
+  (decompõe com NFKD, tira os acentos, `casefold`) sobre id e nome dos insumos, e não no banco. O
+  PostgreSQL só ignora acento com a extensão `unaccent` (que precisaria ser instalada e não existe
+  no SQLite dos testes), e o `lower()` do SQLite não conhece letra acentuada: no banco, os dois
+  dariam resultados diferentes. Os insumos de uma fazenda são centenas, e ler id e nome é barato.
+  Nas movimentações, a busca é no nome do insumo e vira `insumo_id IN (...)`.
+- **Filtros de `GET /movimentacoes`** (opcionais, somados, além de `insumo_id`): `tipo`, `motivo`
+  (`descarte`, `inventario` ou `nenhum`, a movimentação sem motivo: a retirada para uso, na saída,
+  e a compra, na entrada), `categoria_id`, `talhao_id`, `fornecedor_id`, `usuario_id`, `desde` e
+  `ate` (inclusive; invertido é `422`) e `busca`.
+- **Paginação** com `deslocamento`, junto do `limite` de sempre. O total com os mesmos filtros vai
+  no cabeçalho **`X-Total-Count`**: o corpo continua a lista de antes, e o site e o app não
+  quebram (mesma origem, sem CORS para expor o cabeçalho). Ordem estável: data desc e **id desc**
+  desempatando o mesmo dia; sem o id, duas do mesmo dia podiam trocar de lugar entre um pedido e
+  outro, e uma linha apareceria em duas páginas e outra em nenhuma. Paginação por deslocamento, e
+  não por cursor: o volume de uma fazenda (dezenas de milhares) não pede mais, e a tela pode pular
+  para a página N.
+- **Índices** (migration 0011), conferidos com `EXPLAIN` no PostgreSQL com 50 mil movimentações
+  (`tests/integracao/test_fluxo_categorias_e_relatorios.py`):
+  - `ix_movimentacoes_data_id` `(data, id)`: a lista sem filtro sai por `Index Scan Backward`
+    lendo só as 200 linhas da página, sem ordenar a tabela; o período do relatório (30 dias de
+    quase três anos) sai por `Bitmap Index Scan` nele, sem ler a tabela inteira.
+  - `ix_movimentacoes_insumo_id_data_id` `(insumo_id, data, id)`: as movimentações de um insumo e
+    o total delas (`Bitmap Index Scan`); com mil linhas do insumo espalhadas pela tabela, o
+    PostgreSQL prefere buscá-las pelo índice e ordenar as mil na memória, escolha dele pelo custo.
+    Começa por `insumo_id`, então **substitui** o índice simples dela (um índice a menos a gravar a
+    cada lançamento) e continua servindo à FK (o `CASCADE` ao remover o insumo).
+  - As outras FKs de `movimentacoes` (talhão, usuário, fornecedor, pedido) já tinham índice, e
+    `insumos.categoria_id` ganhou o seu (o filtro e a trava do `RESTRICT`).
+  - O total sem filtro (`count(*)` da tabela inteira) é uma leitura sequencial: com 50 mil linhas,
+    a lista com o total respondeu em 0,07 s pela API.
+- **Relatório por período** (`GET /relatorios/periodo`): por `mes`, `semana` (segunda a domingo)
+  ou `dia`, de `desde` a `ate` (inclusive; sem eles, os últimos 12 meses até hoje), com filtros
+  opcionais de categoria, insumo, talhão e fornecedor. Cada período, cortado nas pontas e **zerado
+  quando não houve movimento** (o gráfico não tem buraco), traz:
+  - **consumo** por insumo: só a retirada para uso (descarte e falta da contagem são perda; a
+    sobra não é compra nem consumo). **Quantidade só se soma dentro do mesmo insumo**, na unidade
+    dele: 150 kg de ureia e 4 L de glifosato não dão "154" de nada. Em reais (quantidade × custo
+    médio), sim, e é assim que entra nos totais por categoria;
+  - **gasto**: o que se pagou nas compras com preço; as sem preço ficam fora, e o relatório diz
+    quantas (`compras_sem_preco` e uma limitação);
+  - **perdas**: descarte e falta da contagem pelo custo médio, a mesma conta do `GET /resumo` (o
+    teste confere que os dois batem);
+  - **totais por categoria** (gasto, consumo e perdas em R$; sem categoria por último) e **por
+    fornecedor** (gasto, compras, quantas sem preço; a compra sem fornecedor por último).
+
+  O `total` do intervalo inteiro tem a mesma forma, e as `limitacoes` dizem o que as somas não
+  sabem: compras e perdas sem preço, consumo sem valor, o custo médio de hoje (e não o da época),
+  e o que os filtros de talhão e de fornecedor deixam de fora (compra e perda não são de talhão;
+  consumo e perda não são de fornecedor).
+- **Puro e sem N+1.** As somas moram no domínio (`app/domain/relatorio_por_periodo.py`), testadas
+  com listas. O serviço faz três consultas qualquer que seja o período ou o número de insumos (as
+  movimentações do período, com o fornecedor junto; os insumos com a categoria; as compras com
+  preço desses insumos, para o custo médio), e o teste conta as consultas.
+- **Teto de 400 períodos** (por dia, uns 13 meses; por semana, quase 8 anos): acima, `422` com a
+  frase. É contado antes de montar os períodos e antes de consultar o banco.
+- **Aba Por mês** no `relatorio.xlsx`: os últimos 12 meses (gasto, compras sem preço, consumo e
+  perdas em R$), os mesmos números da rota. Fica antes da aba Movimentações e com outro nome: a
+  importação lê só aquela, e a cópia de segurança volta igual.
+- **Planilha:** coluna opcional `categoria`, usada **só ao cadastrar um insumo novo** (o já
+  cadastrado fica com a da tela de Insumos: a planilha é de movimentações, e mudar o cadastro por
+  ela seria uma segunda tela de cadastro, escondida). A que não existe é **cadastrada pelo nome**,
+  como o fornecedor, e não recusada como o talhão: só precisa do nome, e a cópia de segurança
+  restaurada num sistema vazio devolve cada insumo à sua categoria. A prévia lista
+  `categorias_novas`; o mesmo insumo novo em duas categorias é erro na linha. O modelo traz a
+  coluna, a lista (que só sugere) e a aba Categorias cadastradas; o relatório escreve a categoria
+  de cada insumo na aba Movimentações.
+- **Permissões:** ler categorias e o relatório por período é do **funcionário**, como o
+  `/resumo`: ele já lê o custo médio, o preço de cada compra e o preço pago a cada revenda, e o
+  relatório são as mesmas contas somadas; escondê-lo pediria um schema por papel sem proteger nada
+  que ele já não veja. Cadastrar, alterar e remover categoria é do dono. O `relatorio.xlsx`, com a
+  cópia de segurança, continua só do dono.
+- **Demonstração:** cada insumo fictício vai para a sua categoria de partida, reaproveitada pelo
+  nome (num banco migrado, nenhuma é criada); o `limpar` não as apaga, e os alertas do roteiro não
+  mudam.
+- **Migration 0011.** O downgrade apagaria as categorias cadastradas pelo dono e a categoria de
+  cada insumo: ele se recusa enquanto houver alguma categoria além das de partida ou algum insumo
+  com categoria, e só segue com `alembic -x descartar_categorias=sim downgrade 0010`. Ele devolve
+  o índice simples de `insumo_id`.
+
 ### Lançamento offline do app (sincronização)
 
 No campo o sinal cai. O app guarda os lançamentos no celular e os manda quando a rede volta,
@@ -374,8 +476,8 @@ dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Dec
 |---|---|---|
 | Pública | qualquer um | `GET /health`, `GET /ready`, `/docs` e `/openapi.json` (fora de produção), `POST /auth/entrar` |
 | Sessão | qualquer usuário logado, sobre si | `POST /auth/sair`, `GET /auth/eu`, `PUT /auth/senha` (exigem login mesmo desligada) |
-| Funcionário | funcionário e dono | `GET /insumos`, `GET /insumos/{id}`, `GET /movimentacoes`, `GET /talhoes`, `GET /talhoes/{id}`, `GET /resumo`, `GET /fornecedores`, `GET /fornecedores/{id}`, `GET /pedidos`, `GET /pedidos/{id}`, `GET /pedidos/sugestao`; `POST /movimentacoes`, `POST /movimentacoes/lote`, `POST /insumos/{id}/inventario`, `POST /pedidos/{id}/receber` |
-| Dono | só o dono | `POST`/`PUT`/`DELETE /insumos`, `DELETE /movimentacoes/{id}`, `POST`/`PUT`/`DELETE /talhoes`, `POST`/`PUT`/`DELETE /fornecedores`, `POST /pedidos`, `PUT /pedidos/{id}`, `POST /pedidos/{id}/cancelar`, `POST /importacoes`, `GET /importacoes/modelo.xlsx`, `GET /relatorio.xlsx`, `POST /analises` |
+| Funcionário | funcionário e dono | `GET /insumos`, `GET /insumos/{id}`, `GET /movimentacoes`, `GET /talhoes`, `GET /talhoes/{id}`, `GET /resumo`, `GET /categorias`, `GET /relatorios/periodo`, `GET /fornecedores`, `GET /fornecedores/{id}`, `GET /pedidos`, `GET /pedidos/{id}`, `GET /pedidos/sugestao`; `POST /movimentacoes`, `POST /movimentacoes/lote`, `POST /insumos/{id}/inventario`, `POST /pedidos/{id}/receber` |
+| Dono | só o dono | `POST`/`PUT`/`DELETE /insumos`, `DELETE /movimentacoes/{id}`, `POST`/`PUT`/`DELETE /talhoes`, `POST`/`PUT`/`DELETE /categorias`, `POST`/`PUT`/`DELETE /fornecedores`, `POST /pedidos`, `PUT /pedidos/{id}`, `POST /pedidos/{id}/cancelar`, `POST /importacoes`, `GET /importacoes/modelo.xlsx`, `GET /relatorio.xlsx`, `POST /analises` |
 | Gestão | só o dono, sempre com login | `GET /usuarios`, `POST /usuarios`, `PUT /usuarios/{id}`, `PUT /usuarios/{id}/senha` |
 
 O funcionário lê os insumos com o custo médio e o valor em estoque (as telas que ele usa são as
@@ -453,11 +555,14 @@ tem banco a orquestrar e chama o motor direto.
 | `PUT /api/v1/usuarios/{id}` | `nome`, `papel`, `ativo` (o que não vier fica). Desativar derruba as sessões; o último dono ativo não sai (`409`) |
 | `PUT /api/v1/usuarios/{id}/senha` | Redefine a senha (`senha_nova`), derruba as sessões e desfaz o bloqueio (`204`) |
 | `GET /api/v1/ready` | Readiness: `200` com o banco respondendo, `503` sem ele |
-| `GET /api/v1/insumos` | Insumos com estoque atual, `custo_medio`, `valor_em_estoque`, `em_pedido` e `chegada_prevista` (o que foi pedido e não chegou) e a análise de hoje (alertas com `valor` em R$, reposição com `custo_estimado` e descontado o que está a caminho, limitações) |
+| `GET /api/v1/insumos` | Insumos (filtros opcionais: `categoria_id`, `busca` no nome sem diferenciar maiúsculas nem acentos, `gravidade`, `com_alerta`) com a `categoria`, estoque atual, `custo_medio`, `valor_em_estoque`, `em_pedido` e `chegada_prevista` (o que foi pedido e não chegou) e a análise de hoje (alertas com `valor` em R$, reposição com `custo_estimado` e descontado o que está a caminho, limitações) |
 | `GET /api/v1/insumos/{id}` | Um insumo com a análise, o saldo no fim de cada dia com movimentação (`historico`), as movimentações e o preço médio pago a cada fornecedor (`precos_por_fornecedor`, o mais barato primeiro) |
-| `POST /api/v1/insumos` · `PUT /api/v1/insumos/{id}` | Cadastra / altera insumo (nome, unidade, mínimo, prazo de reposição e, opcionais, `embalagem`, `pedido_minimo` e `carencia_dias`). `409` para nome repetido. No `PUT`, embalagem, pedido mínimo e carência ausentes ficam como estão |
+| `POST /api/v1/insumos` · `PUT /api/v1/insumos/{id}` | Cadastra / altera insumo (nome, unidade, mínimo, prazo de reposição e, opcionais, `embalagem`, `pedido_minimo`, `carencia_dias` e `categoria_id`). `409` para nome repetido, `422` para categoria inexistente. No `PUT`, embalagem, pedido mínimo, carência e categoria ausentes ficam como estão |
+| `GET /api/v1/categorias` · `POST /api/v1/categorias` | As categorias pelo nome, com quantos `insumos` cada uma tem / cadastra (`nome`). `409` para nome repetido |
+| `PUT /api/v1/categorias/{id}` · `DELETE /api/v1/categorias/{id}` | Renomeia / remove a categoria sem insumo; com algum, `409` dizendo quantos |
+| `GET /api/v1/relatorios/periodo` | Por `mes`, `semana` ou `dia`, de `desde` a `ate` (padrão: os últimos 12 meses), com filtros `categoria_id`, `insumo_id`, `talhao_id` e `fornecedor_id`: cada período (zerado se vazio) com o consumo por insumo, o gasto, as perdas e os totais por categoria e por fornecedor; o `total` e as `limitacoes`. `422` para período invertido ou mais de 400 períodos |
 | `DELETE /api/v1/insumos/{id}` | Remove o insumo cadastrado por engano, com as movimentações dele. `409` se ele foi aplicado em algum talhão: a rastreabilidade e a carência não somem com ele (remova antes as aplicações) |
-| `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (`insumo_id`, `limite`), cada uma com `usuario_id` e `lancado_por` (quem lançou; `null` sem login), `fornecedor_id` e `comprado_de` (de quem foi a compra) e `item_do_pedido_id` (o pedido que ela recebeu) |
+| `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (no mesmo dia, pelo id). Filtros opcionais: `insumo_id`, `tipo`, `motivo` (`nenhum` = retirada para uso ou compra), `categoria_id`, `talhao_id`, `fornecedor_id`, `usuario_id`, `desde`/`ate` e `busca`; página com `limite` e `deslocamento`, e o total no cabeçalho `X-Total-Count`; cada uma com `usuario_id` e `lancado_por` (quem lançou; `null` sem login), `fornecedor_id` e `comprado_de` (de quem foi a compra) e `item_do_pedido_id` (o pedido que ela recebeu) |
 | `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo; entrada pode trazer `valor_unitario` (R$ por unidade); a compra pode trazer `fornecedor_id`; a retirada para uso pode trazer `talhao_id` (onde foi aplicada). `422` para data futura, validade ou preço em saída, preço zero ou negativo, descarte em entrada, talhão fora da retirada para uso, fornecedor fora da compra, insumo, talhão ou fornecedor inexistente. Com `uuid` (opcional, gerado pelo app), reenviar devolve o já gravado com `200`; o mesmo uuid com outro conteúdo é `409` |
 | `POST /api/v1/movimentacoes/lote` | A fila do app: `{"movimentacoes": [...]}`, até 500, cada uma com `uuid`. Grava na ordem, item a item; devolve para cada uma `gravada`, `ja_existia` ou `recusada` (com os `erros` em frases) e os `avisos`, mais o `resumo`. Sempre `200`, a não ser que o pedido inteiro esteja malformado (`422`) |
 | `POST /api/v1/insumos/{id}/inventario` | Contagem do galpão (`quantidade_contada`, `data` opcional): lança a diferença para o saldo registrado naquele dia como ajuste (`motivo: "inventario"`) e devolve saldo, contagem e diferença. Se bate, nada é lançado |
@@ -478,7 +583,7 @@ tem banco a orquestrar e chama o motor direto.
 | `POST /api/v1/pedidos/{id}/receber` | A carga que chegou (`data`, padrão hoje; `itens` com `item_id`, `quantidade`, `validade` e `valor_unitario` opcionais): cada linha vira uma entrada com o fornecedor, o preço e quem conferiu; devolve o pedido (`parcial` ou `recebido`), as `movimentacoes` criadas e os `avisos` (carga a mais). Cancelado ou recebido é `409` |
 | `POST /api/v1/importacoes` | Movimentações de uma planilha: `xlsx` (base64) ou `conteudo` (texto do CSV). Sem `confirmar`, só confere e resume, com o total de cada insumo; com erro, nada é gravado e a resposta lista os erros por linha |
 | `GET /api/v1/importacoes/modelo.xlsx` | Planilha modelo formatada, com os insumos cadastrados para escolher da lista |
-| `GET /api/v1/relatorio.xlsx` | Relatório do estoque em Excel, com as abas Pedidos (o que falta chegar) e Talhões. A aba Movimentações tem o formato da importação (com o talhão de cada aplicação e o fornecedor de cada compra): é também a cópia de segurança, e volta pela mesma tela |
+| `GET /api/v1/relatorio.xlsx` | Relatório do estoque em Excel, com as abas Pedidos (o que falta chegar), Talhões e Por mês (os últimos 12 meses em reais). A aba Movimentações tem o formato da importação (com o talhão de cada aplicação e o fornecedor de cada compra): é também a cópia de segurança, e volta pela mesma tela |
 | `POST /api/v1/analises` | Roda o motor sobre um insumo enviado no corpo (estoque, retiradas, lotes, período; `custo_medio`, `embalagem`, `pedido_minimo` e `a_caminho`, o que já foi pedido, opcionais) e devolve alertas, reposição e limitações. `422` para entrada inválida |
 | `GET /api/v1/docs` | Swagger UI (desligado em `production`) |
 | `GET /api/v1/openapi.json` | Schema OpenAPI (desligado em `production`) |
@@ -724,6 +829,16 @@ tecnologias que não se aplicam.
    /pedidos/{id}/receber` com os `avisos` na tela. O recebimento não está na fila offline:
    precisa de sinal (o servidor trava o pedido e confere o que já chegou). Enquanto isso, o
    relatório (aba Pedidos) e o `/docs` mostram tudo.
+
+7. **Categorias, filtros e relatório nas telas.** A API já tem as categorias, os filtros, a busca
+   e a paginação das listas e o relatório por período (seção 2, "Categorias, filtros e relatório
+   por período"); o site e o app ainda não os usam. O site precisa de: a escolha da categoria no
+   cadastro do insumo (`GET /categorias`) e uma tela simples de Categorias para o dono; os filtros
+   e a caixa de busca nas listas de Insumos e Movimentações (os parâmetros acima), com a
+   paginação lendo `X-Total-Count`; e uma tela de Relatório com o gráfico mês a mês (gasto,
+   consumo e perdas em reais), as tabelas por categoria e por fornecedor e as `limitacoes`. O app
+   precisa, no mínimo, da busca e do filtro por categoria na lista de insumos; nada muda na fila
+   offline. Sem isso, nada quebra: sem os parâmetros novos, as respostas são as de antes.
 
 Decididas desde a versão anterior deste documento: a autenticação existe (dono e funcionário,
 obrigatória em produção, seção 2); a importação de planilha existe (Excel e
