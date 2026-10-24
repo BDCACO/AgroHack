@@ -23,7 +23,8 @@ navegador ──► Vite (:5173) ──/api──► FastAPI (:8000) ──► P
 |---|---|
 | `app/main.py` | Fábrica `create_app(settings)`: os testes criam a sua com configuração própria |
 | `app/core/config.py` | `Settings` (pydantic-settings). Única fonte de variáveis de ambiente |
-| `app/core/database.py` | Engine, sessão e a dependência `get_db` |
+| `app/core/database.py` | Engine (com os tempos-limite), sessão, a dependência `get_db` e a conferência do papel com que a API conecta |
+| `app/papel_da_aplicacao.py` | Comando que cria e acerta o papel da aplicação no PostgreSQL (roda no entrypoint, como o dono do banco) |
 | `app/core/senha.py` | Hash Argon2id da senha (`argon2-cffi`), com o sal e os parâmetros gravados junto; confere também as senhas antigas em scrypt |
 | `app/api/router.py` | Agrega as rotas da v1 (`/api/v1`), cada grupo com o seu nível de permissão |
 | `app/api/permissoes.py` | As dependências de cada nível (sessão, funcionário, dono) e quem fez o pedido |
@@ -543,6 +544,81 @@ O fluxo é `rota → serviço → (domínio | análise) → ORM`. As setas só a
 `domain` e `analysis` não importam FastAPI nem SQLAlchemy. A exceção é `POST /analises`, que não
 tem banco a orquestrar e chama o motor direto.
 
+### Banco: papéis e tempos-limite
+
+O `POSTGRES_USER` do container oficial é **superusuário** e dono de tudo. Com a API conectada
+com ele, uma falha nela daria o cluster inteiro: `DROP`, ler os outros bancos, `COPY ...
+PROGRAM` rodando comando no servidor. E sem tempo-limite, uma consulta presa, um `FOR UPDATE`
+esperando trava (login, recebimento de pedido) ou uma transação esquecida aberta seguravam a
+conexão e as travas para sempre, e a API ficava pendurada. Decisões:
+
+- **Dois papéis.** O **dono do banco** (`POSTGRES_USER`, na `MIGRATIONS_DATABASE_URL`) roda só
+  o Alembic (DDL) e o comando que garante o outro papel. O **papel da aplicação**
+  (`APP_DB_USER`, padrão `campocerto_app`, na `DATABASE_URL`) é o da API: não é superusuário,
+  não cria papel nem banco, não é dono de nada, não tem `CREATE` no schema nem no banco; só
+  `SELECT, INSERT, UPDATE, DELETE` nas tabelas e `USAGE, SELECT` nas sequências de `public`.
+  Sem `TRUNCATE`, `REFERENCES`, `TRIGGER`, `ALTER`, `DROP`. Da `alembic_version`, só lê (para
+  conferir um dia se o banco está em dia; quem a grava é o Alembic). `NOINHERIT`: posto dentro
+  de outro papel por engano, não herda os poderes de lá.
+- **A demonstração e o `criar-dono` usam o papel da aplicação.** Só fazem `INSERT` e `DELETE`,
+  como a API: não há motivo para darem a um script os poderes que a API não tem.
+- **Quem cria o papel: o entrypoint, a cada subida, depois das migrations**
+  (`python -m app.papel_da_aplicacao`, como o dono). Cria o papel se não existe, acerta a senha
+  e os atributos e refaz as permissões do zero (o que uma versão anterior tenha dado a mais
+  sai), numa transação, com trava consultiva (duas réplicas subindo juntas não brigam).
+  Idempotente. Escolhido no lugar de um script de `docker-entrypoint-initdb.d` porque esse só
+  roda no volume **novo**: o banco que cada dev já tem, com dados, ficaria sem o papel. Nem
+  numa migration, porque a senha é do ambiente, não do schema, e muda sem nova revisão. Depois
+  das migrations, e não antes: no banco novo, as tabelas já existem quando as permissões são
+  dadas.
+- **Permissões que nascem com a tabela.** `ALTER DEFAULT PRIVILEGES FOR ROLE <dono> IN SCHEMA
+  public`: a tabela (e a sequência) que uma migration futura criar já vem com o DML para o papel
+  da aplicação, mesmo que rode sem o comando depois (`make migrate` com a API no ar). Vale para
+  o que **esse** dono criar: migrations rodadas por outro papel precisam do comando de novo.
+- **Senha:** de `APP_DB_PASSWORD`, só letras e números (vai numa URL), 12 ou mais; nunca em
+  arquivo versionado. O nome e a senha saem da própria `DATABASE_URL`, uma fonte só. Vai ao
+  servidor já cifrada em SCRAM (calculada pela libpq): nem um `log_statement` ligado no
+  PostgreSQL a veria em claro, e as mensagens de erro do comando nunca a levam.
+- **A API não carrega a senha do dono:** o entrypoint tira a `MIGRATIONS_DATABASE_URL` do
+  ambiente antes do `uvicorn`. Os outros comandos do container (alembic, demonstração) seguem
+  com ela. Em produção, o melhor é ir além: migrations num job à parte, e o container da API
+  só com a `DATABASE_URL`.
+- **Desenvolvimento simples.** Sem `MIGRATIONS_DATABASE_URL`, as migrations usam a
+  `DATABASE_URL` (quem roda tudo no host com um papel só não configura nada a mais), e o
+  comando não tem papel a garantir. A API sobe assim, avisando no log que está com poderes de
+  dono.
+- **Produção, fail-closed.** Ao subir em `production`, a API confere o papel com que conecta:
+  superusuário, `CREATEROLE`, `CREATEDB`, dono (ou membro do dono) de tabela de `public`,
+  `CREATE` no schema ou no banco, ou membro dos papéis que rodam comando e leem arquivo do
+  servidor. Qualquer um deles, ou o banco inacessível para conferir, e ela **não sobe**,
+  dizendo o que pôr em cada URL.
+- **Tempos-limite na conexão da API** (opções `-c` da libpq, configuráveis no `config.py`, só
+  valores positivos: zero no PostgreSQL é "sem limite"):
+
+  | Limite | Padrão | Por quê |
+  |---|---|---|
+  | `statement_timeout` | 30 s | O maior comando medido com 50 mil movimentações (o máximo de uma planilha), na importação e no relatório: menos de 1 s. Folga para o banco crescer anos |
+  | `lock_timeout` | 5 s | Nenhuma trava legítima dura mais que uma requisição curta; depois disso, "tente de novo" é melhor que fila |
+  | `idle_in_transaction_session_timeout` | 60 s | A maior pausa medida dentro de transação: uns 7 s (a importação lendo 50 mil linhas). O relatório monta o Excel **depois** de terminar a leitura (eram 11 s com ela aberta) |
+  | `pool_timeout` | 10 s | Espera por conexão livre no pool |
+  | `pool_recycle` | 30 min | Firewall e proxy derrubam conexão parada sem avisar |
+
+  Ficam na conexão, e não no papel (`ALTER ROLE ... SET`): validados no boot com o resto da
+  configuração, e iguais para tudo que usa o engine da API. O Alembic tem engine próprio e **não
+  os herda**: migration pode demorar e esperar trava.
+- **Estourou, `503` com `Retry-After: 5`.** `statement_timeout` (57014), `lock_timeout` (55P03)
+  e o pool sem conexão livre não são defeito do servidor nem do pedido: é espera que passa. A
+  resposta é `503` com a frase para a tela ("O banco demorou demais...", "Outro pedido está
+  mexendo nos mesmos dados agora...", sempre com "Tente de novo em alguns segundos"), e não
+  `500` com traceback. Nem `409` (não há o que o produtor corrigir) nem `504` (a API não é um
+  proxy). O log leva só o código, sem a consulta e os valores. Outro erro do banco (fora do ar,
+  senha errada) e a transação derrubada por ficar parada um minuto seguem como erro do servidor:
+  não passam sozinhos, e o segundo é defeito.
+- **No lote do app, o item que estoura não vira `recusada`.** `recusada` pede ao produtor que
+  confira e lance de novo, e o dado está certo: só esperou. O lote inteiro responde `503`; o que
+  já foi gravado fica (um item, uma transação), e o reenvio, que o app faz sozinho, devolve-o
+  como `ja_existia`.
+
 ### Endpoints atuais
 
 | Rota | O que faz |
@@ -746,15 +822,18 @@ gravado), o app pede o login e reenvia o mesmo lote com os mesmos uuids depois.
 ## 5. Infraestrutura
 
 `compose.yaml` na raiz sobe `db` (PostgreSQL 18), `api` (imagem `backend/Dockerfile`, alvo `dev`,
-com `--reload`) e `web` (Node 24 rodando o Vite). A API aplica `alembic upgrade head` ao subir
-(`backend/docker/entrypoint.sh`); a espera pelo banco é o `healthcheck` do compose.
+com `--reload`) e `web` (Node 24 rodando o Vite). Ao subir, a API aplica `alembic upgrade head`
+e garante o papel da aplicação, as duas coisas como o dono do banco, e só então sobe o uvicorn
+com o papel da aplicação (`backend/docker/entrypoint.sh`; ver "Banco: papéis e tempos-limite");
+a espera pelo banco é o `healthcheck` do compose.
 
 O Vite do container usa **polling** para perceber arquivos alterados (`VITE_POLLING` no
 compose): no Docker Desktop do Windows, o código montado do host não gera eventos de arquivo
 dentro do container, e sem isso o Vite serve a versão antiga até reiniciar.
 
 Configuração por `.env` na raiz (modelo em `.env.example`). Variáveis obrigatórias sem default:
-`ENVIRONMENT` e `DATABASE_URL` (montada pelo compose a partir de `POSTGRES_*`). `AUTENTICACAO`
+`ENVIRONMENT` e `DATABASE_URL` (montada pelo compose a partir de `APP_DB_USER`,
+`APP_DB_PASSWORD` e `POSTGRES_DB`; a `MIGRATIONS_DATABASE_URL`, a partir de `POSTGRES_*`). `AUTENTICACAO`
 tem padrão `false`, mas em `production` é obrigatória e tem de ser `true`. O primeiro dono se
 cria com `make usuario-dono LOGIN=maria NOME="Dona Maria"`.
 
@@ -786,7 +865,7 @@ tecnologias que não se aplicam.
 
 | ArkoHub | CampoCerto | Motivo |
 |---|---|---|
-| Multi-tenant com RLS, roles `hub_owner`/`hub_api` | Banco simples, uma role | Não há múltiplos clientes isolados no escopo do desafio |
+| Multi-tenant com RLS, roles `hub_owner`/`hub_api` | Sem RLS; os dois papéis, sim (o dono, das migrations, e o da aplicação, só com DML) | Não há múltiplos clientes isolados no escopo do desafio; mas a API com poder de dono do cluster seria risco de qualquer jeito |
 | SQLAlchemy **async** + asyncpg/psycopg | SQLAlchemy **síncrono** + psycopg 3 | A análise e a leitura de planilhas são CPU-bound e síncronas; rotas `def` rodam em threadpool |
 | Alembic sem autogenerate (`target_metadata=None`) | Autogenerate ligado, migration **revisada** | Lá o motivo era RLS invisível ao autogenerate; aqui não existe |
 | Vuetify | Tailwind CSS v4 | Stack definida para o projeto |

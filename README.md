@@ -32,9 +32,23 @@ reposição estimada, sempre com justificativa e limitações explícitas.
 ## Como subir
 
 ```bash
-cp .env.example .env        # e troque POSTGRES_PASSWORD (só letras e números)
+cp .env.example .env        # e troque POSTGRES_PASSWORD e APP_DB_PASSWORD (só letras e números)
 make up                     # banco + API + frontend
 ```
+
+**Já tinha um `.env` de antes?** Acrescente uma linha, com uma senha nova (só letras e
+números, 12 ou mais; gere com `openssl rand -hex 16`):
+
+```bash
+APP_DB_PASSWORD=coloqueAquiUmaSenhaNova
+```
+
+É a senha do **papel da aplicação** no PostgreSQL (`campocerto_app`), o usuário com que a API
+passa a conectar: só lê e grava dados, não cria nem apaga tabela. O `POSTGRES_USER` continua
+sendo o dono do banco e fica só para as migrations. O papel é criado sozinho ao subir a API,
+também no banco que você já tem (nada se perde, nada a apagar); sem a linha, o `make up` para
+dizendo o que falta. Detalhes em [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md), seção 2, "Banco:
+papéis e tempos-limite".
 
 | Endereço | O quê |
 |---|---|
@@ -99,9 +113,14 @@ make verify     # lint + testes, antes de commitar
 cd backend
 uv sync
 export ENVIRONMENT=development
-export DATABASE_URL=postgresql+psycopg://campocerto:SENHA@127.0.0.1:5433/campocerto
+# A API com o papel da aplicação, as migrations com o dono (o POSTGRES_USER):
+export DATABASE_URL=postgresql+psycopg://campocerto_app:SENHA_DA_APP@127.0.0.1:5433/campocerto
+export MIGRATIONS_DATABASE_URL=postgresql+psycopg://campocerto:SENHA@127.0.0.1:5433/campocerto
 uv run alembic upgrade head
+uv run python -m app.papel_da_aplicacao     # cria ou acerta o papel da aplicação
 uv run uvicorn app.main:app --reload
+# Só a DATABASE_URL, com o dono? Também sobe (as migrations usam a mesma), avisando no log
+# que a API está com poderes de dono; em produção, ela não sobe assim.
 
 # Frontend (o proxy aponta para localhost:8000 por padrão)
 cd frontend
@@ -130,7 +149,10 @@ Todas em `.env` na raiz; o modelo comentado está em [`.env.example`](.env.examp
 |---|---|---|
 | `ENVIRONMENT` | sim | `development`, `test` ou `production`. Outro valor impede a API de subir |
 | `AUTENTICACAO` | em produção | Login com papéis (dono e funcionário): `true` ou `false` (padrão). Em `production`, sem `true` a API não sobe. Ligada, crie o primeiro dono com `make usuario-dono` |
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | sim | Banco; o compose monta o `DATABASE_URL` da API com elas |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | sim | Banco e o seu **dono** (superusuário do container): o compose monta com elas a `MIGRATIONS_DATABASE_URL`, usada só pelas migrations e para criar o papel da aplicação |
+| `APP_DB_PASSWORD` | sim | Senha do **papel da aplicação**, com que a API conecta (`DATABASE_URL`): só letras e números, 12 ou mais. Criado e acertado sozinho a cada subida da API |
+| `APP_DB_USER` | não | Nome do papel da aplicação (`campocerto_app`) |
+| `DB_STATEMENT_TIMEOUT_MS`, `DB_LOCK_TIMEOUT_MS`, `DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` | não | Tempos-limite da API no banco: comando (30000), espera por trava (5000) e transação parada (60000). Estourados, a API responde `503` com `Retry-After` |
 | `DB_PORT`, `API_PORT`, `WEB_PORT` | não | Portas no host (5433, 8000, 5173) |
 | `LOG_LEVEL` | não | Nível de log da API (`INFO`) |
 
