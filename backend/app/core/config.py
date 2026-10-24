@@ -25,7 +25,13 @@ class Settings(BaseSettings):
 
     # Sem default também: não existe banco "padrão" aceitável.
     # Formato: postgresql+psycopg://usuario:senha@host:5432/banco
+    # É a conexão da API, com o papel da aplicação: lê e grava dados, e só (ver
+    # app/papel_da_aplicacao.py). Em produção, conectada como superusuário ou como dona
+    # das tabelas, a API não sobe.
     database_url: str
+    # A do dono do schema, só para o Alembic (DDL) e para garantir o papel da aplicação.
+    # Sem ela, vale a DATABASE_URL: no desenvolvimento com um papel só, nada a configurar.
+    migrations_database_url: str | None = None
 
     # Tempos-limite da conexão da API com o PostgreSQL. Sem eles, uma consulta presa, um
     # `FOR UPDATE` esperando trava (login, recebimento de pedido) ou uma transação esquecida
@@ -63,6 +69,10 @@ class Settings(BaseSettings):
                 "Crie o primeiro dono com `python -m app.usuarios criar-dono`."
             )
         return self
+
+    @property
+    def url_das_migrations(self) -> str:
+        return self.migrations_database_url or self.database_url
 
     @property
     def docs_habilitadas(self) -> bool:

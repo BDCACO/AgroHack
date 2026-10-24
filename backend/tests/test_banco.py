@@ -167,3 +167,24 @@ def test_lote_que_estoura_o_tempo_para_e_o_app_reenvia(
     monkeypatch.setattr(estoque, "registrar_movimentacao", original)
     reenvio = client.post("/api/v1/movimentacoes/lote", json={"movimentacoes": lote}).json()
     assert [r["situacao"] for r in reenvio["resultados"]] == ["ja_existia", "gravada"]
+
+
+def test_migrations_usam_a_url_do_dono_quando_vem(monkeypatch: pytest.MonkeyPatch) -> None:
+    dono = "postgresql+psycopg://campocerto:abc123@db:5432/campocerto"
+    monkeypatch.setenv("MIGRATIONS_DATABASE_URL", dono)
+
+    settings = Settings(environment="test", database_url=POSTGRES, _env_file=None)
+
+    assert settings.url_das_migrations == dono
+
+
+def test_sem_url_de_migrations_usa_a_da_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A vida fácil do desenvolvimento: quem roda tudo com um papel só (uv run no host, o
+    # SQLite dos testes) não precisa de uma segunda variável. Em produção, a API conectada
+    # como dono não sobe (ver app/main.py), e as migrations com o papel da aplicação falham
+    # por falta de permissão: os dois erros são altos, nenhum é silencioso.
+    monkeypatch.delenv("MIGRATIONS_DATABASE_URL", raising=False)
+
+    settings = Settings(environment="test", database_url=POSTGRES, _env_file=None)
+
+    assert settings.url_das_migrations == POSTGRES

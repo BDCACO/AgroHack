@@ -19,7 +19,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# A URL do dono do schema (MIGRATIONS_DATABASE_URL), e não a da API: o papel da aplicação
+# não cria nem altera tabela. Este engine também não leva os tempos-limite da API
+# (app/core/database.py): migration pode demorar.
+config.set_main_option("sqlalchemy.url", get_settings().url_das_migrations)
 
 target_metadata = Base.metadata
 
