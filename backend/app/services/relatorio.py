@@ -22,11 +22,12 @@ from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
 from app.domain.estoque import Gravidade, TipoAlerta
+from app.domain.relatorio_por_periodo import RelatorioPorPeriodo
 from app.models import Categoria, Fornecedor, Insumo, Movimentacao, Talhao
 from app.schemas.compras import PedidoResposta
 from app.schemas.estoque import InsumoResposta, Resumo
 from app.schemas.talhao import TalhaoResposta
-from app.services import estoque, pedidos, resumo, talhoes
+from app.services import estoque, pedidos, relatorio_por_periodo, resumo, talhoes
 from app.services.planilha_modelo import (
     CINZA,
     FORMATO_DATA,
@@ -85,6 +86,15 @@ def gerar(db: Session) -> bytes:
     )
     _aba_de_estoque(livro.create_sheet("Estoque"), insumos)
     _aba_de_talhoes(livro.create_sheet("Talhões"), talhoes.listar_talhoes(db))
+    # Os últimos 12 meses, como o GET /relatorios/periodo sem datas. Fica antes da aba
+    # Movimentações e com outro nome: a importação lê só aquela, e a cópia de segurança
+    # volta igual.
+    _aba_por_mes(
+        livro.create_sheet("Por mês"),
+        relatorio_por_periodo.gerar(
+            db, relatorio_por_periodo.inicio_dos_ultimos_meses(referencia), referencia, "mes"
+        ),
+    )
     aba_de_movimentacoes(
         livro.create_sheet("Movimentações"), total_de_insumos=0, linhas=_movimentacoes(db)
     )
@@ -165,6 +175,11 @@ def _aba_de_resumo(
             "Talhões",
             "Cada talhão com a área, a cultura, até quando não colher (a carência do que foi "
             "aplicado, com a conta) e o custo do que foi aplicado nele, total e por hectare.",
+        ),
+        (
+            "Por mês",
+            "Os últimos 12 meses: o gasto nas compras, o consumo e as perdas em reais, mês "
+            "a mês (o detalhe por insumo, categoria e fornecedor está na tela).",
         ),
         (
             "Movimentações",
@@ -379,6 +394,31 @@ def _aba_de_talhoes(aba: Worksheet, lista: list[TalhaoResposta]) -> None:
         _selo(aba.cell(numero, 4), talhao.alertas[0].gravidade if talhao.alertas else None)
         aba.cell(numero, 5).alignment = Alignment(horizontal="center", vertical="top")
     _filtro(aba, len(lista))
+
+
+def _aba_por_mes(aba: Worksheet, relatorio: RelatorioPorPeriodo) -> None:
+    _tabela(
+        aba,
+        [
+            ("mês", 12),
+            ("gasto em compras (R$)", 22),
+            ("compras sem preço", 18),
+            ("consumo (R$)", 16),
+            ("perdas (R$)", 14),
+        ],
+    )
+    for numero, periodo in enumerate(relatorio.periodos, start=2):
+        # Em reais, e não em quantidade: kg de um insumo e litros de outro não se somam.
+        consumo = round(sum(c.consumo for c in periodo.por_categoria), 2)
+        valores = (periodo.rotulo, periodo.gasto, periodo.compras_sem_preco, consumo)
+        for coluna, valor in enumerate((*valores, periodo.perdas), start=1):
+            celula = aba.cell(numero, coluna, valor)
+            if coluna in (2, 4, 5):
+                celula.number_format = FORMATO_DINHEIRO
+    linha = len(relatorio.periodos) + 3
+    for limitacao in relatorio.limitacoes:
+        aba.cell(linha, 1, f"• {limitacao}").font = fonte(italic=True, color=CINZA)
+        linha += 1
 
 
 def _movimentacoes(db: Session) -> list[tuple]:

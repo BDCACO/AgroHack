@@ -13,9 +13,6 @@ from app.services import relatorio_por_periodo as servico
 # com a cópia de segurança, continua só do dono.
 campo = APIRouter(tags=["relatórios"])
 
-# Doze meses com o atual: o ano que o produtor compara, sem precisar escolher datas.
-_MESES_NO_PADRAO = 12
-
 
 @campo.get("/relatorios/periodo", response_model=dominio.RelatorioPorPeriodo)
 def relatorio_por_periodo(
@@ -34,7 +31,7 @@ def relatorio_por_periodo(
     da contagem, pelo custo médio) e os totais por categoria e por fornecedor. O período
     sem movimento vem zerado. Até 400 períodos (por dia, uns 13 meses)."""
     ate = ate or hoje()
-    desde = desde or _comeco_dos_ultimos_meses(ate)
+    desde = desde or servico.inicio_dos_ultimos_meses(ate)
     if desde > ate:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -53,8 +50,3 @@ def relatorio_por_periodo(
         )
     except dominio.MuitosPeriodos as erro:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erro)) from None
-
-
-def _comeco_dos_ultimos_meses(ate: date) -> date:
-    meses = ate.year * 12 + ate.month - 1 - (_MESES_NO_PADRAO - 1)
-    return date(meses // 12, meses % 12 + 1, 1)

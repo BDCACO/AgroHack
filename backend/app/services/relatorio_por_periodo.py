@@ -14,6 +14,8 @@ from app.domain import relatorio_por_periodo as dominio
 from app.models import Insumo, Movimentacao
 from app.services.estoque import FiltroDeMovimentacoes, condicoes_do_filtro
 
+# Sem datas, o ano que o produtor compara: doze meses com o atual, sem escolher nada.
+MESES_NO_PADRAO = 12
 # O que o recorte deixa de fora, para quem lê as somas não achar que faltou registro.
 _SO_APLICACOES = (
     "Com o filtro de talhão, só as aplicações nele entram: compra e perda não são de "
@@ -90,6 +92,13 @@ def gerar(
         if ligado is not None
     ]
     return replace(resultado, limitacoes=[*recortes, *resultado.limitacoes])
+
+
+def inicio_dos_ultimos_meses(ate: date, meses: int = MESES_NO_PADRAO) -> date:
+    """O primeiro dia do mês, `meses - 1` meses antes de `ate`: com o mês de `ate`, são
+    `meses` meses."""
+    contagem = ate.year * 12 + ate.month - 1 - (meses - 1)
+    return date(contagem // 12, contagem % 12 + 1, 1)
 
 
 def _custos_medios(db: Session, insumo_ids: set[int]) -> dict[int, float | None]:

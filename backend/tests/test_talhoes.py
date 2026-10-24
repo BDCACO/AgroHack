@@ -523,6 +523,7 @@ def test_relatorio_traz_os_talhoes_e_a_copia_leva_o_talhao(client: TestClient) -
         "Pedidos",
         "Estoque",
         "Talhões",
+        "Por mês",
         "Movimentações",
     ]
     talhoes = list(livro["Talhões"].iter_rows(values_only=True))

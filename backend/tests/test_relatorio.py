@@ -32,6 +32,7 @@ def test_relatorio_traz_alertas_reposicao_e_estoque(client: TestClient, db: Sess
         "Pedidos",
         "Estoque",
         "Talhões",
+        "Por mês",
         "Movimentações",
     ]
     alertas = list(livro["Alertas"].iter_rows(min_row=2, values_only=True))
@@ -210,3 +211,27 @@ def test_aba_pedidos_sem_pedido(client: TestClient) -> None:
     _, livro = baixar(client)
 
     assert livro["Pedidos"]["A2"].value == "Nenhum pedido a caminho."
+
+
+def test_aba_por_mes_com_os_ultimos_doze_meses(client: TestClient, db: Session) -> None:
+    carregar(db, hoje())
+    periodo = client.get("/api/v1/relatorios/periodo").json()
+
+    _, livro = baixar(client)
+
+    aba = livro["Por mês"]
+    assert [c.value for c in aba[1]] == [
+        "mês",
+        "gasto em compras (R$)",
+        "compras sem preço",
+        "consumo (R$)",
+        "perdas (R$)",
+    ]
+    linhas = list(aba.iter_rows(min_row=2, max_row=13, values_only=True))
+    # Os mesmos números do GET /relatorios/periodo: um mês por linha, sem buraco.
+    assert [linha[0] for linha in linhas] == [p["rotulo"] for p in periodo["periodos"]]
+    assert [linha[1] for linha in linhas] == [p["gasto"] for p in periodo["periodos"]]
+    assert [linha[4] for linha in linhas] == [p["perdas"] for p in periodo["periodos"]]
+    consumo = [round(sum(c["consumo"] for c in p["por_categoria"]), 2) for p in periodo["periodos"]]
+    assert [linha[3] for linha in linhas] == consumo
+    assert sum(linha[1] for linha in linhas) > 0
