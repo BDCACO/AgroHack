@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
-from app.models import Fornecedor, Insumo, Talhao
+from app.models import Categoria, Fornecedor, Insumo, Talhao
 from app.services.importacao import LINHAS_MAXIMAS
 
 # Cores da marca, as mesmas de frontend/src/styles/main.css.
@@ -111,12 +111,22 @@ COLUNAS = (
         "cadastrado, ou digite um nome novo: ele será cadastrado na importação. Em branco se "
         "não quiser dizer. Com ele, o CampoCerto compara o preço pago a cada revenda.",
     ),
+    Coluna(
+        "categoria",
+        24,
+        "Não",
+        "Fertilizante, defensivo, nutrição animal... Só vale para insumo novo, que é "
+        "cadastrado nela; o insumo já cadastrado fica com a categoria da tela de Insumos. "
+        "Escolha da lista ou digite uma nova: ela será cadastrada na importação. Com ela, o "
+        "CampoCerto soma o gasto e as perdas por categoria.",
+    ),
 )
 
 
 def gerar(db: Session) -> bytes:
     insumos = list(db.scalars(select(Insumo).order_by(Insumo.nome)))
     talhoes = list(db.scalars(select(Talhao).order_by(Talhao.nome)))
+    categorias = list(db.scalars(select(Categoria).order_by(Categoria.nome)))
     # Só os ativos na lista de escolha: o desativado não recebe compra nova.
     fornecedores = list(
         db.scalars(select(Fornecedor).where(Fornecedor.ativo).order_by(Fornecedor.nome))
@@ -135,6 +145,7 @@ def gerar(db: Session) -> bytes:
         total_de_insumos=len(insumos),
         total_de_talhoes=len(talhoes),
         total_de_fornecedores=len(fornecedores),
+        total_de_categorias=len(categorias),
     )
     _aba_de_instrucoes(livro.create_sheet("Como preencher"))
     exemplo = livro.create_sheet("Exemplo")
@@ -142,6 +153,7 @@ def gerar(db: Session) -> bytes:
     _aba_de_insumos(livro.create_sheet("Insumos cadastrados"), insumos)
     _aba_de_talhoes(livro.create_sheet("Talhões cadastrados"), talhoes)
     _aba_de_fornecedores(livro.create_sheet("Fornecedores cadastrados"), fornecedores)
+    _aba_de_categorias(livro.create_sheet("Categorias cadastradas"), categorias)
 
     arquivo = BytesIO()
     livro.save(arquivo)
@@ -154,6 +166,7 @@ def aba_de_movimentacoes(
     total_de_insumos: int,
     total_de_talhoes: int = 0,
     total_de_fornecedores: int = 0,
+    total_de_categorias: int = 0,
     linhas: list[tuple] | None = None,
 ) -> None:
     titulos(aba, [coluna.titulo for coluna in COLUNAS])
@@ -236,6 +249,17 @@ def aba_de_movimentacoes(
             prompt="Só em entrada: escolha de quem se comprou, ou digite um novo.",
             showInputMessage=True,
         )
+    if total_de_categorias:
+        validar(
+            "categoria",
+            type="list",
+            formula1=f"'Categorias cadastradas'!$A$2:$A${total_de_categorias + 1}",
+            # Categoria nova vale, como o fornecedor novo: a lista sugere, não obriga.
+            showErrorMessage=False,
+            promptTitle="Categoria",
+            prompt="Só para insumo novo: escolha da lista ou digite uma nova.",
+            showInputMessage=True,
+        )
     validar(
         "unidade",
         type="list",
@@ -295,6 +319,7 @@ def _exemplos(referencia: date) -> list[tuple]:
             3.2,
             None,
             "Revenda Boa Safra",
+            "Fertilizante",
         ),
         (dia(13), "Adubo NPK 20-05-20", None, "saída", 25.5, None, None),
         (
@@ -305,6 +330,9 @@ def _exemplos(referencia: date) -> list[tuple]:
             50,
             referencia + timedelta(days=250),
             2.9,
+            None,
+            None,
+            "Medicamento veterinário",
         ),
     ]
 
@@ -348,6 +376,8 @@ def _aba_de_instrucoes(aba: Worksheet) -> None:
                 "na tela de Talhões antes, e baixe o modelo de novo: a lista vem com eles.",
                 "• O fornecedor (coluna fornecedor) que não estiver cadastrado é cadastrado na "
                 "importação, com o nome da planilha: confira a grafia na prévia.",
+                "• A categoria (coluna categoria) só vale para o insumo novo; a que não estiver "
+                "cadastrada é cadastrada na importação, como o fornecedor.",
             ],
         ),
         (
@@ -428,6 +458,21 @@ def _aba_de_fornecedores(aba: Worksheet, fornecedores: list[Fornecedor]) -> None
         aba["A2"] = "Nenhum fornecedor cadastrado ainda: os da planilha serão cadastrados."
         aba["A2"].font = fonte(italic=True, color=CINZA)
     # A fonte da lista de escolha da coluna fornecedor: protegida contra edição sem querer.
+    aba.protection.sheet = True
+
+
+def _aba_de_categorias(aba: Worksheet, categorias: list[Categoria]) -> None:
+    titulos(aba, ["categoria"])
+    aba.column_dimensions["A"].width = 30
+    aba.freeze_panes = "A2"
+    for numero, categoria in enumerate(categorias, start=2):
+        celula = aba.cell(numero, 1)
+        celula.value = ILLEGAL_CHARACTERS_RE.sub("", categoria.nome)
+        celula.data_type = "s"
+    if not categorias:
+        aba["A2"] = "Nenhuma categoria cadastrada ainda: as da planilha serão cadastradas."
+        aba["A2"].font = fonte(italic=True, color=CINZA)
+    # A fonte da lista de escolha da coluna categoria: protegida contra edição sem querer.
     aba.protection.sheet = True
 
 

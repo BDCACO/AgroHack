@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
 from app.domain.estoque import Gravidade, TipoAlerta
-from app.models import Fornecedor, Insumo, Movimentacao, Talhao
+from app.models import Categoria, Fornecedor, Insumo, Movimentacao, Talhao
 from app.schemas.compras import PedidoResposta
 from app.schemas.estoque import InsumoResposta, Resumo
 from app.schemas.talhao import TalhaoResposta
@@ -170,7 +170,8 @@ def _aba_de_resumo(
             "Movimentações",
             "Todas as entradas e saídas, no formato da importação: este arquivo também é a "
             "cópia de segurança, e volta pela tela Importar dados, com os preços, o talhão de "
-            "cada aplicação e o fornecedor de cada compra (o que faltar é cadastrado). Os "
+            "cada aplicação, o fornecedor de cada compra e a categoria de cada insumo (o que "
+            "faltar é cadastrado). Os "
             "talhões precisam estar cadastrados antes (a aba Talhões tem a "
             "área e a cultura). O mínimo, o prazo, a embalagem, o pedido mínimo e a carência "
             "de cada insumo não voltam: lance-os de novo na tela de Insumos.",
@@ -382,10 +383,12 @@ def _aba_de_talhoes(aba: Worksheet, lista: list[TalhaoResposta]) -> None:
 
 def _movimentacoes(db: Session) -> list[tuple]:
     consulta = (
-        select(Movimentacao, Insumo, Talhao.nome, Fornecedor.nome)
-        .join(Insumo)
-        .outerjoin(Talhao)
+        select(Movimentacao, Insumo, Talhao.nome, Fornecedor.nome, Categoria.nome)
+        .select_from(Movimentacao)
+        .join(Insumo, Movimentacao.insumo_id == Insumo.id)
+        .outerjoin(Talhao, Movimentacao.talhao_id == Talhao.id)
         .outerjoin(Fornecedor, Movimentacao.fornecedor_id == Fornecedor.id)
+        .outerjoin(Categoria, Insumo.categoria_id == Categoria.id)
         .order_by(Movimentacao.data, Insumo.nome, Movimentacao.id)
     )
     return [
@@ -399,8 +402,10 @@ def _movimentacoes(db: Session) -> list[tuple]:
             m.valor_unitario,
             talhao and ILLEGAL_CHARACTERS_RE.sub("", talhao),
             fornecedor and ILLEGAL_CHARACTERS_RE.sub("", fornecedor),
+            # Em toda linha do insumo: a importação a usa ao cadastrá-lo num sistema vazio.
+            categoria and ILLEGAL_CHARACTERS_RE.sub("", categoria),
         )
-        for m, insumo, talhao, fornecedor in db.execute(consulta)
+        for m, insumo, talhao, fornecedor, categoria in db.execute(consulta)
     ]
 
 

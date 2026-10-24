@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
-from app.models import Fornecedor, Insumo, Movimentacao, Talhao
+from app.models import Categoria, Fornecedor, Insumo, Movimentacao, Talhao
 from app.schemas.estoque import (
     QUANTIDADE_MAXIMA,
     SEM_CARACTERE_DE_CONTROLE,
@@ -105,6 +105,8 @@ class ResultadoImportacao:
     # Fornecedores que a planilha vai cadastrar, como o insumo novo: confira a grafia antes
     # de importar, para "Revenda Boa Safra" e "Revenda Boa Safa" não virarem dois.
     fornecedores_novos: list[str] = field(default_factory=list)
+    # As categorias que a planilha vai cadastrar (dos insumos novos), pelo mesmo motivo.
+    categorias_novas: list[str] = field(default_factory=list)
     erros: list[str] = field(default_factory=list)
     importado: bool = False
 
@@ -157,6 +159,7 @@ def importar(
     for fornecedor in db.scalars(select(Fornecedor).order_by(Fornecedor.nome)):
         fornecedores.setdefault(fornecedor.nome.casefold(), []).append(fornecedor)
     fornecedores_novos: dict[str, Fornecedor] = {}
+    categorias = _Cadastro({c.nome.casefold(): c for c in db.scalars(select(Categoria))}, novos={})
     linhas: list[_Linha] = []
     for numero, celulas in lidas:
         if isinstance(celulas, str):
@@ -165,7 +168,16 @@ def importar(
         campos = dict(zip(cabecalho, celulas, strict=False))
         try:
             linhas.append(
-                _ler(campos, decimal, cadastrados, novos, talhoes, fornecedores, fornecedores_novos)
+                _ler(
+                    campos,
+                    decimal,
+                    cadastrados,
+                    novos,
+                    talhoes,
+                    fornecedores,
+                    fornecedores_novos,
+                    categorias,
+                )
             )
         except ValueError as erro:
             resultado.erros.append(f"Linha {numero}: {erro}")
@@ -174,6 +186,9 @@ def importar(
         resultado.erros.append("Nenhuma movimentação na planilha.")
     _resumir(resultado, linhas)
     resultado.fornecedores_novos = [f.nome for f in fornecedores_novos.values()]
+    # Só as que algum insumo novo vai de fato usar: a linha com erro não cadastra nada.
+    usadas = {id(i.categoria) for i in novos.values() if i.categoria is not None}
+    resultado.categorias_novas = [c.nome for c in categorias.novos.values() if id(c) in usadas]
     resultado.ja_lancadas = _ja_lancadas(db, linhas)
     if resultado.erros or not confirmar:
         return resultado
@@ -198,6 +213,7 @@ def importar(
             db.add(movimentacao)
     db.add_all(novos.values())
     db.add_all(fornecedores_novos.values())
+    # A categoria nova vai junto com o insumo novo que a usa (a relação a grava).
     db.commit()
     resultado.importado = True
     return resultado
@@ -428,6 +444,16 @@ def _pista(texto: str) -> str | None:
     return separador
 
 
+@dataclass
+class _Cadastro:
+    """As categorias pelo nome sem diferenciar maiúsculas (o nome é único também assim na
+    prática: duas que só diferem nelas seriam a mesma para o produtor), e as que a planilha
+    vai cadastrar."""
+
+    cadastradas: dict[str, Categoria]
+    novos: dict[str, Categoria]
+
+
 def _ler(
     campos: dict[str, Celula],
     decimal: str,
@@ -436,6 +462,7 @@ def _ler(
     talhoes: dict[str, list[Talhao]],
     fornecedores: dict[str, list[Fornecedor]],
     fornecedores_novos: dict[str, Fornecedor],
+    categorias: _Cadastro,
 ) -> _Linha:
     nome = _texto(campos.get("insumo", ""))
     if not nome:
@@ -504,7 +531,14 @@ def _ler(
         if not re.fullmatch(SEM_CARACTERE_DE_CONTROLE, nome_do_fornecedor):
             raise ValueError("o nome do fornecedor tem um caractere inválido.")
         fornecedor = _fornecedor(nome_do_fornecedor, fornecedores, fornecedores_novos)
+    nome_da_categoria = _texto(campos.get("categoria", ""))
+    if len(nome_da_categoria) > 60:
+        raise ValueError("nome da categoria com mais de 60 caracteres.")
+    if not re.fullmatch(SEM_CARACTERE_DE_CONTROLE, nome_da_categoria):
+        raise ValueError("o nome da categoria tem um caractere inválido.")
     insumo = _insumo(nome, unidade, cadastrados, novos)
+    if nome_da_categoria and insumo.id is None:
+        _categorizar(insumo, nome_da_categoria, categorias)
     return _Linha(
         insumo, tipo, data, quantidade, validade, motivo, valor_unitario, talhao, fornecedor
     )
@@ -548,6 +582,26 @@ def _insumo(
         # Somar kg com saca daria um estoque sem sentido.
         raise ValueError(f'"{nome}" já está cadastrado em {insumo.unidade}, não em {unidade}.')
     return insumo
+
+
+def _categorizar(insumo: Insumo, nome: str, categorias: _Cadastro) -> None:
+    """A categoria só vale para o insumo que a planilha cadastra. O já cadastrado fica com a
+    da tela de Insumos: a planilha é de movimentações, e mudar o cadastro por uma coluna
+    dela seria uma segunda tela de cadastro, escondida. A que não existe é cadastrada pelo
+    nome, como o fornecedor: só precisa dele, e a cópia de segurança restaurada num sistema
+    vazio devolve cada insumo à sua categoria sem cadastro à mão."""
+    chave = nome.casefold()
+    categoria = categorias.cadastradas.get(chave) or categorias.novos.setdefault(
+        chave, Categoria(nome=nome)
+    )
+    if insumo.categoria is None:
+        insumo.categoria = categoria
+    elif insumo.categoria is not categoria:
+        # O mesmo insumo novo em duas categorias: escolher uma seria chute.
+        raise ValueError(
+            f'"{insumo.nome}" já está na categoria {insumo.categoria.nome} em outra linha, '
+            f"não em {nome}."
+        )
 
 
 def _fornecedor(

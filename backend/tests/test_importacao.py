@@ -67,6 +67,7 @@ def test_previa_resume_e_nao_grava(client: TestClient) -> None:
         "ultima_data": str(HOJE - timedelta(days=10)),
         "ja_lancadas": 0,
         "fornecedores_novos": [],
+        "categorias_novas": [],
         "erros": [],
         "importado": False,
     }
@@ -354,6 +355,7 @@ def test_planilha_modelo_vem_formatada_e_com_os_insumos(client: TestClient) -> N
         "Insumos cadastrados",
         "Talhões cadastrados",
         "Fornecedores cadastrados",
+        "Categorias cadastradas",
     ]
     aba = livro["Movimentações"]
     assert [c.value for c in aba[1]] == [
@@ -366,6 +368,7 @@ def test_planilha_modelo_vem_formatada_e_com_os_insumos(client: TestClient) -> N
         "valor",
         "talhao",
         "fornecedor",
+        "categoria",
     ]
     assert aba["A1"].font.bold
     assert aba["A1"].comment.text.startswith("Dia em que a compra chegou")
