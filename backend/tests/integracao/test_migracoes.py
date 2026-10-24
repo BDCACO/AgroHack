@@ -7,13 +7,15 @@ import pytest
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import IntegrityError
 
-from tests.integracao.conftest import alembic
+from tests.integracao.conftest import PAPEL_DA_APP, alembic
 
 
 def test_migrations_descem_e_sobem_e_batem_com_os_modelos(banco: Engine) -> None:
-    # O banco da sessão pode ter preços, uuids, talhões, usuários, compras e categorias de
-    # outro teste: descartá-los é o pedido aqui.
+    # O banco da sessão pode ter preços, uuids, talhões, usuários, compras, categorias e
+    # eventos de auditoria de outro teste: descartá-los é o pedido aqui.
     alembic(
+        "-x",
+        "descartar_auditoria=sim",
         "-x",
         "descartar_categorias=sim",
         "-x",
@@ -428,3 +430,63 @@ def test_indices_da_lista_de_movimentacoes_sobem_e_descem(banco: Engine) -> None
     assert not novos & depois
     assert "ix_movimentacoes_insumo_id" in depois
     alembic("upgrade", "head")
+
+
+def _poderes_na_auditoria(banco: Engine) -> dict[str, bool]:
+    with banco.connect() as conexao:
+        return {
+            poder: conexao.scalar(
+                text("SELECT has_table_privilege(:papel, 'eventos_de_auditoria', :poder)"),
+                {"papel": PAPEL_DA_APP, "poder": poder},
+            )
+            for poder in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE")
+        }
+
+
+def test_downgrade_nao_descarta_a_auditoria_sem_pedir(banco: Engine) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE eventos_de_auditoria"))
+        conexao.execute(
+            text(
+                "INSERT INTO eventos_de_auditoria (acao, entidade, entidade_id, dados, origem)"
+                " VALUES ('insumo.removido', 'insumo', 1, CAST(:dados AS jsonb), 'terminal')"
+            ),
+            {"dados": '{"nome": "Ureia"}'},
+        )
+
+    with pytest.raises(subprocess.CalledProcessError) as recusa:
+        alembic("downgrade", "0011")
+    assert "descartar_auditoria=sim" in recusa.value.stderr
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT dados->>'nome' FROM eventos_de_auditoria")) == "Ureia"
+
+    alembic("-x", "descartar_auditoria=sim", "downgrade", "0011")
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT to_regclass('eventos_de_auditoria')")) is None
+        assert conexao.scalar(text("SELECT to_regproc('recusar_mudanca_na_auditoria')")) is None
+    alembic("upgrade", "head")
+
+
+def test_a_tabela_da_auditoria_nasce_somente_acrescentar(banco: Engine) -> None:
+    """Recriada pela migration, sem o comando do papel rodar de novo (um `make migrate` com a
+    API no ar): o ALTER DEFAULT PRIVILEGES daria o DML inteiro, e a migration o tira."""
+    alembic("-x", "descartar_auditoria=sim", "downgrade", "0011")
+    alembic("upgrade", "head")
+
+    assert _poderes_na_auditoria(banco) == {
+        "SELECT": True,
+        "INSERT": True,
+        "UPDATE": False,
+        "DELETE": False,
+        "TRUNCATE": False,
+    }
+    # E o gatilho, que recusa até o dono, volta com ela.
+    with banco.begin() as conexao:
+        conexao.execute(
+            text(
+                "INSERT INTO eventos_de_auditoria (acao, dados, origem)"
+                " VALUES ('demo.limpa', CAST('{}' AS jsonb), 'terminal')"
+            )
+        )
+    with pytest.raises(IntegrityError, match="só aceita acrescentar"), banco.begin() as conexao:
+        conexao.execute(text("DELETE FROM eventos_de_auditoria"))

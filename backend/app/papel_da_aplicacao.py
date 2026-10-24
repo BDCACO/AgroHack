@@ -10,7 +10,8 @@ ele daria, a quem achasse uma falha nela, o cluster inteiro (DROP, ler os outros
 - o **da aplicação** (`DATABASE_URL`), que não é superusuário, não é dono de nada, não cria
   nada: só `SELECT, INSERT, UPDATE, DELETE` nas tabelas e `USAGE, SELECT` nas sequências de
   `public`. Nada de `TRUNCATE`, `REFERENCES`, `TRIGGER`, `CREATE`, `ALTER`, `DROP`. Da
-  `alembic_version`, só lê: quem anda o schema é o Alembic.
+  `alembic_version`, só lê: quem anda o schema é o Alembic. Na trilha de auditoria
+  (`eventos_de_auditoria`), só acrescenta e lê: nada de `UPDATE` nem `DELETE`.
 
 Roda no entrypoint do container, como o dono, a cada subida, depois do `alembic upgrade
 head`: cria o papel se não existe, acerta a senha e os atributos dele e refaz as
@@ -39,6 +40,11 @@ PAPEL_VALIDO = re.compile(r"[a-z_][a-z0-9_]{0,62}")
 SENHA_VALIDA = re.compile(r"[A-Za-z0-9]{12,}")
 # Duas subidas ao mesmo tempo (duas réplicas da API) não criam o papel duas vezes.
 TRAVA = "campocerto: papel da aplicação"
+# Onde a API só acrescenta e lê (INSERT e SELECT): a trilha de auditoria. Um rastro que a
+# API pudesse alterar ou apagar não provaria nada a quem achasse uma falha nela. A
+# migration 0012 já tira esses poderes ao criar a tabela; aqui eles saem de novo a cada
+# subida, depois do GRANT em todas as tabelas, que os devolveria.
+SOMENTE_ACRESCENTAR = ("eventos_de_auditoria",)
 
 
 class ConfiguracaoInvalida(Exception):
@@ -125,6 +131,14 @@ def garantir(conexao: psycopg.Connection, papel: str, senha: str) -> None:
                     nome
                 )
             )
+        for tabela in SOMENTE_ACRESCENTAR:
+            # O GRANT acima, em todas as tabelas, devolveu o UPDATE e o DELETE: tira de novo.
+            if conexao.execute("SELECT to_regclass(%s)", [f"public.{tabela}"]).fetchone()[0]:
+                conexao.execute(
+                    sql.SQL("REVOKE UPDATE, DELETE, TRUNCATE ON {} FROM {}").format(
+                        sql.Identifier("public", tabela), nome
+                    )
+                )
 
 
 def main() -> None:
