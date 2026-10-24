@@ -466,7 +466,9 @@ entrada (360 px de largura). Abaixo de 1024 px:
   semana), com o dia preso no alto ao rolar.
 - **Toque:** em tela de toque, botões com pelo menos 44 px de altura; campos com letra de
   16 px (abaixo disso o iPhone dá zoom); "Lançar" e "Enviar pelo WhatsApp" na largura toda.
-  Ao lançar, a confirmação aparece ao lado do botão, e o Android vibra de leve.
+  Ao lançar, a confirmação aparece ao lado do botão, e o Android vibra de leve. Remover uma
+  movimentação pergunta numa janela da página (`ConfirmarRemocao`), que no celular sobe do
+  pé da tela, perto do dedo; o foco começa em Cancelar e Esc fecha.
 - **Instalável** na tela inicial (`manifest.webmanifest`, ícones e metas da Apple): abre em
   tela cheia, como um app, respeitando entalhe e barra de gestos (`env(safe-area-inset-*)`).
   Sem modo offline: os dados vêm da API.
