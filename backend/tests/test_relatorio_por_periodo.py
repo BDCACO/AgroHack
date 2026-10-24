@@ -1,5 +1,6 @@
 """O relatório por período (mês, semana ou dia): consumo, gasto, perdas e os totais por
-categoria e por fornecedor. Primeiro a agregação pura, sem banco; depois a rota."""
+categoria e por fornecedor. A agregação pura, sem banco; a rota está em
+test_relatorio_por_periodo_rota.py."""
 
 from datetime import date
 

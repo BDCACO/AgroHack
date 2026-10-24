@@ -18,6 +18,7 @@ from app.api.routes import (
     fornecedores,
     health,
     pedidos,
+    relatorios,
     talhoes,
     usuarios,
 )
@@ -36,5 +37,6 @@ api_router.include_router(fornecedores.campo, dependencies=[Depends(exigir_funci
 api_router.include_router(fornecedores.gestao, dependencies=[Depends(exigir_dono)])
 api_router.include_router(pedidos.campo, dependencies=[Depends(exigir_funcionario)])
 api_router.include_router(pedidos.gestao, dependencies=[Depends(exigir_dono)])
+api_router.include_router(relatorios.campo, dependencies=[Depends(exigir_funcionario)])
 api_router.include_router(analises.router, dependencies=[Depends(exigir_dono)])
 api_router.include_router(usuarios.router, dependencies=[Depends(exigir_dono_com_login)])

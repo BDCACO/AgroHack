@@ -50,6 +50,7 @@ MATRIZ = {
     ("GET", "/api/v1/talhoes"): FUNCIONARIO,
     ("GET", "/api/v1/talhoes/{talhao_id}"): FUNCIONARIO,
     ("GET", "/api/v1/categorias"): FUNCIONARIO,
+    ("GET", "/api/v1/relatorios/periodo"): FUNCIONARIO,
     ("GET", "/api/v1/fornecedores"): FUNCIONARIO,
     ("GET", "/api/v1/fornecedores/{fornecedor_id}"): FUNCIONARIO,
     ("GET", "/api/v1/pedidos"): FUNCIONARIO,

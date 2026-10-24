@@ -294,7 +294,7 @@ def listar_movimentacoes(
     """Uma página das movimentações, as mais recentes primeiro, e quantas há ao todo com os
     mesmos filtros. O id desempata o mesmo dia: sem ele, duas do mesmo dia podiam trocar de
     lugar entre um pedido e outro, e uma página repetiria a que a anterior já mostrou."""
-    condicoes = _condicoes(db, filtro)
+    condicoes = condicoes_do_filtro(db, filtro)
     consulta = (
         select(Movimentacao)
         .where(*condicoes)
@@ -306,7 +306,7 @@ def listar_movimentacoes(
     return list(db.scalars(consulta)), total
 
 
-def _condicoes(db: Session, filtro: FiltroDeMovimentacoes) -> list[ColumnElement[bool]]:
+def condicoes_do_filtro(db: Session, filtro: FiltroDeMovimentacoes) -> list[ColumnElement[bool]]:
     m = Movimentacao
     condicoes = [
         coluna == valor
