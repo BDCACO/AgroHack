@@ -4,12 +4,14 @@ import base64
 from datetime import datetime, timedelta
 from io import BytesIO
 
+import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
 from app.demo import carregar
+from app.services import relatorio
 
 
 def baixar(client: TestClient) -> tuple[bytes, Workbook]:
@@ -235,3 +237,24 @@ def test_aba_por_mes_com_os_ultimos_doze_meses(client: TestClient, db: Session) 
     consumo = [round(sum(c["consumo"] for c in p["por_categoria"]), 2) for p in periodo["periodos"]]
     assert [linha[3] for linha in linhas] == consumo
     assert sum(linha[1] for linha in linhas) > 0
+
+
+def test_relatorio_monta_a_planilha_fora_da_transacao(
+    db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Montar e salvar o Excel é só Python, e com muitas movimentações leva segundos. Com a
+    transação de leitura aberta nesse tempo, o idle_in_transaction_session_timeout do
+    PostgreSQL derrubaria a conexão no meio de um relatório legítimo, à medida que o banco
+    cresce: a leitura termina antes."""
+    carregar(db, hoje())
+    durante_a_montagem: list[bool] = []
+    salvar = Workbook.save
+
+    def conferir_e_salvar(livro: Workbook, arquivo: BytesIO) -> None:
+        durante_a_montagem.append(db.in_transaction())
+        salvar(livro, arquivo)
+
+    monkeypatch.setattr(Workbook, "save", conferir_e_salvar)
+    relatorio.gerar(db)
+
+    assert durante_a_montagem == [False]

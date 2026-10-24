@@ -69,34 +69,41 @@ _TIPO_NA_PLANILHA = {
 
 
 def gerar(db: Session) -> bytes:
+    # Primeiro tudo que vem do banco; depois a planilha, que é só Python e, com muitas
+    # movimentações, leva segundos. A leitura termina antes de montá-la: com a transação
+    # aberta nesse tempo, o idle_in_transaction_session_timeout derrubaria a conexão no
+    # meio de um relatório legítimo, à medida que o banco cresce.
     insumos = estoque.listar_insumos(db)
     referencia = hoje()
+    numeros = resumo.resumir(db, insumos, referencia)
+    em_andamento = [
+        p for situacao in pedidos.EM_ANDAMENTO for p in pedidos.listar_pedidos(db, situacao)
+    ]
+    lista_de_talhoes = talhoes.listar_talhoes(db)
+    # Os últimos 12 meses, como o GET /relatorios/periodo sem datas.
+    por_mes = relatorio_por_periodo.gerar(
+        db, relatorio_por_periodo.inicio_dos_ultimos_meses(referencia), referencia, "mes"
+    )
+    movimentacoes = _movimentacoes(db)
+    db.rollback()  # só leitura: nada a gravar, e a conexão volta livre
+
     livro = Workbook()
     livro.properties.creator = "CampoCerto"
     livro.properties.title = f"Situação do estoque em {referencia:%d/%m/%Y}"
 
     aba_resumo = livro.active
     aba_resumo.title = "Resumo"
-    _aba_de_resumo(aba_resumo, insumos, resumo.resumir(db, insumos, referencia), referencia)
+    _aba_de_resumo(aba_resumo, insumos, numeros, referencia)
     _aba_de_alertas(livro.create_sheet("Alertas"), insumos)
     _aba_de_reposicao(livro.create_sheet("Reposição"), insumos)
-    _aba_de_pedidos(
-        livro.create_sheet("Pedidos"),
-        [p for situacao in pedidos.EM_ANDAMENTO for p in pedidos.listar_pedidos(db, situacao)],
-    )
+    _aba_de_pedidos(livro.create_sheet("Pedidos"), em_andamento)
     _aba_de_estoque(livro.create_sheet("Estoque"), insumos)
-    _aba_de_talhoes(livro.create_sheet("Talhões"), talhoes.listar_talhoes(db))
-    # Os últimos 12 meses, como o GET /relatorios/periodo sem datas. Fica antes da aba
-    # Movimentações e com outro nome: a importação lê só aquela, e a cópia de segurança
-    # volta igual.
-    _aba_por_mes(
-        livro.create_sheet("Por mês"),
-        relatorio_por_periodo.gerar(
-            db, relatorio_por_periodo.inicio_dos_ultimos_meses(referencia), referencia, "mes"
-        ),
-    )
+    _aba_de_talhoes(livro.create_sheet("Talhões"), lista_de_talhoes)
+    # Fica antes da aba Movimentações e com outro nome: a importação lê só aquela, e a
+    # cópia de segurança volta igual.
+    _aba_por_mes(livro.create_sheet("Por mês"), por_mes)
     aba_de_movimentacoes(
-        livro.create_sheet("Movimentações"), total_de_insumos=0, linhas=_movimentacoes(db)
+        livro.create_sheet("Movimentações"), total_de_insumos=0, linhas=movimentacoes
     )
 
     arquivo = BytesIO()
