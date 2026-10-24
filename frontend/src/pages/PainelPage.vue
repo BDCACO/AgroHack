@@ -7,12 +7,15 @@ import CoberturaDoEstoque from '@/components/CoberturaDoEstoque.vue'
 import NumeroRolante from '@/components/NumeroRolante.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import IconeSvg, { type NomeIcone } from '@/components/IconeSvg.vue'
-import { URL_DO_RELATORIO } from '@/services/estoque'
+import BotaoDeDownload from '@/components/BotaoDeDownload.vue'
+import { baixarRelatorio } from '@/services/estoque'
 import { useEstoqueStore } from '@/stores/estoque'
+import { useSessaoStore } from '@/stores/sessao'
 import type { Gravidade, Reposicao } from '@/types/api'
 
 // Só exibe: quem decide alerta, justificativa, reposição e limitação é o backend.
 const estoque = useEstoqueStore()
+const sessao = useSessaoStore()
 onMounted(() => estoque.carregar())
 
 const hoje = new Date()
@@ -133,23 +136,17 @@ async function copiar() {
     :sobretitulo="dataDeHoje"
     :descricao="estoque.insumos.length ? resumoDoDia : 'Alertas sobre o estoque de insumos, com a justificativa de cada um.'"
   >
+    <!-- O relatório leva todos os preços e é a cópia de segurança: só o dono baixa. -->
     <template
-      v-if="estoque.insumos.length"
+      v-if="estoque.insumos.length && sessao.podeGerir"
       #acoes
     >
-      <!-- Link de download comum: o arquivo vem pronto da API. -->
-      <a
-        :href="URL_DO_RELATORIO"
-        download
+      <BotaoDeDownload
+        rotulo="Baixar relatório (Excel)"
+        :baixar="baixarRelatorio"
         class="botao-secundario"
         data-teste="relatorio"
-      >
-        <IconeSvg
-          nome="baixar"
-          class="h-4 w-4"
-        />
-        Baixar relatório (Excel)
-      </a>
+      />
     </template>
   </CabecalhoDePagina>
 
@@ -186,20 +183,24 @@ async function copiar() {
     v-else-if="!estoque.insumos.length"
     icone="folha"
     titulo="Nenhum insumo cadastrado ainda"
-    texto="Cadastre os insumos e lance as compras e retiradas: os alertas aparecem aqui, cada um com a conta que o justifica."
+    :texto="sessao.podeGerir
+      ? 'Cadastre os insumos e lance as compras e retiradas: os alertas aparecem aqui, cada um com a conta que o justifica.'
+      : 'Quando o dono da fazenda cadastrar os insumos, os alertas aparecem aqui.'"
   >
-    <RouterLink
-      :to="{ name: 'insumos' }"
-      class="botao-primario"
-    >
-      Cadastrar insumos
-    </RouterLink>
-    <RouterLink
-      :to="{ name: 'importar' }"
-      class="botao-texto"
-    >
-      ou importar uma planilha
-    </RouterLink>
+    <template v-if="sessao.podeGerir">
+      <RouterLink
+        :to="{ name: 'insumos' }"
+        class="botao-primario"
+      >
+        Cadastrar insumos
+      </RouterLink>
+      <RouterLink
+        :to="{ name: 'importar' }"
+        class="botao-texto"
+      >
+        ou importar uma planilha
+      </RouterLink>
+    </template>
   </EstadoVazio>
 
   <template v-else>

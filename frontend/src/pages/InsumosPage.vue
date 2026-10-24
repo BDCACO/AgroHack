@@ -6,9 +6,11 @@ import EstadoVazio from '@/components/EstadoVazio.vue'
 import IconeSvg from '@/components/IconeSvg.vue'
 import SeloDeGravidade from '@/components/SeloDeGravidade.vue'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
+import { useSessaoStore } from '@/stores/sessao'
 import type { Insumo } from '@/types/api'
 
 const estoque = useEstoqueStore()
+const sessao = useSessaoStore()
 onMounted(() => estoque.carregar())
 
 // Input numérico vazio vale '' no v-model; '' = "não informado" (null na API).
@@ -71,7 +73,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
   >
     <template #acoes>
       <button
-        v-if="estoque.insumos.length"
+        v-if="estoque.insumos.length && sessao.podeGerir"
         type="button"
         class="botao-primario"
         @click="abrir()"
@@ -184,9 +186,12 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
     v-else-if="estoque.carregado && !estoque.insumos.length && !aberto"
     icone="insumos"
     titulo="Nenhum insumo cadastrado"
-    texto="Cadastre os produtos que você guarda no galpão: adubos, defensivos, sementes, sal mineral, vacinas…"
+    :texto="sessao.podeGerir
+      ? 'Cadastre os produtos que você guarda no galpão: adubos, defensivos, sementes, sal mineral, vacinas…'
+      : 'O dono da fazenda cadastra os insumos; depois, é só lançar as retiradas.'"
   >
     <button
+      v-if="sessao.podeGerir"
       type="button"
       class="botao-primario"
       @click="abrir()"
@@ -228,6 +233,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
           </div>
         </div>
         <button
+          v-if="sessao.podeGerir"
           type="button"
           class="relative z-10 min-h-11 rounded-lg px-3 text-sm font-medium text-campo-700 transition-colors active:bg-campo-50"
           :aria-label="`Alterar ${insumo.nome}`"
@@ -298,6 +304,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
             </td>
             <td class="px-4 py-3 text-right">
               <button
+                v-if="sessao.podeGerir"
                 type="button"
                 class="rounded-md px-2 py-1 text-sm font-medium text-campo-700 transition-colors hover:bg-campo-50"
                 @click="abrir(insumo)"

@@ -13,6 +13,7 @@ import type { ResultadoImportacao } from '@/types/api'
 vi.mock('@/services/estoque', async (original) => ({
   ...(await original<typeof import('@/services/estoque')>()),
   importarPlanilha: vi.fn(),
+  baixarPlanilhaModelo: vi.fn().mockResolvedValue(undefined),
   listarInsumos: vi.fn().mockResolvedValue([]),
   listarMovimentacoes: vi.fn().mockResolvedValue([]),
 }))
@@ -125,13 +126,13 @@ describe('ImportarPage', () => {
     expect(wrapper.text()).toContain(orientacao)
   })
 
-  it('o link do modelo aponta para a planilha que a API gera', () => {
+  it('o botão do modelo baixa a planilha que a API gera', async () => {
     const router = createRouter({ history: createMemoryHistory(), routes })
     const wrapper = mount(ImportarPage, { global: { plugins: [router] } })
 
-    expect(wrapper.find('[data-teste="modelo-xlsx"]').attributes('href')).toBe(
-      '/api/v1/importacoes/modelo.xlsx',
-    )
+    await wrapper.find('[data-teste="modelo-xlsx"]').trigger('click')
+
+    expect(api.baixarPlanilhaModelo).toHaveBeenCalledOnce()
   })
 })
 

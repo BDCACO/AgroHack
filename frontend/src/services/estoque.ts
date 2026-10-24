@@ -48,12 +48,26 @@ export async function removerMovimentacao(id: number): Promise<void> {
   await http.delete(`/movimentacoes/${id}`)
 }
 
-/** A planilha modelo (.xlsx) que a API gera, já com os insumos cadastrados. É um link
- * de download comum, não uma chamada pelo axios. */
-export const URL_DA_PLANILHA_MODELO = `${http.defaults.baseURL}/importacoes/modelo.xlsx`
+/** Baixa um arquivo que a API gera. Pelo cliente HTTP, e não por um link comum: o link não
+ * levaria o token da sessão. O nome vem da API (Content-Disposition). */
+async function baixar(caminho: string, nomePadrao: string): Promise<void> {
+  const resposta = await http.get<Blob>(caminho, { responseType: 'blob', timeout: 60_000 })
+  const disposicao = String(resposta.headers['content-disposition'] ?? '')
+  const nome = /filename="([^"]+)"/.exec(disposicao)?.[1] ?? nomePadrao
+  const url = URL.createObjectURL(resposta.data)
+  const link = Object.assign(document.createElement('a'), { href: url, download: nome })
+  document.body.append(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+/** A planilha modelo (.xlsx) que a API gera, já com os insumos cadastrados. */
+export const baixarPlanilhaModelo = () =>
+  baixar('/importacoes/modelo.xlsx', 'modelo-campocerto.xlsx')
 
 /** Relatório do estoque (.xlsx): alertas, reposição, insumos e todas as movimentações. */
-export const URL_DO_RELATORIO = `${http.defaults.baseURL}/relatorio.xlsx`
+export const baixarRelatorio = () => baixar('/relatorio.xlsx', 'relatorio-campocerto.xlsx')
 
 /** Sem `confirmar`, a API só confere a planilha e devolve o resumo. */
 export async function importarPlanilha(

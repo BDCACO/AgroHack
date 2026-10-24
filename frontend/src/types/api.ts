@@ -67,6 +67,7 @@ export interface MovimentacaoEntrada {
 
 export interface Movimentacao extends MovimentacaoEntrada {
   id: number
+  lancado_por?: string | null // nome de quem lançou, com login (auditoria); null sem login
 }
 
 export interface PontoDeEstoque {
@@ -101,4 +102,20 @@ export interface ResultadoImportacao {
   ja_lancadas: number // linhas iguais a movimentações já no banco: planilha repetida?
   erros: string[] // "Linha 7: ..." — com um erro sequer, nada é gravado
   importado: boolean
+}
+
+export type Papel = 'dono' | 'funcionario'
+
+export interface Usuario {
+  id: number
+  nome: string
+  login: string
+  papel: Papel
+}
+
+/** `POST /auth/entrar`: o token vem uma vez só; mande-o em `Authorization: Bearer`. */
+export interface Entrada {
+  token: string
+  expira_em: string
+  usuario: Usuario
 }

@@ -15,6 +15,7 @@ vi.mock('@/services/estoque', async (original) => ({
   listarInsumos: vi.fn(),
   listarMovimentacoes: vi.fn(),
   registrarMovimentacao: vi.fn(),
+  baixarRelatorio: vi.fn(),
 }))
 
 function insumo(id: number, nome: string, alertas: Alerta[] = []): Insumo {
@@ -125,9 +126,8 @@ describe('PainelPage', () => {
     const whatsapp = wrapper.find('[data-teste="whatsapp"]').attributes('href')!
     expect(decodeURIComponent(whatsapp)).toContain('\nPedir agora:\n- Ureia: 70 kg')
     expect(decodeURIComponent(whatsapp)).not.toContain('Próximos pedidos')
-    expect(wrapper.find('[data-teste="relatorio"]').attributes('href')).toBe(
-      '/api/v1/relatorio.xlsx',
-    )
+    await wrapper.find('[data-teste="relatorio"]').trigger('click')
+    expect(api.baixarRelatorio).toHaveBeenCalledOnce()
   })
 
   it('os cartões de gravidade filtram a lista, e um segundo clique desfaz', async () => {

@@ -3,7 +3,8 @@ import { computed, ref } from 'vue'
 
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import IconeSvg from '@/components/IconeSvg.vue'
-import { URL_DA_PLANILHA_MODELO } from '@/services/estoque'
+import BotaoDeDownload from '@/components/BotaoDeDownload.vue'
+import { baixarPlanilhaModelo } from '@/services/estoque'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import type { PlanilhaParaImportar, ResultadoImportacao } from '@/types/api'
 
@@ -173,18 +174,14 @@ const quantidade = (valor: number, unidade: string) =>
         Baixe a planilha modelo: ela já vem formatada, com listas de escolha, a lista dos seus
         insumos e um exemplo preenchido. Uma linha por movimentação.
       </p>
-      <a
-        :href="URL_DA_PLANILHA_MODELO"
-        download
-        class="botao-primario mt-4"
-        data-teste="modelo-xlsx"
-      >
-        <IconeSvg
-          nome="baixar"
-          class="h-4 w-4"
+      <div class="mt-4">
+        <BotaoDeDownload
+          rotulo="Baixar planilha modelo (Excel)"
+          :baixar="baixarPlanilhaModelo"
+          class="botao-primario"
+          data-teste="modelo-xlsx"
         />
-        Baixar planilha modelo (Excel)
-      </a>
+      </div>
       <p class="mt-4 text-sm text-stone-600">
         As colunas, na primeira linha:
       </p>

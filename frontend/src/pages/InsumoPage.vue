@@ -9,10 +9,12 @@ import GraficoDeEstoque from '@/components/GraficoDeEstoque.vue'
 import IconeSvg, { type NomeIcone } from '@/components/IconeSvg.vue'
 import { buscarInsumo } from '@/services/estoque'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
+import { useSessaoStore } from '@/stores/sessao'
 import type { InsumoDetalhe } from '@/types/api'
 
 const props = defineProps<{ id: number }>()
 const estoque = useEstoqueStore()
+const sessao = useSessaoStore()
 const router = useRouter()
 
 const insumo = ref<InsumoDetalhe | null>(null)
@@ -116,6 +118,7 @@ const descricao = computed(() => {
           Lançar movimentação
         </RouterLink>
         <button
+          v-if="sessao.podeGerir"
           type="button"
           class="botao-perigo"
           @click="remover"

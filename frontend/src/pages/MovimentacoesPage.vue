@@ -8,9 +8,11 @@ import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import ConfirmarRemocao from '@/components/ConfirmarRemocao.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
+import { useSessaoStore } from '@/stores/sessao'
 import type { Movimentacao, MovimentacaoEntrada } from '@/types/api'
 
 const estoque = useEstoqueStore()
+const sessao = useSessaoStore()
 onMounted(() => estoque.carregar())
 
 // AAAA-MM-DD no fuso do navegador (o do produtor); 'sv-SE' formata exatamente assim.
@@ -306,6 +308,8 @@ const porDia = computed(() => {
                 <p class="text-xs text-stone-500">
                   {{ rotulo[mov.tipo] }}<template v-if="mov.validade">
                     · validade {{ dataBr(mov.validade) }}
+                  </template><template v-if="mov.lancado_por">
+                    · por {{ mov.lancado_por }}
                   </template>
                 </p>
               </div>
@@ -317,6 +321,7 @@ const porDia = computed(() => {
                 {{ estoque.insumoPorId.get(mov.insumo_id)?.unidade }}
               </p>
               <button
+                v-if="sessao.podeGerir"
                 type="button"
                 class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-stone-400 transition-colors active:bg-red-50 active:text-red-700"
                 :aria-label="`Remover ${rotulo[mov.tipo].toLowerCase()} de ${estoque.insumoPorId.get(mov.insumo_id)?.nome ?? 'insumo'}, ${dia.rotulo.toLowerCase()}`"
@@ -376,6 +381,10 @@ const porDia = computed(() => {
                 >
                   {{ estoque.insumoPorId.get(mov.insumo_id)?.nome }}
                 </RouterLink>
+                <span
+                  v-if="mov.lancado_por"
+                  class="block text-xs font-normal text-stone-500"
+                >por {{ mov.lancado_por }}</span>
               </td>
               <td class="px-4 py-3">
                 <!-- Entrada aponta para o galpão (desce), saída para fora (sobe). -->
@@ -399,6 +408,7 @@ const porDia = computed(() => {
               </td>
               <td class="px-4 py-3 text-right">
                 <button
+                  v-if="sessao.podeGerir"
                   type="button"
                   class="rounded-md px-2 py-1 text-sm font-medium text-red-700 transition-colors hover:bg-red-50"
                   @click="remover(mov)"
