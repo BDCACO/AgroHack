@@ -89,6 +89,11 @@ describe('navegação', () => {
       unidade: 'kg',
       estoque_minimo: 300,
       prazo_reposicao_dias: 10,
+      embalagem: null,
+      pedido_minimo: null,
+      carencia_dias: null,
+      custo_medio: null,
+      valor_em_estoque: null,
       demonstracao: false,
       estoque_atual: 100,
       analise: {
@@ -156,6 +161,11 @@ describe('navegação', () => {
       unidade: 'kg',
       estoque_minimo: null,
       prazo_reposicao_dias: null,
+      embalagem: null,
+      pedido_minimo: null,
+      carencia_dias: null,
+      custo_medio: null,
+      valor_em_estoque: null,
       demonstracao: true,
       estoque_atual: 0,
       analise: {

@@ -8,13 +8,14 @@ import { routes } from '@/router'
 import * as api from '@/services/estoque'
 import { ApiError } from '@/services/http'
 import { useEstoqueStore } from '@/stores/estoque'
-import type { Alerta, Insumo } from '@/types/api'
+import type { Alerta, Insumo, Resumo } from '@/types/api'
 
 vi.mock('@/services/estoque', async (original) => ({
   ...(await original<typeof import('@/services/estoque')>()),
   listarInsumos: vi.fn(),
   listarMovimentacoes: vi.fn(),
   registrarMovimentacao: vi.fn(),
+  buscarResumo: vi.fn(),
   baixarRelatorio: vi.fn(),
 }))
 
@@ -26,6 +27,11 @@ function insumo(id: number, nome: string, alertas: Alerta[] = []): Insumo {
     unidade: 'kg',
     estoque_minimo: null,
     prazo_reposicao_dias: null,
+    embalagem: null,
+    pedido_minimo: null,
+    carencia_dias: null,
+    custo_medio: null,
+    valor_em_estoque: null,
     estoque_atual: 10,
     analise: {
       consumo_diario: 1,
@@ -34,6 +40,20 @@ function insumo(id: number, nome: string, alertas: Alerta[] = []): Insumo {
       reposicao: null,
       limitacoes: ['Consumo é a média dos últimos 90 dias.'],
     },
+  }
+}
+
+function resumo(mudancas: Partial<Resumo> = {}): Resumo {
+  return {
+    insumos: 2,
+    valor_em_estoque: 1234.5,
+    insumos_sem_preco: 0,
+    perdas: { ultimos_30_dias: 80, total: 210.25 },
+    compras_sugeridas: { valor: 3500, pedidos: 2, pedir_hoje: 1 },
+    alertas: { alta: 1, media: 0, baixa: 1 },
+    talhoes_em_carencia: 0,
+    limitacoes: [],
+    ...mudancas,
   }
 }
 
@@ -110,6 +130,7 @@ describe('PainelPage', () => {
       pedir_hoje: true,
       quantidade: 70,
       justificativa: 'Pedir hoje 70 kg: cobre 30 dias de consumo.',
+      custo_estimado: null,
     }
     vi.mocked(api.listarInsumos).mockResolvedValue([insumo(1, 'Calcário', [excesso]), ureia])
 
@@ -153,7 +174,7 @@ describe('PainelPage', () => {
     ureia.analise.cobertura_dias = 3
     const sal = insumo(2, 'Sal', [])
     sal.analise.cobertura_dias = 20
-    sal.analise.reposicao = { pedir_em: '2000-01-01', pedir_hoje: true, quantidade: 5, justificativa: '' }
+    sal.analise.reposicao = { pedir_em: '2000-01-01', pedir_hoje: true, quantidade: 5, justificativa: '', custo_estimado: null }
     const calcario = insumo(3, 'Calcário', [excesso])
     calcario.analise.cobertura_dias = 400
     vi.mocked(api.listarInsumos).mockResolvedValue([calcario, sal, ureia])
@@ -175,5 +196,66 @@ describe('PainelPage', () => {
 
     expect(wrapper.text()).toContain('Nenhum insumo cadastrado ainda')
     expect(wrapper.find('[data-teste="alerta"]').exists()).toBe(false)
+  })
+
+  it('mostra o estoque em reais: valor, compras dos próximos 30 dias e perdas', async () => {
+    vi.mocked(api.listarInsumos).mockResolvedValue([insumo(1, 'Ureia')])
+    vi.mocked(api.buscarResumo).mockResolvedValue(resumo())
+
+    const wrapper = await montar()
+
+    const cartoes = wrapper.findAll('[data-teste="em-reais"] dl > div').map((c) => c.text())
+    expect(cartoes).toEqual([
+      expect.stringMatching(/Valor em estoque\s*R\$\s1\.234,50\s*pelo custo médio/),
+      expect.stringMatching(/Compras, próximos 30 dias\s*R\$\s3\.500,00\s*2 pedidos, 1 para hoje/),
+      expect.stringMatching(/Perdas, últimos 30 dias\s*R\$\s80,00\s*descartes e faltas · R\$\s210,25 no total/),
+    ])
+  })
+
+  it('sem preço nas compras, diz o que falta em vez de mostrar R$ 0,00', async () => {
+    vi.mocked(api.listarInsumos).mockResolvedValue([insumo(1, 'Ureia')])
+    vi.mocked(api.buscarResumo).mockResolvedValue(
+      resumo({
+        valor_em_estoque: null,
+        insumos_sem_preco: 1,
+        perdas: { ultimos_30_dias: 0, total: 0 },
+        compras_sugeridas: { valor: null, pedidos: 0, pedir_hoje: 0 },
+        limitacoes: ['1 insumo sem preço nas compras fica fora do valor em estoque.'],
+      }),
+    )
+
+    const wrapper = await montar()
+
+    const emReais = wrapper.find('[data-teste="em-reais"]').text()
+    expect(emReais).toContain('lance o preço nas compras')
+    expect(emReais).toContain('nada a pedir')
+    expect(emReais).toContain('1 insumo sem preço nas compras fica fora do valor em estoque.')
+    expect(emReais).not.toMatch(/Valor em estoque\s*R\$/)
+  })
+
+  it('a reposição diz quanto custa, quando há preço', async () => {
+    const ureia = insumo(2, 'Ureia', [falta])
+    ureia.analise.reposicao = {
+      pedir_em: '2000-01-01',
+      pedir_hoje: true,
+      quantidade: 100,
+      justificativa: 'Pedir hoje 2 sacos de 50 kg.',
+      custo_estimado: 320,
+    }
+    vi.mocked(api.listarInsumos).mockResolvedValue([ureia])
+
+    const wrapper = await montar()
+
+    expect(wrapper.find('[data-teste="reposicao"]').text()).toMatch(/cerca de R\$\s320,00/)
+  })
+
+  it('sem o resumo (a API falhou nele), o Painel mostra o resto', async () => {
+    vi.mocked(api.listarInsumos).mockResolvedValue([insumo(1, 'Ureia', [falta])])
+    vi.mocked(api.buscarResumo).mockRejectedValue(new ApiError(500))
+
+    const wrapper = await montar()
+
+    expect(wrapper.find('[data-teste="em-reais"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-teste="alerta"]')).toHaveLength(1)
   })
 })

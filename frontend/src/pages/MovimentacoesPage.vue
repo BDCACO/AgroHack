@@ -7,6 +7,7 @@ import IconeSvg from '@/components/IconeSvg.vue'
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import ConfirmarRemocao from '@/components/ConfirmarRemocao.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
+import { reais } from '@/formatos'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import { useSessaoStore } from '@/stores/sessao'
 import type { Movimentacao, MovimentacaoEntrada } from '@/types/api'
@@ -26,6 +27,8 @@ const form = reactive({
   data: hoje(),
   quantidade: '' as number | '',
   validade: '',
+  // R$ por unidade do insumo, o que se pagou nesta compra.
+  preco: '' as number | '',
 })
 const salvando = ref(false)
 // A linha recém-lançada acende na tabela e volta ao normal: mostra onde ela entrou.
@@ -35,12 +38,18 @@ const erroDoForm = ref<string | null>(null)
 // embaixo, fora da tela, e é aqui que se vê que deu certo.
 const confirmacao = ref<string | null>(null)
 
-// Validade é de lote, e lote só chega numa entrada.
+// Validade é de lote, e lote só chega numa entrada; preço é o da compra, também só nela.
 watch(
   () => form.tipo,
   (tipo) => {
-    if (tipo === 'saida') form.validade = ''
+    if (tipo === 'saida') {
+      form.validade = ''
+      form.preco = ''
+    }
   },
+)
+const unidadeEscolhida = computed(() =>
+  form.insumoId === '' ? undefined : estoque.insumoPorId.get(form.insumoId)?.unidade,
 )
 
 async function lancar() {
@@ -55,15 +64,18 @@ async function lancar() {
       data: form.data,
       quantidade: form.quantidade,
       validade: form.validade || null,
+      valor_unitario: form.preco === '' ? null : form.preco,
     })
     destacada.value = criada.id
     const insumo = estoque.insumoPorId.get(criada.insumo_id)
-    confirmacao.value = `${rotulo[criada.tipo]} de ${numero(criada.quantidade)} ${insumo?.unidade ?? ''} de ${insumo?.nome ?? 'insumo'} lançada.`
+    const preco = criada.valor_unitario ? `, a ${precoPor(criada.valor_unitario, insumo?.unidade)}` : ''
+    confirmacao.value = `${rotulo[criada.tipo]} de ${numero(criada.quantidade)} ${insumo?.unidade ?? ''} de ${insumo?.nome ?? 'insumo'}${preco} lançada.`
     // No celular Android, uma vibração curta confirma sem precisar olhar.
     navigator.vibrate?.(20)
     // Mantém tipo, insumo e data: lançamentos em sequência costumam repetir os três.
     form.quantidade = ''
     form.validade = ''
+    form.preco = ''
   } catch (erro) {
     erroDoForm.value = mensagemDeErro(erro)
   } finally {
@@ -85,6 +97,7 @@ function textoDaRemocao(movimentacao: Movimentacao) {
 const rotulo = { entrada: 'Entrada', saida: 'Saída' } as const
 const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
 const dataBr = (data: string) => data.split('-').reverse().join('/')
+const precoPor = (valor: number, unidade?: string) => `${reais(valor)}${unidade ? `/${unidade}` : ''}`
 
 // No celular, a lista vem agrupada por dia, como um extrato: "Hoje", "Ontem", e depois o
 // dia da semana com a data. A API já manda da mais recente para a mais antiga.
@@ -140,7 +153,7 @@ const porDia = computed(() => {
 
   <template v-else-if="estoque.insumos.length">
     <form
-      class="cartao mt-2 grid animate-surgir gap-4 p-5 sm:grid-cols-2 lg:grid-cols-6"
+      class="cartao mt-2 grid animate-surgir items-end gap-4 p-5 sm:grid-cols-2 lg:grid-cols-6"
       @submit.prevent="lancar"
     >
       <fieldset class="sm:col-span-2 lg:col-span-6">
@@ -216,7 +229,22 @@ const porDia = computed(() => {
       </label>
       <label
         v-if="form.tipo === 'entrada'"
-        class="text-sm font-medium text-stone-700 lg:col-span-2"
+        class="text-sm font-medium text-stone-700"
+      >
+        Preço (R$/{{ unidadeEscolhida ?? 'un.' }}) <span class="font-normal text-stone-500">(se souber)</span>
+        <input
+          v-model.number="form.preco"
+          type="number"
+          min="0.0001"
+          step="any"
+          inputmode="decimal"
+          class="campo"
+          data-teste="preco"
+        >
+      </label>
+      <label
+        v-if="form.tipo === 'entrada'"
+        class="text-sm font-medium text-stone-700"
       >
         Validade do lote <span class="font-normal text-stone-500">(se tiver)</span>
         <input
@@ -306,7 +334,9 @@ const porDia = computed(() => {
                   {{ estoque.insumoPorId.get(mov.insumo_id)?.nome }}
                 </RouterLink>
                 <p class="text-xs text-stone-500">
-                  {{ rotulo[mov.tipo] }}<template v-if="mov.validade">
+                  {{ rotulo[mov.tipo] }}<template v-if="mov.valor_unitario">
+                    · {{ precoPor(mov.valor_unitario, estoque.insumoPorId.get(mov.insumo_id)?.unidade) }}
+                  </template><template v-if="mov.validade">
                     · validade {{ dataBr(mov.validade) }}
                   </template><template v-if="mov.lancado_por">
                     · por {{ mov.lancado_por }}
@@ -356,6 +386,9 @@ const porDia = computed(() => {
               <th class="px-4 py-3 text-right font-semibold">
                 Quantidade
               </th>
+              <th class="px-4 py-3 text-right font-semibold">
+                Preço
+              </th>
               <th class="px-4 py-3 font-semibold">
                 Validade
               </th>
@@ -402,6 +435,9 @@ const porDia = computed(() => {
               </td>
               <td class="px-4 py-3 text-right tabular-nums">
                 {{ numero(mov.quantidade) }} {{ estoque.insumoPorId.get(mov.insumo_id)?.unidade }}
+              </td>
+              <td class="px-4 py-3 text-right tabular-nums text-stone-600">
+                {{ mov.valor_unitario ? precoPor(mov.valor_unitario, estoque.insumoPorId.get(mov.insumo_id)?.unidade) : '—' }}
               </td>
               <td class="px-4 py-3 tabular-nums text-stone-600">
                 {{ mov.validade ? dataBr(mov.validade) : '—' }}

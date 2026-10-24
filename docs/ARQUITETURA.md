@@ -391,7 +391,7 @@ tem banco a orquestrar e chama o motor direto.
 | `src/main.ts` | Instala Pinia e Router, importa o CSS |
 | `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só |
 | `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, barra de baixo no celular e no tablet, quem está logado e "Sair", resumo de status |
-| `src/pages/` | Uma página por rota: Painel (alertas, reposição com lista de compras para o WhatsApp, limitações), Insumos (cadastro), página do insumo (`/insumos/:id`: resumo, gráfico, alertas, movimentações, remover), Movimentações (entradas e saídas), Importar dados (Excel ou CSV, com prévia), Sistema |
+| `src/pages/` | Uma página por rota: Painel (alertas, estoque em reais do `GET /resumo`, reposição com o custo e a lista de compras para o WhatsApp, limitações), Insumos (cadastro, com embalagem e pedido mínimo, e o valor em estoque), página do insumo (`/insumos/:id`: resumo com custo médio e valor em estoque, gráfico, alertas, movimentações, remover), Movimentações (entradas, com o preço da compra, e saídas), Importar dados (Excel ou CSV, com prévia), Sistema |
 | `src/components/` | Reutilizáveis, sem chamada à API (o `BotaoDeDownload` recebe a função que baixa): `BotaoDeDownload`, `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `EstadoVazio`, `GraficoDeEstoque`, `IconeSvg`, `IndicadorDeStatus`, `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
 | `src/stores/` | Pinia: estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração; `sessao` guarda quem está logado e decide `podeGerir` |
 | `src/services/http.ts` | **Cliente HTTP único** (Axios). Põe o token em todo pedido, avisa o App no `401` e normaliza erro em `ApiError` |
@@ -623,10 +623,9 @@ tecnologias que não se aplicam.
    app, os modelos em Dart entram na mesma conta.
 3. **App nas lojas.** Ícone, assinatura do Android, conta de desenvolvedor da Apple e a API em
    `https://` em algum endereço público.
-4. **Reais nas telas.** A API já devolve preço, custo médio, valor em estoque, embalagem, pedido
-   mínimo e o `GET /resumo`; o site e o app ainda não têm campo para o preço ao lançar uma
-   compra nem para a embalagem no cadastro, e não mostram o resumo. As justificativas, que as
-   telas já exibem, trazem os valores.
+4. **Reais no app.** O site já tem o preço ao lançar uma compra, a embalagem e o pedido mínimo
+   no cadastro, o resumo em reais no Painel e o custo de cada reposição; o app ainda não. Lá,
+   as justificativas, que o app já exibe, trazem os valores.
 5. **Talhões nas telas.** A API já tem o cadastro de talhões, a carência no insumo, a aplicação
    (`talhao_id` na retirada e no lote) e a leitura com carência e custo por hectare; o site e o
    app ainda não têm a tela de Talhões, o campo de carência no cadastro do insumo nem a escolha do

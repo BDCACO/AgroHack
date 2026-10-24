@@ -33,6 +33,7 @@ export interface Reposicao {
   pedir_hoje: boolean // decidido pela API, na data de Rondônia
   quantidade: number
   justificativa: string
+  custo_estimado: number | null // quantidade × custo médio; null sem preço nas compras
 }
 
 export interface Analise {
@@ -48,12 +49,18 @@ export interface InsumoCadastro {
   unidade: string
   estoque_minimo: number | null
   prazo_reposicao_dias: number | null
+  // Na unidade do insumo (50 para o saco de 50 kg): a reposição sai em embalagens fechadas.
+  embalagem: number | null
+  pedido_minimo: number | null
 }
 
 export interface Insumo extends InsumoCadastro {
   id: number
   demonstracao: boolean // gerado por `make demo`: não é dado real
+  carencia_dias: number | null
   estoque_atual: number
+  custo_medio: number | null // R$ por unidade, das compras com preço
+  valor_em_estoque: number | null // estoque atual (se positivo) × custo médio
   analise: Analise
 }
 
@@ -63,10 +70,12 @@ export interface MovimentacaoEntrada {
   data: string // AAAA-MM-DD
   quantidade: number
   validade: string | null
+  valor_unitario?: number | null // R$ por unidade, só numa entrada (o preço da compra)
 }
 
 export interface Movimentacao extends MovimentacaoEntrada {
   id: number
+  motivo?: 'descarte' | 'inventario' | null
   lancado_por?: string | null // nome de quem lançou, com login (auditoria); null sem login
 }
 
@@ -102,6 +111,22 @@ export interface ResultadoImportacao {
   ja_lancadas: number // linhas iguais a movimentações já no banco: planilha repetida?
   erros: string[] // "Linha 7: ..." — com um erro sequer, nada é gravado
   importado: boolean
+}
+
+/** `GET /resumo`: a visão geral do estoque em reais. */
+export interface Resumo {
+  insumos: number
+  valor_em_estoque: number | null // null se nenhum insumo tem custo médio
+  insumos_sem_preco: number
+  perdas: { ultimos_30_dias: number; total: number } // descartes e faltas da contagem
+  compras_sugeridas: {
+    valor: number | null // custo das reposições dos próximos 30 dias; null sem preço
+    pedidos: number
+    pedir_hoje: number
+  }
+  alertas: Record<Gravidade, number>
+  talhoes_em_carencia: number
+  limitacoes: string[]
 }
 
 export type Papel = 'dono' | 'funcionario'
