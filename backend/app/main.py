@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI
 
+from app.api.erros import registrar_tratadores
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
 
@@ -22,6 +23,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=f"{prefixo}/openapi.json" if docs else None,
     )
     app.include_router(api_router, prefix=prefixo)
+    registrar_tratadores(app)
     return app
 
 

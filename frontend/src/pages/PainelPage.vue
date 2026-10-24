@@ -25,15 +25,15 @@ const situacoes = [
   />
 
   <EstadoVazio
-    icone="importar"
-    titulo="Nenhum dado de estoque ainda"
-    texto="Os alertas aparecem aqui depois que os registros de compras, retiradas e estoque forem importados."
+    icone="alerta"
+    titulo="Alertas ainda não disponíveis"
+    texto="Cadastre os insumos e registre as compras e retiradas. Os alertas aparecem aqui quando as análises estiverem prontas."
   >
     <RouterLink
-      :to="{ name: 'importar' }"
-      class="inline-flex items-center gap-2 rounded-md bg-campo-600 px-4 py-2 text-sm font-medium text-white hover:bg-campo-700"
+      :to="{ name: 'insumos' }"
+      class="botao-primario"
     >
-      Importar dados
+      Cadastrar insumos
     </RouterLink>
   </EstadoVazio>
 

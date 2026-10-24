@@ -1,5 +1,8 @@
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate test test-backend test-frontend lint check-db verify
+.PHONY: help up down logs migrate test test-backend test-db test-frontend lint check-db verify
+
+# O .env da raiz alimenta o compose e o alvo test-db (credenciais do banco).
+-include .env
 
 COMPOSE := docker compose
 # Testes e lint rodam DENTRO do container (padrão do ArkoHub): a máquina não
@@ -26,6 +29,15 @@ migrate: ## Aplica as migrations (alembic upgrade head)
 
 test-backend: ## Pytest da API (SQLite em memória, sem banco)
 	$(API_RUN) pytest -p no:cacheprovider
+
+test-db: ## Pytest contra o PostgreSQL real (exige `make up`; usa o banco campocerto_teste)
+	@# Banco SEPARADO: a suíte cria e apaga as tabelas a cada teste.
+	$(COMPOSE) exec -T db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc \
+	  "select 1 from pg_database where datname = '"'"'campocerto_teste'"'"'" | grep -q 1 \
+	  || createdb -U "$$POSTGRES_USER" campocerto_teste'
+	$(COMPOSE) run --rm -e ENVIRONMENT=test -e RUN_MIGRATIONS_ON_START=false \
+	  -e TEST_DATABASE_URL=postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@db:5432/campocerto_teste \
+	  api pytest -p no:cacheprovider
 
 test-frontend: ## Vitest do frontend
 	$(WEB_RUN) sh -c "npm install --no-audit --no-fund && npm test"

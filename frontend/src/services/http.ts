@@ -21,6 +21,24 @@ export class ApiError extends Error {
   }
 }
 
+/** Frase para mostrar ao usuário a partir de uma falha de chamada.
+ *
+ * A mensagem de regra de negócio é escrita pela API (`{codigo, mensagem}`) e
+ * mostrada como veio; o front não reescreve regra. Para os demais casos, um
+ * texto genérico honesto — nunca o corpo cru da resposta.
+ */
+export function mensagemDeErro(falha: unknown): string {
+  if (!(falha instanceof ApiError)) return 'Algo deu errado. Tente novamente.'
+  if (falha.status === null) return 'Não foi possível falar com o servidor. Verifique a conexão.'
+  const corpo = falha.detail
+  if (corpo !== null && typeof corpo === 'object' && 'mensagem' in corpo) {
+    const mensagem = (corpo as { mensagem: unknown }).mensagem
+    if (typeof mensagem === 'string' && mensagem.length > 0) return mensagem
+  }
+  if (falha.status === 422) return 'Confira os campos preenchidos.'
+  return 'O servidor não conseguiu concluir a operação. Tente novamente.'
+}
+
 http.interceptors.response.use(
   (resposta) => resposta,
   (erro: unknown) => {

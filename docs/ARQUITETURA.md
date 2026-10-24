@@ -28,22 +28,47 @@ navegador ──► Vite (:5173) ──/api──► FastAPI (:8000) ──► P
 | `app/api/routes/` | Rotas HTTP — finas: validam entrada, chamam serviço, devolvem schema |
 | `app/schemas/` | Modelos Pydantic de entrada/saída da API |
 | `app/models/` | Modelos ORM (SQLAlchemy). Todo modelo novo é importado em `models/__init__.py` |
-| `migrations/` | Alembic. Linhagem única, toda migration com `downgrade` |
+| `app/services/` | Casos de uso: orquestram banco e regra. **Única camada que a rota chama** |
+| `app/domain/` | Regras de negócio puras. **Sem I/O, sem banco, sem `datetime.now()`** |
+| `app/api/erros.py` | Traduz erro de domínio (`codigo` + `mensagem`) para status HTTP |
+| `migrations/` | Alembic. Linhagem única, toda migration com `downgrade` testado |
 | `tests/` | Pytest |
 
-### Camadas previstas (criadas quando houver código para elas)
+Ainda não existe (entra com a primeira análise): `app/analysis/` — análises com Pandas
+(consumo, tendência, reposição), que recebem dados e devolvem resultado com **justificativa e
+limitações**.
 
-Para não manter diretórios vazios, estas pastas **ainda não existem**. Entram junto com a
-primeira funcionalidade que as usar:
+O fluxo é `rota → serviço → (domínio | análise) → ORM`. As setas só apontam para dentro:
+`domain` e `analysis` não importam FastAPI nem SQLAlchemy.
 
-| Caminho | Responsabilidade | Regra |
+### Modelo de dados
+
+| Tabela | Campos | Regras |
 |---|---|---|
-| `app/services/` | Casos de uso: orquestram repositório, regra e análise | Única camada que a rota chama |
-| `app/domain/` | Regras de negócio puras (limiar de estoque mínimo, vencimento...) | **Sem I/O, sem banco, sem `datetime.now()`** — a data de referência entra como parâmetro |
-| `app/analysis/` | Análises com Pandas (consumo, tendência, estimativa de reposição) | Recebe DataFrame/listas, devolve resultado + **justificativa e limitações** |
+| `insumo` | nome, categoria?, unidade, estoque_minimo | Nome único **sem diferenciar maiúsculas** (índice em `lower(nome)`) |
+| `movimentacao` | insumo_id, tipo (`compra`/`retirada`), quantidade, data, validade?, observacao? | `quantidade > 0`; validade só em compra (CHECK no banco); FK `RESTRICT` |
 
-O fluxo esperado é `rota → serviço → (domínio | análise) → repositório/ORM`. As setas só
-apontam para dentro: `domain` e `analysis` não importam FastAPI nem SQLAlchemy.
+- **O saldo não é gravado**: é `Σ compras − Σ retiradas`, calculado numa consulta agregada.
+  Um saldo gravado ao lado das movimentações poderia divergir delas.
+- PKs são **uuid v7** (`uuid.uuid7`, Python 3.14), quantidades `NUMERIC(14,3)`.
+- Este modelo veio dos requisitos, não dos arquivos da organização (ainda não recebidos). A
+  importação, quando vier, converte para ele.
+
+### Regras de negócio (`app/domain/estoque.py`)
+
+| Regra | Erro |
+|---|---|
+| Retirada maior que o saldo atual é recusada | `409 ESTOQUE_INSUFICIENTE`, com quantidades na mensagem |
+| Remover compra cujo estoque já foi retirado é recusado | `409 ESTOQUE_INSUFICIENTE` |
+| Remover insumo com movimentações é recusado (apagaria o histórico) | `409 INSUMO_COM_MOVIMENTACOES` |
+| Nome de insumo repetido | `409 INSUMO_DUPLICADO` |
+
+Todo erro de regra tem corpo `{"codigo", "mensagem"}`. O front mostra a `mensagem` como veio;
+validação de formato (Pydantic) devolve `422`.
+
+**Limitação conhecida:** a checagem de saldo e a gravação não são atômicas — duas retiradas
+simultâneas do mesmo insumo poderiam passar juntas. Aceitável com um usuário; se houver uso
+concorrente, travar a linha do insumo (`SELECT ... FOR UPDATE`) no serviço.
 
 ### Endpoints atuais
 
@@ -51,6 +76,10 @@ apontam para dentro: `domain` e `analysis` não importam FastAPI nem SQLAlchemy.
 |---|---|
 | `GET /api/v1/health` | Liveness — o processo está no ar. Não toca o banco |
 | `GET /api/v1/ready` | Readiness — `200` com o banco respondendo, `503` sem ele |
+| `GET/POST /api/v1/insumos` | Lista (com `saldo_atual`, ordem alfabética) / cadastra |
+| `GET/PUT/DELETE /api/v1/insumos/{id}` | Detalhe / edita / remove (só sem movimentações) |
+| `GET/POST /api/v1/movimentacoes` | Lista (mais recentes primeiro; `?insumo_id=` filtra) / registra |
+| `DELETE /api/v1/movimentacoes/{id}` | Remove (recalcula o saldo) |
 | `GET /api/v1/docs` | Swagger UI (desligado em `production`) |
 | `GET /api/v1/openapi.json` | Schema OpenAPI (desligado em `production`) |
 
@@ -62,16 +91,17 @@ apontam para dentro: `domain` e `analysis` não importam FastAPI nem SQLAlchemy.
 | `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só |
 | `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, gaveta no celular, resumo de status |
 | `src/pages/` | Uma página por rota: Painel, Insumos, Movimentações, Importar dados, Sistema |
-| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `EstadoVazio`, `IconeSvg`, `IndicadorDeStatus` |
+| `src/components/` | Reutilizáveis. Os formulários (`FormularioInsumo`, `FormularioMovimentacao`) salvam pela store; os demais (`JanelaModal`, `ConfirmarRemocao`, `AvisoDeErro`, `CabecalhoDePagina`, `EstadoVazio`, `IconeSvg`, `IndicadorDeStatus`) só exibem |
+| `src/formatos.ts` | Formatação pt-BR de quantidade e data (só apresentação) |
 | `src/stores/` | Pinia — estado compartilhado e as ações que chamam os serviços |
 | `src/services/http.ts` | **Cliente HTTP único** (Axios). Normaliza erro em `ApiError` |
 | `src/services/*.ts` | Uma função por endpoint |
 | `src/types/` | Tipos TypeScript dos contratos da API |
-| `src/styles/main.css` | Tailwind v4 + tokens da marca (`@theme`) |
+| `src/styles/main.css` | Tailwind v4, tokens da marca (`@theme`) e classes `botao-*`, `campo`, `rotulo` |
 | `tests/unit/` | Vitest + Vue Test Utils |
 
-Regras: componente `.vue` **não chama axios** (passa por `services/`) e **não decide** regra de
-negócio — mostra o que a API calculou.
+Regras: componente `.vue` **não chama axios** (passa por store → `services/`) e **não decide**
+regra de negócio — mostra o que a API calculou, inclusive o saldo e as mensagens de erro.
 
 ## 4. Infraestrutura
 
@@ -121,8 +151,8 @@ tecnologias que não se aplicam.
 
 ## 6. Próximas decisões (pendentes)
 
-1. **Formato dos dados da organização** — não presumido. A modelagem (`models/`) e a importação
-   dependem dele.
+1. **Formato dos dados da organização** — não presumido. O cadastro manual usa um modelo próprio;
+   a importação vai converter os arquivos para ele.
 2. **Autenticação** — o desafio não exige; decidir se a demonstração é monousuário.
 3. **Geração de tipos TS a partir do OpenAPI** (`openapi-typescript`) quando houver mais de um
    recurso.

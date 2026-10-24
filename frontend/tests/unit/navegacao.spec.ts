@@ -6,11 +6,13 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import App from '@/App.vue'
 import { itensDeMenu, routes } from '@/router'
 
-// O layout verifica a API ao montar; aqui a API não existe.
+// As telas chamam a API ao montar; aqui a API não existe.
 vi.mock('@/services/health', () => ({
   buscarHealth: vi.fn().mockResolvedValue({ status: 'ok' }),
   buscarReadiness: vi.fn().mockResolvedValue({ status: 'pronto', database: 'ok' }),
 }))
+vi.mock('@/services/insumos', () => ({ listarInsumos: vi.fn().mockResolvedValue([]) }))
+vi.mock('@/services/movimentacoes', () => ({ listarMovimentacoes: vi.fn().mockResolvedValue([]) }))
 
 async function montarEm(caminho: string) {
   const router = createRouter({ history: createMemoryHistory(), routes })

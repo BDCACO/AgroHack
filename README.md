@@ -6,8 +6,8 @@ Transforma registros de compras, retiradas e estoque em informação para decis�
 do mínimo, risco de falta, vencimento próximo, excesso, baixa movimentação, consumo incomum e
 reposição estimada — sempre com justificativa e limitações explícitas.
 
-> **Estado atual:** base do projeto. Frontend, API e banco sobem e conversam entre si; as
-> funcionalidades de estoque e análise ainda não foram implementadas.
+> **Estado atual:** cadastro de insumos e registro de compras e retiradas, com saldo calculado.
+> As análises e os alertas ainda não foram implementados.
 
 ## Stack
 
@@ -52,6 +52,7 @@ make down       # derruba (os dados do banco ficam no volume)
 make logs       # logs
 make migrate    # alembic upgrade head
 make test       # pytest + vitest
+make test-db    # pytest contra o PostgreSQL (com o stack no ar)
 make lint       # ruff + vue-tsc + eslint
 make check-db   # confere API ↔ PostgreSQL com o stack no ar
 make verify     # lint + testes — antes de commitar
