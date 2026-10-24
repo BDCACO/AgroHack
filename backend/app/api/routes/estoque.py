@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.permissoes import usuario_atual
+from app.api.routes.talhoes import Periodo
 from app.core.database import get_db
 from app.core.relogio import hoje
 from app.models import Usuario
@@ -122,12 +123,40 @@ def registrar_inventario(
 
 @campo.get("/movimentacoes", response_model=list[MovimentacaoResposta])
 def listar_movimentacoes(
+    response: Response,
     insumo_id: int | None = None,
+    tipo: Literal["entrada", "saida"] | None = None,
+    motivo: Literal["descarte", "inventario", "nenhum"] | None = None,
+    categoria_id: int | None = None,
+    talhao_id: int | None = None,
+    fornecedor_id: int | None = None,
+    usuario_id: int | None = None,
+    periodo: Periodo = Depends(),
+    busca: str | None = Query(None, min_length=1, max_length=120),
     limite: int = Query(200, ge=1, le=1000),
+    deslocamento: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ) -> list[MovimentacaoResposta]:
-    """As mais recentes primeiro."""
-    return servico.listar_movimentacoes(db, insumo_id, limite)
+    """As mais recentes primeiro (no mesmo dia, a lançada por último). Filtros opcionais, que
+    se somam: `motivo=nenhum` é a retirada para uso (ou, na entrada, a compra); `desde` e
+    `ate`, inclusive; `busca` no nome do insumo, sem diferenciar maiúsculas nem acentos.
+    Página: `limite` e `deslocamento`. O total com os mesmos filtros vem no cabeçalho
+    `X-Total-Count`, e o corpo continua a lista de sempre."""
+    filtro = servico.FiltroDeMovimentacoes(
+        insumo_id=insumo_id,
+        tipo=tipo,
+        motivo=motivo,
+        categoria_id=categoria_id,
+        talhao_id=talhao_id,
+        fornecedor_id=fornecedor_id,
+        usuario_id=usuario_id,
+        desde=periodo.desde,
+        ate=periodo.ate,
+        busca=busca,
+    )
+    pagina, total = servico.listar_movimentacoes(db, filtro, limite, deslocamento)
+    response.headers["X-Total-Count"] = str(total)
+    return pagina
 
 
 @campo.post(

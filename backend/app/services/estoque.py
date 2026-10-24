@@ -7,7 +7,7 @@ from datetime import date
 from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import delete, exists, select
+from sqlalchemy import ColumnElement, delete, exists, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -271,11 +271,69 @@ def remover_insumo(db: Session, insumo_id: int) -> None:
     db.commit()
 
 
-def listar_movimentacoes(db: Session, insumo_id: int | None, limite: int) -> list[Movimentacao]:
-    consulta = select(Movimentacao).order_by(Movimentacao.data.desc(), Movimentacao.id.desc())
-    if insumo_id is not None:
-        consulta = consulta.where(Movimentacao.insumo_id == insumo_id)
-    return list(db.scalars(consulta.limit(limite)))
+@dataclass(frozen=True)
+class FiltroDeMovimentacoes:
+    """Os recortes da lista de movimentações, todos opcionais e somados. `motivo="nenhum"`
+    é a movimentação sem motivo: a retirada para uso, na saída, e a compra, na entrada."""
+
+    insumo_id: int | None = None
+    tipo: Literal["entrada", "saida"] | None = None
+    motivo: Literal["descarte", "inventario", "nenhum"] | None = None
+    categoria_id: int | None = None
+    talhao_id: int | None = None
+    fornecedor_id: int | None = None
+    usuario_id: int | None = None
+    desde: date | None = None  # inclusive
+    ate: date | None = None  # inclusive
+    busca: str | None = None  # no nome do insumo, como em GET /insumos
+
+
+def listar_movimentacoes(
+    db: Session, filtro: FiltroDeMovimentacoes, limite: int, deslocamento: int = 0
+) -> tuple[list[Movimentacao], int]:
+    """Uma página das movimentações, as mais recentes primeiro, e quantas há ao todo com os
+    mesmos filtros. O id desempata o mesmo dia: sem ele, duas do mesmo dia podiam trocar de
+    lugar entre um pedido e outro, e uma página repetiria a que a anterior já mostrou."""
+    condicoes = _condicoes(db, filtro)
+    consulta = (
+        select(Movimentacao)
+        .where(*condicoes)
+        .order_by(Movimentacao.data.desc(), Movimentacao.id.desc())
+        .limit(limite)
+        .offset(deslocamento)
+    )
+    total = db.scalar(select(func.count()).select_from(Movimentacao).where(*condicoes))
+    return list(db.scalars(consulta)), total
+
+
+def _condicoes(db: Session, filtro: FiltroDeMovimentacoes) -> list[ColumnElement[bool]]:
+    m = Movimentacao
+    condicoes = [
+        coluna == valor
+        for coluna, valor in (
+            (m.insumo_id, filtro.insumo_id),
+            (m.tipo, filtro.tipo),
+            (m.talhao_id, filtro.talhao_id),
+            (m.fornecedor_id, filtro.fornecedor_id),
+            (m.usuario_id, filtro.usuario_id),
+        )
+        if valor is not None
+    ]
+    if filtro.motivo == "nenhum":
+        condicoes.append(m.motivo.is_(None))
+    elif filtro.motivo is not None:
+        condicoes.append(m.motivo == filtro.motivo)
+    if filtro.desde is not None:
+        condicoes.append(m.data >= filtro.desde)
+    if filtro.ate is not None:
+        condicoes.append(m.data <= filtro.ate)
+    if filtro.categoria_id is not None:
+        # Subconsulta, e não join: a contagem e a página continuam uma linha por movimentação.
+        da_categoria = select(Insumo.id).where(Insumo.categoria_id == filtro.categoria_id)
+        condicoes.append(m.insumo_id.in_(da_categoria))
+    if filtro.busca is not None:
+        condicoes.append(m.insumo_id.in_(ids_pelo_nome(db, filtro.busca)))
+    return condicoes
 
 
 def registrar_movimentacao(
