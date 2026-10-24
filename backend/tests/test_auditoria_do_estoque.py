@@ -255,6 +255,35 @@ def test_evento_que_falha_desfaz_a_acao(fazenda: SimpleNamespace, db: Session) -
     assert db.get(Insumo, f.ureia) is not None
 
 
+def test_alteracao_que_o_banco_recusa_nao_deixa_evento(
+    fazenda: SimpleNamespace, db: Session
+) -> None:
+    """O nome repetido só aparece no commit, depois de o evento estar na sessão: o evento
+    tem de cair junto com a alteração, e não ficar contando uma mudança que não houve."""
+    api, f = fazenda.api, fazenda
+    ok(api.post(f"{API}/insumos", headers=f.dono, json={"nome": "Calcário", "unidade": "t"}), 201)
+    ok(api.post(f"{API}/talhoes", headers=f.dono, json={"nome": "Pasto 1", "area_ha": 45}), 201)
+    ok(api.post(f"{API}/fornecedores", headers=f.dono, json={"nome": "AgroVet"}), 201)
+    adubo = ok(api.post(f"{API}/categorias", headers=f.dono, json={"nome": "Adubo"}), 201)
+    ok(api.post(f"{API}/categorias", headers=f.dono, json={"nome": "Semente"}), 201)
+
+    repetidos = [
+        api.put(
+            f"{API}/insumos/{f.ureia}",
+            headers=f.dono,
+            json={"nome": "Calcário", "unidade": "kg"},
+        ),
+        api.put(
+            f"{API}/talhoes/{f.talhao}", headers=f.dono, json={"nome": "Pasto 1", "area_ha": 120}
+        ),
+        api.put(f"{API}/fornecedores/{f.revenda}", headers=f.dono, json={"nome": "AgroVet"}),
+        api.put(f"{API}/categorias/{adubo['id']}", headers=f.dono, json={"nome": "Semente"}),
+    ]
+
+    assert [r.status_code for r in repetidos] == [409] * 4
+    assert eventos(db) == []
+
+
 def test_talhao_alterado_e_removido(fazenda: SimpleNamespace, db: Session) -> None:
     api, f = fazenda.api, fazenda
     alterado = {"nome": "Talhão Norte", "area_ha": 118.5, "cultura": "Soja"}
