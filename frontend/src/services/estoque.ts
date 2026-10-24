@@ -6,6 +6,7 @@ import type {
   MovimentacaoEntrada,
   PlanilhaParaImportar,
   ResultadoImportacao,
+  Resumo,
 } from '@/types/api'
 
 import { http } from './http'
@@ -32,6 +33,11 @@ export async function buscarInsumo(id: number): Promise<InsumoDetalhe> {
 
 export async function removerInsumo(id: number): Promise<void> {
   await http.delete(`/insumos/${id}`)
+}
+
+export async function buscarResumo(): Promise<Resumo> {
+  const { data } = await http.get<Resumo>('/resumo')
+  return data
 }
 
 export async function listarMovimentacoes(): Promise<Movimentacao[]> {

@@ -16,6 +16,7 @@ vi.mock('@/services/health', () => ({
 vi.mock('@/services/estoque', () => ({
   buscarInsumo: vi.fn(),
   removerInsumo: vi.fn(),
+  criarInsumo: vi.fn(),
   listarInsumos: vi.fn().mockResolvedValue([]),
   listarMovimentacoes: vi.fn().mockResolvedValue([]),
 }))
@@ -42,6 +43,11 @@ function ureia(): InsumoDetalhe {
     unidade: 'kg',
     estoque_minimo: 10,
     prazo_reposicao_dias: 15,
+    embalagem: null,
+    pedido_minimo: null,
+    carencia_dias: null,
+    custo_medio: null,
+    valor_em_estoque: null,
     demonstracao: false,
     estoque_atual: 21,
     analise: {
@@ -53,6 +59,7 @@ function ureia(): InsumoDetalhe {
         pedir_hoje: true,
         quantidade: 70,
         justificativa: 'Pedir hoje 70 kg.',
+        custo_estimado: null,
       },
       limitacoes: [],
     },
@@ -117,6 +124,46 @@ describe('InsumoPage', () => {
     expect(api.removerInsumo).toHaveBeenCalledWith(7)
     // A lista entra por import() dinâmico: a navegação leva mais que um flush.
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('insumos'))
+  })
+})
+
+describe('Reais no insumo', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('a página do insumo mostra custo médio, embalagem, valor em estoque e custo da reposição', async () => {
+    const comPreco = ureia()
+    Object.assign(comPreco, { custo_medio: 3.2, valor_em_estoque: 67.2, embalagem: 50 })
+    comPreco.analise.reposicao = { ...comPreco.analise.reposicao!, quantidade: 100, custo_estimado: 320 }
+    vi.mocked(api.buscarInsumo).mockResolvedValue(comPreco)
+
+    const { wrapper } = await montarEm('/insumos/7')
+
+    expect(wrapper.find('main header').text()).toMatch(
+      /Embalagem de 50 kg\. Custo médio de R\$\s3,20\/kg\./,
+    )
+    const resumo = wrapper.findAll('main dd').map((dd) => dd.text())
+    expect(resumo).toContainEqual(expect.stringMatching(/^R\$\s67,20 em estoque$/))
+    expect(resumo).toContainEqual(expect.stringMatching(/^100 kg, cerca de R\$\s320,00$/))
+  })
+
+  it('o cadastro manda a embalagem e o pedido mínimo, na unidade do insumo', async () => {
+    vi.mocked(api.criarInsumo).mockImplementation(async (dados) => ({ ...ureia(), ...dados }))
+    const { wrapper } = await montarEm('/insumos')
+
+    await wrapper.findAll('main button').find((b) => b.text() === 'Cadastrar insumo')!.trigger('click')
+    const campos = wrapper.findAll('main form label')
+    const campo = (rotulo: string) => campos.find((l) => l.text().startsWith(rotulo))!.find('input')
+    await campo('Nome').setValue('Ureia')
+    await campo('Unidade').setValue('kg')
+    expect(campos.find((l) => l.text().startsWith('Embalagem'))!.text()).toContain('Embalagem, em kg')
+    await campo('Embalagem').setValue(50)
+    await campo('Pedido mínimo').setValue(100)
+    await wrapper.find('main form').trigger('submit')
+    await flushPromises()
+
+    expect(api.criarInsumo).toHaveBeenCalledWith(
+      expect.objectContaining({ nome: 'Ureia', unidade: 'kg', embalagem: 50, pedido_minimo: 100 }),
+    )
   })
 })
 

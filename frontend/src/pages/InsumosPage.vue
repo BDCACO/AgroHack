@@ -5,6 +5,7 @@ import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import IconeSvg from '@/components/IconeSvg.vue'
 import SeloDeGravidade from '@/components/SeloDeGravidade.vue'
+import { reais } from '@/formatos'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import type { Insumo } from '@/types/api'
 
@@ -12,7 +13,14 @@ const estoque = useEstoqueStore()
 onMounted(() => estoque.carregar())
 
 // Input numérico vazio vale '' no v-model; '' = "não informado" (null na API).
-const vazio = { nome: '', unidade: '', estoque_minimo: '' as number | '', prazo: '' as number | '' }
+const vazio = {
+  nome: '',
+  unidade: '',
+  estoque_minimo: '' as number | '',
+  prazo: '' as number | '',
+  embalagem: '' as number | '',
+  pedido_minimo: '' as number | '',
+}
 const form = reactive({ ...vazio })
 const aberto = ref(false)
 const editandoId = ref<number>()
@@ -29,6 +37,8 @@ function abrir(insumo?: Insumo) {
           unidade: insumo.unidade,
           estoque_minimo: insumo.estoque_minimo ?? '',
           prazo: insumo.prazo_reposicao_dias ?? '',
+          embalagem: insumo.embalagem ?? '',
+          pedido_minimo: insumo.pedido_minimo ?? '',
         }
       : vazio,
   )
@@ -50,6 +60,8 @@ async function salvar() {
         unidade: form.unidade,
         estoque_minimo: form.estoque_minimo === '' ? null : form.estoque_minimo,
         prazo_reposicao_dias: form.prazo === '' ? null : form.prazo,
+        embalagem: form.embalagem === '' ? null : form.embalagem,
+        pedido_minimo: form.pedido_minimo === '' ? null : form.pedido_minimo,
       },
       editandoId.value,
     )
@@ -143,9 +155,32 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         class="campo"
       >
     </label>
+    <label class="text-sm font-medium text-stone-700">
+      Embalagem, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span>
+      <input
+        v-model.number="form.embalagem"
+        type="number"
+        min="0.001"
+        step="any"
+        placeholder="50"
+        class="campo"
+      >
+    </label>
+    <label class="text-sm font-medium text-stone-700">
+      Pedido mínimo, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span>
+      <input
+        v-model.number="form.pedido_minimo"
+        type="number"
+        min="0"
+        step="any"
+        class="campo"
+      >
+    </label>
     <p class="text-xs text-stone-500 sm:col-span-2 lg:col-span-4">
       O mínimo dispara o alerta de estoque baixo e vira margem de segurança na reposição. O prazo
-      é quanto o fornecedor leva para entregar; sem ele, a análise assume 15 dias e avisa.
+      é quanto o fornecedor leva para entregar; sem ele, a análise assume 15 dias e avisa. Com a
+      embalagem (50 para o saco de 50 kg) e o pedido mínimo da revenda, a reposição sai em
+      embalagens fechadas. O preço entra ao lançar cada compra, em Movimentações.
     </p>
     <p
       v-if="erroDoForm"
@@ -217,7 +252,9 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
               class="font-semibold tabular-nums"
               :class="insumo.estoque_atual < 0 ? 'text-red-700' : 'text-stone-800'"
             >{{ numero(insumo.estoque_atual) }} {{ insumo.unidade }}</span>
-            em estoque
+            em estoque<template v-if="insumo.valor_em_estoque !== null">
+              · {{ reais(insumo.valor_em_estoque) }}
+            </template>
           </p>
           <p class="mt-0.5 text-xs text-stone-500 tabular-nums">
             Mínimo {{ insumo.estoque_minimo === null ? 'não definido' : `${numero(insumo.estoque_minimo)} ${insumo.unidade}` }}
@@ -253,6 +290,9 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
               Estoque atual
             </th>
             <th class="px-4 py-3 text-right font-semibold">
+              Valor em estoque
+            </th>
+            <th class="px-4 py-3 text-right font-semibold">
               Mínimo
             </th>
             <th class="px-4 py-3 text-right font-semibold">
@@ -285,6 +325,13 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
               :class="insumo.estoque_atual < 0 ? 'text-red-700' : ''"
             >
               {{ numero(insumo.estoque_atual) }} {{ insumo.unidade }}
+            </td>
+            <!-- Sem compra com preço, não há custo médio: um traço, e não R$ 0,00. -->
+            <td
+              class="px-4 py-3 text-right tabular-nums text-stone-600"
+              :title="insumo.custo_medio === null ? undefined : `Custo médio: ${reais(insumo.custo_medio)}/${insumo.unidade}`"
+            >
+              {{ insumo.valor_em_estoque === null ? '—' : reais(insumo.valor_em_estoque) }}
             </td>
             <td class="px-4 py-3 text-right tabular-nums text-stone-600">
               {{ insumo.estoque_minimo === null ? '—' : `${numero(insumo.estoque_minimo)} ${insumo.unidade}` }}

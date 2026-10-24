@@ -9,6 +9,7 @@ import type {
   Movimentacao,
   MovimentacaoEntrada,
   PlanilhaParaImportar,
+  Resumo,
 } from '@/types/api'
 
 const ORDEM_GRAVIDADE = { alta: 0, media: 1, baixa: 2 } as const
@@ -23,6 +24,8 @@ export const useEstoqueStore = defineStore('estoque', {
   state: () => ({
     insumos: [] as Insumo[],
     movimentacoes: [] as Movimentacao[],
+    // Só o Painel pede. Sem ele (falhou ou ainda não chegou), o Painel mostra o resto.
+    resumo: null as Resumo | null,
     carregando: false,
     carregado: false,
     erro: null as string | null,
@@ -54,6 +57,13 @@ export const useEstoqueStore = defineStore('estoque', {
         this.erro = mensagemDeErro(erro)
       } finally {
         this.carregando = false
+      }
+    },
+    async carregarResumo() {
+      try {
+        this.resumo = await api.buscarResumo()
+      } catch {
+        this.resumo = null
       }
     },
     /** Sem `id`, cadastra; com `id`, altera. Erros sobem para o formulário mostrar. */

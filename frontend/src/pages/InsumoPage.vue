@@ -7,6 +7,7 @@ import CartaoDeAlerta from '@/components/CartaoDeAlerta.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import GraficoDeEstoque from '@/components/GraficoDeEstoque.vue'
 import IconeSvg, { type NomeIcone } from '@/components/IconeSvg.vue'
+import { reais } from '@/formatos'
 import { buscarInsumo } from '@/services/estoque'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import type { InsumoDetalhe } from '@/types/api'
@@ -54,18 +55,33 @@ const numero = (valor: number, casas = 3) =>
 const dataBr = (data: string) => data.split('-').reverse().join('/')
 
 /** Os números que resumem o insumo. Quem calcula é a API; aqui só se formata. */
-const resumo = computed((): { rotulo: string; valor: string; icone: NomeIcone; alerta?: boolean }[] => {
+const resumo = computed((): {
+  rotulo: string
+  valor: string
+  icone: NomeIcone
+  alerta?: boolean
+  detalhe?: string
+}[] => {
   if (!insumo.value) return []
-  const { unidade, estoque_atual, analise } = insumo.value
+  const { unidade, estoque_atual, analise, valor_em_estoque } = insumo.value
   const { consumo_diario: consumo, cobertura_dias: cobertura, reposicao } = analise
   return [
-    { rotulo: 'Estoque atual', valor: `${numero(estoque_atual)} ${unidade}`, icone: 'insumos' },
+    {
+      rotulo: 'Estoque atual',
+      valor: `${numero(estoque_atual)} ${unidade}`,
+      icone: 'insumos',
+      detalhe: valor_em_estoque === null ? undefined : `${reais(valor_em_estoque)} em estoque`,
+    },
     { rotulo: 'Consumo médio', valor: consumo ? `${numero(consumo, 2)} ${unidade}/dia` : '—', icone: 'movimentacoes' },
     { rotulo: 'Dura cerca de', valor: cobertura === null ? '—' : `${numero(Math.round(cobertura))} dias`, icone: 'relogio' },
     {
       rotulo: 'Reposição',
       icone: 'calendario',
       alerta: Boolean(reposicao?.pedir_hoje),
+      detalhe:
+        reposicao?.custo_estimado == null
+          ? undefined
+          : `${numero(reposicao.quantidade)} ${unidade}, cerca de ${reais(reposicao.custo_estimado)}`,
       valor: !reposicao
         ? 'nada a pedir'
         : reposicao.pedir_hoje
@@ -77,9 +93,14 @@ const resumo = computed((): { rotulo: string; valor: string; icone: NomeIcone; a
 
 const descricao = computed(() => {
   if (!insumo.value) return undefined
-  const { unidade, estoque_minimo, prazo_reposicao_dias: prazo } = insumo.value
+  const { unidade, estoque_minimo, prazo_reposicao_dias: prazo, custo_medio, embalagem } = insumo.value
   const minimo = estoque_minimo === null ? 'sem mínimo' : `mínimo de ${numero(estoque_minimo)} ${unidade}`
-  return `Em ${unidade}, ${minimo}, ${prazo === null ? 'sem prazo de entrega' : `entrega em ${prazo} dias`}.`
+  const partes = [
+    `Em ${unidade}, ${minimo}, ${prazo === null ? 'sem prazo de entrega' : `entrega em ${prazo} dias`}.`,
+    embalagem === null ? '' : `Embalagem de ${numero(embalagem)} ${unidade}.`,
+    custo_medio === null ? '' : `Custo médio de ${reais(custo_medio)}/${unidade}.`,
+  ]
+  return partes.filter(Boolean).join(' ')
 })
 </script>
 
@@ -154,6 +175,12 @@ const descricao = computed(() => {
           :class="item.alerta ? 'text-red-700' : 'text-stone-900'"
         >
           {{ item.valor }}
+        </dd>
+        <dd
+          v-if="item.detalhe"
+          class="mt-0.5 text-xs text-stone-500 tabular-nums"
+        >
+          {{ item.detalhe }}
         </dd>
       </div>
     </dl>

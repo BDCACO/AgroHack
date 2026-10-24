@@ -7,13 +7,14 @@ import CoberturaDoEstoque from '@/components/CoberturaDoEstoque.vue'
 import NumeroRolante from '@/components/NumeroRolante.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import IconeSvg, { type NomeIcone } from '@/components/IconeSvg.vue'
+import { reais } from '@/formatos'
 import { URL_DO_RELATORIO } from '@/services/estoque'
 import { useEstoqueStore } from '@/stores/estoque'
 import type { Gravidade, Reposicao } from '@/types/api'
 
 // Só exibe: quem decide alerta, justificativa, reposição e limitação é o backend.
 const estoque = useEstoqueStore()
-onMounted(() => estoque.carregar())
+onMounted(() => Promise.all([estoque.carregar(), estoque.carregarResumo()]))
 
 const hoje = new Date()
 const dataDeHoje = hoje.toLocaleDateString('pt-BR', {
@@ -90,6 +91,39 @@ const reposicoes = computed(() =>
     .flatMap((insumo) => (insumo.analise.reposicao ? [{ insumo, ...insumo.analise.reposicao }] : []))
     .sort((a, b) => a.pedir_em.localeCompare(b.pedir_em)),
 )
+
+// O estoque em reais, do GET /resumo. Um número só por cartão, e embaixo o que ele quer
+// dizer; sem preço nenhum, o cartão diz o que falta em vez de mostrar R$ 0,00.
+const cartoesEmReais = computed(() => {
+  const resumo = estoque.resumo
+  if (!resumo) return []
+  const { compras_sugeridas: compras, perdas } = resumo
+  const pedidos = compras.pedidos === 1 ? '1 pedido' : `${compras.pedidos} pedidos`
+  return [
+    {
+      titulo: 'Valor em estoque',
+      valor: resumo.valor_em_estoque === null ? '—' : reais(resumo.valor_em_estoque),
+      nota:
+        resumo.valor_em_estoque === null
+          ? 'lance o preço nas compras'
+          : 'pelo custo médio das compras',
+    },
+    {
+      titulo: 'Compras, próximos 30 dias',
+      valor: compras.valor === null ? '—' : reais(compras.valor),
+      nota: !compras.pedidos
+        ? 'nada a pedir'
+        : compras.pedir_hoje
+          ? `${pedidos}, ${compras.pedir_hoje} para hoje`
+          : pedidos,
+    },
+    {
+      titulo: 'Perdas, últimos 30 dias',
+      valor: reais(perdas.ultimos_30_dias),
+      nota: `descartes e faltas · ${reais(perdas.total)} no total`,
+    },
+  ]
+})
 
 const dataBr = (data: string) => data.split('-').reverse().join('/')
 const quando = (r: Reposicao) => (r.pedir_hoje ? 'pedir hoje' : `pedir até ${dataBr(r.pedir_em)}`)
@@ -250,6 +284,39 @@ async function copiar() {
       </button>
     </div>
 
+    <section
+      v-if="estoque.resumo"
+      aria-label="O estoque em reais"
+      class="mt-3 animate-surgir [animation-delay:100ms]"
+      data-teste="em-reais"
+    >
+      <dl class="grid gap-3 sm:grid-cols-3">
+        <div
+          v-for="cartao in cartoesEmReais"
+          :key="cartao.titulo"
+          class="cartao px-4 py-3"
+        >
+          <dt class="text-xs font-semibold text-stone-500">
+            {{ cartao.titulo }}
+          </dt>
+          <dd class="mt-1 text-xl font-bold text-stone-900 tabular-nums">
+            {{ cartao.valor }}
+          </dd>
+          <dd class="text-xs text-stone-500">
+            {{ cartao.nota }}
+          </dd>
+        </div>
+      </dl>
+      <!-- O que os números em reais não contam (insumo sem preço, por exemplo). -->
+      <p
+        v-for="limitacao in estoque.resumo.limitacoes"
+        :key="limitacao"
+        class="mt-2 text-xs text-stone-500"
+      >
+        {{ limitacao }}
+      </p>
+    </section>
+
     <CoberturaDoEstoque
       :insumos="estoque.insumos"
       class="mt-6 animate-surgir [animation-delay:150ms]"
@@ -369,6 +436,12 @@ async function copiar() {
             <p class="text-2xl font-bold text-stone-900 tabular-nums">
               {{ item.quantidade.toLocaleString('pt-BR') }}
               <span class="text-base font-medium text-stone-500">{{ item.insumo.unidade }}</span>
+            </p>
+            <p
+              v-if="item.custo_estimado !== null"
+              class="text-sm text-stone-600 tabular-nums"
+            >
+              cerca de {{ reais(item.custo_estimado) }}
             </p>
           </div>
           <div class="min-w-0 flex-1">
