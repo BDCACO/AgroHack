@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router'
 import IconeSvg from '@/components/IconeSvg.vue'
 
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
+import ConfirmarRemocao from '@/components/ConfirmarRemocao.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import type { Movimentacao, MovimentacaoEntrada } from '@/types/api'
@@ -68,15 +69,15 @@ async function lancar() {
   }
 }
 
-async function remover(movimentacao: Movimentacao) {
+// A que está para sair, esperando o "Remover" da janela de confirmação.
+const emRemocao = ref<Movimentacao | null>(null)
+function remover(movimentacao: Movimentacao) {
+  emRemocao.value = movimentacao
+}
+function textoDaRemocao(movimentacao: Movimentacao) {
   const insumo = estoque.insumoPorId.get(movimentacao.insumo_id)
   const resumo = `${rotulo[movimentacao.tipo].toLowerCase()} de ${numero(movimentacao.quantidade)} ${insumo?.unidade ?? ''} de ${insumo?.nome ?? 'insumo'}`
-  if (!window.confirm(`Remover a ${resumo} em ${dataBr(movimentacao.data)}?`)) return
-  try {
-    await estoque.removerMovimentacao(movimentacao.id)
-  } catch (erro) {
-    window.alert(mensagemDeErro(erro))
-  }
+  return `Remover a ${resumo} em ${dataBr(movimentacao.data)}? O estoque do insumo será recalculado.`
 }
 
 const rotulo = { entrada: 'Entrada', saida: 'Saída' } as const
@@ -411,4 +412,12 @@ const porDia = computed(() => {
       </div>
     </template>
   </template>
+
+  <ConfirmarRemocao
+    v-if="emRemocao"
+    titulo="Remover movimentação"
+    :texto="textoDaRemocao(emRemocao)"
+    :remover="() => estoque.removerMovimentacao(emRemocao!.id)"
+    @fechar="emRemocao = null"
+  />
 </template>

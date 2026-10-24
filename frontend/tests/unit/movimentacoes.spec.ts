@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import App from '@/App.vue'
 import { routes } from '@/router'
 import * as api from '@/services/estoque'
+import { ApiError } from '@/services/http'
 import type { Insumo, Movimentacao } from '@/types/api'
 
 vi.mock('@/services/health', () => ({
@@ -16,6 +17,7 @@ vi.mock('@/services/estoque', () => ({
   listarInsumos: vi.fn(),
   listarMovimentacoes: vi.fn(),
   registrarMovimentacao: vi.fn(),
+  removerMovimentacao: vi.fn(),
 }))
 
 // Datas relativas a hoje, no mesmo formato da API (AAAA-MM-DD, fuso do navegador).
@@ -48,7 +50,8 @@ async function montar() {
   const router = createRouter({ history: createMemoryHistory(), routes })
   await router.push('/movimentacoes')
   await router.isReady()
-  const wrapper = mount(App, { global: { plugins: [router] } })
+  // Preso ao documento: a janela de confirmação vai para o <body> (Teleport).
+  const wrapper = mount(App, { global: { plugins: [router] }, attachTo: document.body })
   await flushPromises()
   return wrapper
 }
@@ -90,5 +93,79 @@ describe('Movimentações no celular', () => {
     expect(wrapper.find('[data-teste="confirmacao"]').text()).toBe(
       'Saída de 3 kg de Ureia agrícola lançada.',
     )
+  })
+})
+
+describe('Remover movimentação', () => {
+  const janela = () => document.querySelector<HTMLElement>('[role="dialog"]')
+  const botao = (texto: string) =>
+    [...(janela()?.querySelectorAll('button') ?? [])].find((b) => b.textContent?.trim() === texto)!
+
+  async function abrirJanela() {
+    const wrapper = await montar()
+    const linha = wrapper.findAll('button').find((b) => b.text() === 'Remover')!
+    await linha.trigger('click')
+    await flushPromises()
+    return wrapper
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.mocked(api.listarInsumos).mockResolvedValue([ureia])
+    vi.mocked(api.listarMovimentacoes).mockResolvedValue([mov(3, 0, 'saida', 12.5)])
+    vi.mocked(api.removerMovimentacao).mockReset()
+    document.body.innerHTML = ''
+  })
+
+  it('pergunta numa janela da página, com o foco em Cancelar', async () => {
+    const confirm = vi.spyOn(window, 'confirm')
+    const wrapper = await abrirJanela()
+
+    expect(confirm).not.toHaveBeenCalled()
+    expect(janela()?.textContent).toContain('Remover a saída de 12,5 kg de Ureia agrícola')
+    expect(document.activeElement).toBe(botao('Cancelar'))
+    wrapper.unmount()
+  })
+
+  it('Cancelar e Esc fecham sem remover', async () => {
+    const wrapper = await abrirJanela()
+    botao('Cancelar').click()
+    await flushPromises()
+    expect(janela()).toBeNull()
+
+    await wrapper.findAll('button').find((b) => b.text() === 'Remover')!.trigger('click')
+    await flushPromises()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(janela()).toBeNull()
+    expect(api.removerMovimentacao).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('remove ao confirmar e fecha a janela', async () => {
+    vi.mocked(api.removerMovimentacao).mockResolvedValue()
+    const wrapper = await abrirJanela()
+
+    botao('Remover').click()
+    await flushPromises()
+
+    expect(api.removerMovimentacao).toHaveBeenCalledWith(3)
+    expect(janela()).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('se a API recusar, a explicação aparece na janela, que continua aberta', async () => {
+    vi.mocked(api.removerMovimentacao).mockRejectedValue(
+      new ApiError(409, { detail: 'A remoção deixaria o estoque negativo.' }),
+    )
+    const wrapper = await abrirJanela()
+
+    botao('Remover').click()
+    await flushPromises()
+
+    expect(janela()?.querySelector('[role="alert"]')?.textContent?.trim()).toBe(
+      'A remoção deixaria o estoque negativo.',
+    )
+    wrapper.unmount()
   })
 })
