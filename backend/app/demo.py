@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_sessionmaker
 from app.core.relogio import hoje
 from app.models import Categoria, Fornecedor, Insumo, ItemDoPedido, Movimentacao, Pedido, Talhao
+from app.services import auditoria
 
 DIAS_DE_HISTORICO = 180
 TALHOES = (
@@ -51,7 +52,9 @@ CATEGORIAS = {
 
 
 def carregar(db: Session, referencia: date) -> int:
-    limpar(db)
+    """Apaga a demonstração anterior e gera de novo, numa transação só: ou a fazenda
+    fictícia é trocada inteira, ou nada muda. O evento diz quanto saiu e quanto entrou."""
+    removidos = _apagar(db)
     # Talhão que já existe com o nome (real, ou o que o `limpar` preservou) é
     # reaproveitado: recriá-lo quebraria no nome único. As aplicações fictícias nele
     # saem no próximo `limpar`, junto com os insumos de demonstração.
@@ -83,6 +86,22 @@ def carregar(db: Session, referencia: date) -> int:
     _categorizar(db, insumos)
     db.add_all(insumos)
     db.add(_pedido_a_caminho(referencia, insumos, fornecedores))
+    criados = {
+        "insumos": len(insumos),
+        # Depois do flush todo talhão tem id: o criado agora é o marcado como demonstração
+        # (o reaproveitado já deixou de sê-lo no _apagar, ou é real).
+        "talhoes": sum(t.demonstracao for t in talhoes.values()),
+        "fornecedores": sum(f.id is None for f in fornecedores.values()),
+        "pedidos": 1,
+    }
+    auditoria.registrar(
+        db,
+        auditoria.TERMINAL,
+        "demo.carregada",
+        None,
+        None,
+        {"referencia": referencia, "criados": criados, "removidos": removidos},
+    )
     db.commit()
     return len(insumos)
 
@@ -118,25 +137,41 @@ def _categorizar(db: Session, insumos: list[Insumo]) -> None:
 
 
 def limpar(db: Session) -> None:
+    removidos = _apagar(db)
+    auditoria.registrar(db, auditoria.TERMINAL, "demo.limpa", None, None, {"removidos": removidos})
+    db.commit()
+
+
+def _apagar(db: Session) -> dict[str, int]:
+    """Apaga a demonstração, sem commit, e diz quanto de cada coisa saiu."""
     # As movimentações vão junto pelo ON DELETE CASCADE, e com elas as aplicações nos
     # talhões de demonstração.
-    db.execute(delete(Insumo).where(Insumo.demonstracao))
+    insumos = db.execute(delete(Insumo).where(Insumo.demonstracao)).rowcount
     # Talhão de demonstração com aplicação de um insumo real (lançada durante a
     # apresentação) fica: apagá-lo levaria junto o registro de onde o insumo real foi.
     com_aplicacao = exists().where(Movimentacao.talhao_id == Talhao.id)
-    db.execute(delete(Talhao).where(Talhao.demonstracao, ~com_aplicacao))
+    talhoes = db.execute(delete(Talhao).where(Talhao.demonstracao, ~com_aplicacao)).rowcount
     # E deixa de ser demonstração: guarda dado real, e a tela não pode chamá-lo de fictício.
     db.execute(update(Talhao).where(Talhao.demonstracao).values(demonstracao=False))
     # As linhas de pedido dos insumos apagados foram junto; o pedido vazio sai também.
-    db.execute(delete(Pedido).where(~exists().where(ItemDoPedido.pedido_id == Pedido.id)))
+    pedidos = db.execute(
+        delete(Pedido).where(~exists().where(ItemDoPedido.pedido_id == Pedido.id))
+    ).rowcount
     # O fornecedor de demonstração com compra ou pedido real fica, pelo mesmo motivo do
     # talhão, e deixa de ser demonstração.
     com_historia = exists().where(Movimentacao.fornecedor_id == Fornecedor.id) | exists().where(
         Pedido.fornecedor_id == Fornecedor.id
     )
-    db.execute(delete(Fornecedor).where(Fornecedor.demonstracao, ~com_historia))
+    fornecedores = db.execute(
+        delete(Fornecedor).where(Fornecedor.demonstracao, ~com_historia)
+    ).rowcount
     db.execute(update(Fornecedor).where(Fornecedor.demonstracao).values(demonstracao=False))
-    db.commit()
+    return {
+        "insumos": insumos,
+        "talhoes": talhoes,
+        "fornecedores": fornecedores,
+        "pedidos": pedidos,
+    }
 
 
 def _fazenda(

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.relogio import hoje
 from app.demo import carregar, limpar
 from app.models import Movimentacao
+from tests.test_eventos_de_auditoria import eventos
 
 
 def test_cada_insumo_acende_os_alertas_do_roteiro(client: TestClient, db: Session) -> None:
@@ -187,3 +188,26 @@ def test_cada_insumo_na_sua_categoria(client: TestClient, db: Session) -> None:
     # Limpar não apaga categoria: são as de partida, e o dono pode usá-las nos insumos reais.
     limpar(db)
     assert len(client.get("/api/v1/categorias").json()) == 6
+
+
+def test_carregar_e_limpar_deixam_rastro(db: Session) -> None:
+    """A demonstração apaga e cria em massa, rodada no servidor: a trilha diz quando e
+    quanto, com origem terminal e sem usuário."""
+    carregar(db, hoje())
+    carregar(db, hoje())  # recarregar apaga a carga anterior: o evento diz quanto
+
+    limpar(db)
+
+    primeira, segunda, limpeza = eventos(db)
+    assert [e.acao for e in (primeira, segunda, limpeza)] == [
+        "demo.carregada",
+        "demo.carregada",
+        "demo.limpa",
+    ]
+    for evento in (primeira, segunda, limpeza):
+        assert (evento.origem, evento.usuario_id, evento.entidade) == ("terminal", None, None)
+    nada = {"insumos": 0, "talhoes": 0, "fornecedores": 0, "pedidos": 0}
+    tudo = {"insumos": 7, "talhoes": 3, "fornecedores": 3, "pedidos": 1}
+    assert primeira.dados == {"referencia": str(hoje()), "criados": tudo, "removidos": nada}
+    assert segunda.dados["removidos"] == tudo
+    assert limpeza.dados == {"removidos": tudo}
