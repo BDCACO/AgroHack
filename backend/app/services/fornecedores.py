@@ -8,6 +8,7 @@ from app.core.database import violou_nome_unico
 from app.models import Fornecedor, Insumo, Movimentacao, Pedido
 from app.schemas.compras import FornecedorCadastro, FornecedorDetalhe, FornecedorResposta
 from app.schemas.estoque import MovimentacaoResposta
+from app.services import auditoria
 from app.services.estoque import precos_pagos
 
 # Compras no detalhe do fornecedor: as recentes bastam para conferir; o preço por insumo
@@ -54,11 +55,25 @@ def criar_fornecedor(db: Session, dados: FornecedorCadastro) -> Fornecedor:
     return fornecedor
 
 
-def atualizar_fornecedor(db: Session, fornecedor_id: int, dados: FornecedorCadastro) -> Fornecedor:
+def atualizar_fornecedor(
+    db: Session, fornecedor_id: int, dados: FornecedorCadastro, origem: auditoria.Origem
+) -> Fornecedor:
     """Muda só o que veio: a tela que só desativa não apaga o telefone."""
     fornecedor = buscar_fornecedor(db, fornecedor_id)
+    antes = _cadastro(fornecedor)
     for campo, valor in dados.model_dump(exclude_unset=True).items():
         setattr(fornecedor, campo, valor)
+    # Desativar tira a revenda das escolhas e da sugestão de pedido; o telefone trocado
+    # manda o pedido para outro número.
+    if mudou := auditoria.diferencas(antes, _cadastro(fornecedor)):
+        auditoria.registrar(
+            db,
+            origem,
+            "fornecedor.alterado",
+            "fornecedor",
+            fornecedor.id,
+            {"nome": fornecedor.nome, **mudou},
+        )
     _salvar(db)
     return fornecedor
 
@@ -79,7 +94,7 @@ def detalhar_fornecedor(db: Session, fornecedor_id: int) -> FornecedorDetalhe:
     )
 
 
-def remover_fornecedor(db: Session, fornecedor_id: int) -> None:
+def remover_fornecedor(db: Session, fornecedor_id: int, origem: auditoria.Origem) -> None:
     fornecedor = buscar_fornecedor(db, fornecedor_id)
     compras = db.scalar(
         select(func.count())
@@ -91,6 +106,14 @@ def remover_fornecedor(db: Session, fornecedor_id: int) -> None:
     )
     if compras or pedidos:
         raise FornecedorComHistoria(fornecedor.nome, compras, pedidos)
+    auditoria.registrar(
+        db,
+        origem,
+        "fornecedor.removido",
+        "fornecedor",
+        fornecedor.id,
+        {"id": fornecedor.id, **_cadastro(fornecedor), "demonstracao": fornecedor.demonstracao},
+    )
     db.delete(fornecedor)
     try:
         db.commit()
@@ -105,6 +128,17 @@ def buscar_fornecedor(db: Session, fornecedor_id: int) -> Fornecedor:
     if fornecedor is None:
         raise FornecedorInexistente
     return fornecedor
+
+
+def _cadastro(fornecedor: Fornecedor) -> dict[str, object]:
+    return {
+        "nome": fornecedor.nome,
+        "contato": fornecedor.contato,
+        "telefone": fornecedor.telefone,
+        "cidade": fornecedor.cidade,
+        "observacao": fornecedor.observacao,
+        "ativo": fornecedor.ativo,
+    }
 
 
 def _salvar(db: Session) -> None:

@@ -3,9 +3,11 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from app.api.permissoes import origem_do_pedido
 from app.core.database import get_db
 from app.schemas.talhao import TalhaoCadastro, TalhaoDetalhe, TalhaoResposta
 from app.services import talhoes as servico
+from app.services.auditoria import Origem
 
 # Como no estoque: o funcionário consulta os talhões (para lançar a aplicação no certo); o
 # dono cadastra, altera e remove.
@@ -60,10 +62,13 @@ def detalhar_talhao(
 
 @gestao.put("/talhoes/{talhao_id}", response_model=TalhaoResposta)
 def atualizar_talhao(
-    talhao_id: int, dados: TalhaoCadastro, db: Session = Depends(get_db)
+    talhao_id: int,
+    dados: TalhaoCadastro,
+    db: Session = Depends(get_db),
+    origem: Origem = Depends(origem_do_pedido),
 ) -> TalhaoResposta:
     try:
-        return servico.atualizar_talhao(db, talhao_id, dados)
+        return servico.atualizar_talhao(db, talhao_id, dados, origem)
     except servico.TalhaoInexistente:
         raise _TALHAO_INEXISTENTE from None
     except servico.NomeDuplicado:
@@ -71,10 +76,12 @@ def atualizar_talhao(
 
 
 @gestao.delete("/talhoes/{talhao_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remover_talhao(talhao_id: int, db: Session = Depends(get_db)) -> Response:
+def remover_talhao(
+    talhao_id: int, db: Session = Depends(get_db), origem: Origem = Depends(origem_do_pedido)
+) -> Response:
     """Só o talhão sem aplicação: com alguma, `409`, para não perder onde cada insumo foi."""
     try:
-        servico.remover_talhao(db, talhao_id)
+        servico.remover_talhao(db, talhao_id, origem)
     except servico.TalhaoInexistente:
         raise _TALHAO_INEXISTENTE from None
     except servico.TalhaoComAplicacoes as erro:

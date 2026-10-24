@@ -253,3 +253,114 @@ def test_evento_que_falha_desfaz_a_acao(fazenda: SimpleNamespace, db: Session) -
 
     assert db.get(Movimentacao, lancada["id"]) is not None
     assert db.get(Insumo, f.ureia) is not None
+
+
+def test_talhao_alterado_e_removido(fazenda: SimpleNamespace, db: Session) -> None:
+    api, f = fazenda.api, fazenda
+    alterado = {"nome": "Talhão Norte", "area_ha": 118.5, "cultura": "Soja"}
+
+    ok(api.put(f"{API}/talhoes/{f.talhao}", headers=f.dono, json=alterado))
+    ok(api.delete(f"{API}/talhoes/{f.talhao}", headers=f.dono), 204)
+
+    alteracao, remocao = eventos(db)
+    assert (alteracao.acao, alteracao.entidade, alteracao.entidade_id) == (
+        "talhao.alterado",
+        "talhao",
+        f.talhao,
+    )
+    assert alteracao.dados == {
+        "nome": "Talhão Norte",
+        "antes": {"area_ha": 120.0, "cultura": None},
+        "depois": {"area_ha": 118.5, "cultura": "Soja"},
+    }
+    assert (remocao.acao, remocao.usuario_id) == ("talhao.removido", f.maria.id)
+    assert remocao.dados == {
+        "id": f.talhao,
+        "nome": "Talhão Norte",
+        "area_ha": 118.5,
+        "cultura": "Soja",
+        "demonstracao": False,
+    }
+
+
+def test_talhao_com_aplicacao_nao_sai_nem_deixa_evento(
+    fazenda: SimpleNamespace, db: Session
+) -> None:
+    api, f = fazenda.api, fazenda
+    aplicacao = {"insumo_id": f.ureia, "tipo": "saida", "data": str(HOJE), "quantidade": 5}
+    ok(
+        api.post(f"{API}/movimentacoes", headers=f.dono, json=aplicacao | {"talhao_id": f.talhao}),
+        201,
+    )
+
+    assert api.delete(f"{API}/talhoes/{f.talhao}", headers=f.dono).status_code == 409
+
+    assert eventos(db, "talhao.removido") == []
+
+
+def test_categoria_alterada_e_removida(fazenda: SimpleNamespace, db: Session) -> None:
+    api, f = fazenda.api, fazenda
+    categoria = ok(api.post(f"{API}/categorias", headers=f.dono, json={"nome": "Adubo"}), 201)
+
+    ok(api.put(f"{API}/categorias/{categoria['id']}", headers=f.dono, json={"nome": "Adubos"}))
+    ok(api.delete(f"{API}/categorias/{categoria['id']}", headers=f.dono), 204)
+
+    alteracao, remocao = eventos(db)
+    assert (alteracao.acao, alteracao.entidade_id) == ("categoria.alterada", categoria["id"])
+    assert alteracao.dados == {"antes": {"nome": "Adubo"}, "depois": {"nome": "Adubos"}}
+    assert (remocao.acao, remocao.dados) == (
+        "categoria.removida",
+        {"id": categoria["id"], "nome": "Adubos"},
+    )
+
+
+def test_fornecedor_alterado_so_no_que_veio_e_removido(
+    fazenda: SimpleNamespace, db: Session
+) -> None:
+    api, f = fazenda.api, fazenda
+    ok(
+        api.put(
+            f"{API}/fornecedores/{f.revenda}",
+            headers=f.dono,
+            json={"nome": "Revenda Boa Safra", "telefone": "69 99999-0000", "cidade": "Ariquemes"},
+        )
+    )
+    ok(
+        api.put(
+            f"{API}/fornecedores/{f.revenda}",
+            headers=f.dono,
+            json={"nome": "Revenda Boa Safra", "ativo": False},
+        )
+    )
+
+    ok(api.delete(f"{API}/fornecedores/{f.revenda}", headers=f.dono), 204)
+
+    contato, desativado, remocao = eventos(db)
+    assert (contato.acao, contato.entidade, contato.entidade_id) == (
+        "fornecedor.alterado",
+        "fornecedor",
+        f.revenda,
+    )
+    assert contato.dados == {
+        "nome": "Revenda Boa Safra",
+        "antes": {"telefone": None, "cidade": None},
+        "depois": {"telefone": "69 99999-0000", "cidade": "Ariquemes"},
+    }
+    assert desativado.dados == {
+        "nome": "Revenda Boa Safra",
+        "antes": {"ativo": True},
+        "depois": {"ativo": False},
+    }
+    assert (remocao.acao, remocao.dados) == (
+        "fornecedor.removido",
+        {
+            "id": f.revenda,
+            "nome": "Revenda Boa Safra",
+            "contato": None,
+            "telefone": "69 99999-0000",
+            "cidade": "Ariquemes",
+            "observacao": None,
+            "ativo": False,
+            "demonstracao": False,
+        },
+    )

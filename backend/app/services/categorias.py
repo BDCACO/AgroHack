@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import violou_nome_unico
 from app.models import Categoria, Insumo
 from app.schemas.categoria import CategoriaCadastro, CategoriaResposta
+from app.services import auditoria
 
 
 class NomeDuplicado(Exception):
@@ -47,18 +48,30 @@ def criar_categoria(db: Session, dados: CategoriaCadastro) -> CategoriaResposta:
 
 
 def atualizar_categoria(
-    db: Session, categoria_id: int, dados: CategoriaCadastro
+    db: Session, categoria_id: int, dados: CategoriaCadastro, origem: auditoria.Origem
 ) -> CategoriaResposta:
     categoria = _buscar(db, categoria_id)
+    # Renomear muda o rótulo dos totais por categoria de todos os relatórios, os antigos
+    # inclusive.
+    if mudou := auditoria.diferencas({"nome": categoria.nome}, {"nome": dados.nome}):
+        auditoria.registrar(db, origem, "categoria.alterada", "categoria", categoria.id, mudou)
     categoria.nome = dados.nome
     _salvar(db)
     return _resposta(categoria, _insumos_na(db, categoria_id))
 
 
-def remover_categoria(db: Session, categoria_id: int) -> None:
+def remover_categoria(db: Session, categoria_id: int, origem: auditoria.Origem) -> None:
     categoria = _buscar(db, categoria_id)
     if insumos := _insumos_na(db, categoria_id):
         raise CategoriaComInsumos(categoria.nome, insumos)
+    auditoria.registrar(
+        db,
+        origem,
+        "categoria.removida",
+        "categoria",
+        categoria.id,
+        {"id": categoria.id, "nome": categoria.nome},
+    )
     db.delete(categoria)
     try:
         db.commit()

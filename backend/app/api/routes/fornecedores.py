@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from app.api.permissoes import origem_do_pedido
 from app.core.database import get_db
 from app.models import Fornecedor
 from app.schemas.compras import FornecedorCadastro, FornecedorDetalhe, FornecedorResposta
 from app.services import fornecedores as servico
+from app.services.auditoria import Origem
 
 # O funcionário consulta (confere de quem é a carga que chegou, liga para a revenda); o
 # dono cadastra, altera e remove.
@@ -43,12 +45,15 @@ def detalhar_fornecedor(fornecedor_id: int, db: Session = Depends(get_db)) -> Fo
 
 @gestao.put("/fornecedores/{fornecedor_id}", response_model=FornecedorResposta)
 def atualizar_fornecedor(
-    fornecedor_id: int, dados: FornecedorCadastro, db: Session = Depends(get_db)
+    fornecedor_id: int,
+    dados: FornecedorCadastro,
+    db: Session = Depends(get_db),
+    origem: Origem = Depends(origem_do_pedido),
 ) -> Fornecedor:
     """Muda só os campos enviados: `{"nome": ..., "ativo": false}` desativa sem apagar o
     resto."""
     try:
-        return servico.atualizar_fornecedor(db, fornecedor_id, dados)
+        return servico.atualizar_fornecedor(db, fornecedor_id, dados, origem)
     except servico.FornecedorInexistente:
         raise _INEXISTENTE from None
     except servico.NomeDuplicado:
@@ -56,11 +61,13 @@ def atualizar_fornecedor(
 
 
 @gestao.delete("/fornecedores/{fornecedor_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remover_fornecedor(fornecedor_id: int, db: Session = Depends(get_db)) -> Response:
+def remover_fornecedor(
+    fornecedor_id: int, db: Session = Depends(get_db), origem: Origem = Depends(origem_do_pedido)
+) -> Response:
     """Só o fornecedor cadastrado por engano, sem compra nem pedido: com história, `409`
     (desative-o)."""
     try:
-        servico.remover_fornecedor(db, fornecedor_id)
+        servico.remover_fornecedor(db, fornecedor_id, origem)
     except servico.FornecedorInexistente:
         raise _INEXISTENTE from None
     except servico.FornecedorComHistoria as erro:
