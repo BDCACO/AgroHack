@@ -1,8 +1,10 @@
 """Casos de uso do estoque: cadastro de insumos, movimentações e a análise de cada
 insumo a partir do que está no banco."""
 
+import unicodedata
 from dataclasses import dataclass, replace
 from datetime import date
+from typing import Literal
 from uuid import UUID
 
 from sqlalchemy import delete, exists, select
@@ -104,13 +106,54 @@ class Registro:
     nova: bool  # falso quando o uuid já estava gravado: reenvio do app
 
 
-def listar_insumos(db: Session) -> list[InsumoResposta]:
-    insumos = db.scalars(
-        select(Insumo).options(selectinload(Insumo.movimentacoes)).order_by(Insumo.nome)
-    )
+def listar_insumos(
+    db: Session,
+    categoria_id: int | None = None,
+    busca: str | None = None,
+    gravidade: Literal["alta", "media", "baixa"] | None = None,
+    com_alerta: bool | None = None,
+) -> list[InsumoResposta]:
+    """Todos, pelo nome; os filtros são opcionais e se somam. O alerta só existe depois da
+    análise, então `gravidade` e `com_alerta` filtram a lista já analisada (a análise de
+    cada insumo lê todas as movimentações dele de qualquer jeito)."""
+    consulta = select(Insumo).options(selectinload(Insumo.movimentacoes)).order_by(Insumo.nome)
+    if categoria_id is not None:
+        consulta = consulta.where(Insumo.categoria_id == categoria_id)
+    if busca is not None:
+        consulta = consulta.where(Insumo.id.in_(ids_pelo_nome(db, busca)))
     referencia = hoje()
     pedidos = a_caminho(db)
-    return [_resposta(insumo, referencia, pedidos.get(insumo.id, [])) for insumo in insumos]
+    respostas = [
+        _resposta(insumo, referencia, pedidos.get(insumo.id, [])) for insumo in db.scalars(consulta)
+    ]
+    if gravidade is not None:
+        respostas = [
+            r for r in respostas if any(a.gravidade == gravidade for a in r.analise.alertas)
+        ]
+    if com_alerta is not None:
+        respostas = [r for r in respostas if bool(r.analise.alertas) == com_alerta]
+    return respostas
+
+
+def ids_pelo_nome(db: Session, busca: str) -> list[int]:
+    """Os insumos cujo nome contém `busca`, sem diferenciar maiúsculas nem acentos ("ureia"
+    acha "Uréia"). A comparação é feita aqui, e não no banco: o PostgreSQL só ignora acento
+    com a extensão `unaccent`, que o SQLite dos testes não tem, e o `lower()` do SQLite só
+    conhece as letras sem acento ("É" ficaria "É"). Feita em Python, dá o mesmo resultado
+    nos dois. Os insumos de uma fazenda são centenas, e ler só id e nome custa pouco."""
+    procurado = _como_se_busca(busca)
+    return [
+        insumo_id
+        for insumo_id, nome in db.execute(select(Insumo.id, Insumo.nome))
+        if procurado in _como_se_busca(nome)
+    ]
+
+
+def _como_se_busca(texto: str) -> str:
+    # NFKD separa a letra do acento ("é" vira "e" + acento), e o acento sai; casefold é o
+    # lower() que também iguala letras como o "ß".
+    decomposto = unicodedata.normalize("NFKD", texto.strip())
+    return "".join(c for c in decomposto if not unicodedata.combining(c)).casefold()
 
 
 def criar_insumo(db: Session, dados: InsumoCadastro) -> InsumoResposta:

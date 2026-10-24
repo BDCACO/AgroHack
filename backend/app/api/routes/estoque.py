@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
@@ -37,9 +39,17 @@ _XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @campo.get("/insumos", response_model=list[InsumoResposta])
-def listar_insumos(db: Session = Depends(get_db)) -> list[InsumoResposta]:
-    """Cada insumo com o estoque atual e a análise na data de hoje (Rondônia)."""
-    return servico.listar_insumos(db)
+def listar_insumos(
+    categoria_id: int | None = None,
+    busca: str | None = Query(None, min_length=1, max_length=120),
+    gravidade: Literal["alta", "media", "baixa"] | None = None,
+    com_alerta: bool | None = None,
+    db: Session = Depends(get_db),
+) -> list[InsumoResposta]:
+    """Cada insumo com o estoque atual e a análise na data de hoje (Rondônia). Filtros
+    opcionais, que se somam: `categoria_id`; `busca` no nome, sem diferenciar maiúsculas nem
+    acentos; `gravidade`, quem tem algum alerta dela; `com_alerta`, quem tem (ou não) algum."""
+    return servico.listar_insumos(db, categoria_id, busca, gravidade, com_alerta)
 
 
 @campo.get("/resumo", response_model=Resumo)
