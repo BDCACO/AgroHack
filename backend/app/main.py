@@ -1,13 +1,15 @@
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
-from sqlalchemy.exc import DataError, OperationalError
+from sqlalchemy.exc import DataError, OperationalError, SQLAlchemyError
 from sqlalchemy.exc import TimeoutError as PoolSemConexao
 
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
+from app.core.database import get_engine, problemas_do_papel
 
 # Folga sobre o maior pedido legítimo: a planilha de 5 MB vira uns 6,7 MB em base64.
 CORPO_MAXIMO = 8_000_000
@@ -36,9 +38,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "Só para desenvolvimento; em produção a API nem sobe assim."
         )
 
+    @asynccontextmanager
+    async def ciclo_de_vida(_: FastAPI) -> AsyncIterator[None]:
+        _conferir_o_papel_do_banco(settings)
+        yield
+
     docs = settings.docs_habilitadas
     prefixo = settings.api_v1_prefix
     app = FastAPI(
+        lifespan=ciclo_de_vida,
         title=settings.app_name,
         version="0.1.0",
         # Sob o prefixo da API, para passarem pelo mesmo proxy do Vite que /api.
@@ -94,6 +102,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return _tente_de_novo("O sistema está ocupado agora. Tente de novo em alguns segundos.")
 
     return app
+
+
+def _conferir_o_papel_do_banco(settings: Settings) -> None:
+    """A API conectada como superusuário ou como dona das tabelas daria a quem achasse uma
+    falha nela o banco inteiro. Em produção, fail-closed como o ENVIRONMENT: não sobe (e
+    sem banco para conferir, também não). Fora dela, avisa no log e segue: no
+    desenvolvimento com um papel só, é escolha de quem roda."""
+    engine = get_engine()
+    if engine.dialect.name != "postgresql":
+        return  # o SQLite dos testes não tem papéis
+    if settings.environment == "production":
+        problemas = problemas_do_papel(engine)
+        if problemas:
+            raise RuntimeError(
+                "em production, a API não sobe conectada ao banco com um papel que "
+                f"{', '.join(problemas)}. Use na DATABASE_URL o papel da aplicação "
+                "(python -m app.papel_da_aplicacao) e deixe o dono do schema só para as "
+                "migrations, na MIGRATIONS_DATABASE_URL."
+            )
+        return
+    try:
+        problemas = problemas_do_papel(engine)
+    except SQLAlchemyError:
+        return  # banco ainda fora do ar no desenvolvimento: o /ready conta
+    if problemas:
+        logger.warning(
+            "A API está conectada ao banco com um papel que %s. Só para desenvolvimento; "
+            "em produção a API nem sobe assim (ver README, papel da aplicação).",
+            ", ".join(problemas),
+        )
 
 
 def _tente_de_novo(frase: str) -> JSONResponse:

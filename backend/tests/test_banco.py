@@ -11,9 +11,11 @@ import pytest
 import sqlalchemy.exc
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app import main
 from app.core.config import Settings
 from app.core.database import argumentos_do_engine
 from app.core.relogio import hoje
@@ -188,3 +190,40 @@ def test_sem_url_de_migrations_usa_a_da_api(monkeypatch: pytest.MonkeyPatch) -> 
     settings = Settings(environment="test", database_url=POSTGRES, _env_file=None)
 
     assert settings.url_das_migrations == POSTGRES
+
+
+def _app_no_postgres(
+    monkeypatch: pytest.MonkeyPatch, ambiente: str, problemas: list[str]
+) -> TestClient:
+    """A API como subiria no PostgreSQL, com a conferência do papel trocada pela resposta
+    dada: a de verdade, no banco, está nos testes de integração."""
+    monkeypatch.setattr(main, "get_engine", lambda: create_engine(POSTGRES))
+    monkeypatch.setattr(main, "problemas_do_papel", lambda _engine: problemas)
+    settings = Settings(environment=ambiente, database_url=POSTGRES, autenticacao=True)
+    return TestClient(main.create_app(settings))
+
+
+def test_producao_nao_sobe_conectada_com_papel_poderoso(monkeypatch: pytest.MonkeyPatch) -> None:
+    cliente = _app_no_postgres(monkeypatch, "production", ["é superusuário"])
+
+    with pytest.raises(RuntimeError, match="é superusuário") as recusa, cliente:
+        pass
+    assert "MIGRATIONS_DATABASE_URL" in str(recusa.value)
+
+
+def test_producao_sobe_com_o_papel_da_aplicacao(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _app_no_postgres(monkeypatch, "production", []) as cliente:
+        assert cliente.get("/api/v1/health").status_code == 200
+
+
+def test_fora_de_producao_o_papel_poderoso_so_avisa(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # No desenvolvimento com um papel só (uv run no host), a API sobe, mas diz.
+    with (
+        caplog.at_level(logging.WARNING),
+        _app_no_postgres(monkeypatch, "development", ["é superusuário"]) as cliente,
+    ):
+        assert cliente.get("/api/v1/health").status_code == 200
+
+    assert "é superusuário" in caplog.text

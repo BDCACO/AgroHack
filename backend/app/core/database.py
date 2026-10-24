@@ -9,7 +9,7 @@ from collections.abc import Iterator
 from functools import lru_cache
 from typing import Any
 
-from sqlalchemy import Engine, create_engine, make_url
+from sqlalchemy import Engine, create_engine, make_url, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -48,6 +48,45 @@ def argumentos_do_engine(settings: Settings) -> dict[str, Any]:
 def get_engine() -> Engine:
     settings = get_settings()
     return create_engine(settings.database_url, **argumentos_do_engine(settings))
+
+
+# O que o papel da API NÃO pode ter (ver app/papel_da_aplicacao.py), com a frase do log.
+# pg_has_role com MEMBER pega também o poder herdado ou alcançável por SET ROLE.
+_CONFERENCIA_DO_PAPEL = text(
+    """
+    SELECT
+      r.rolsuper,
+      r.rolcreaterole,
+      r.rolcreatedb,
+      EXISTS (
+        SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND pg_has_role(current_user, c.relowner, 'MEMBER')
+      ),
+      has_schema_privilege('public', 'CREATE'),
+      has_database_privilege(current_database(), 'CREATE'),
+      pg_has_role(current_user, 'pg_execute_server_program', 'MEMBER')
+        OR pg_has_role(current_user, 'pg_read_server_files', 'MEMBER')
+        OR pg_has_role(current_user, 'pg_write_server_files', 'MEMBER')
+    FROM pg_roles r WHERE r.rolname = current_user
+    """
+)
+_FRASES_DO_PAPEL = (
+    "é superusuário",
+    "cria papéis",
+    "cria bancos",
+    "é dono (ou membro do dono) de tabelas do schema public",
+    "cria objetos no schema public",
+    "cria schemas no banco",
+    "roda comandos ou lê e grava arquivos do servidor",
+)
+
+
+def problemas_do_papel(engine: Engine) -> list[str]:
+    """O que o papel com que a API conecta pode fazer além de ler e gravar dados. Lista
+    vazia é o papel da aplicação, como deve ser."""
+    with engine.connect() as conexao:
+        poderes = conexao.execute(_CONFERENCIA_DO_PAPEL).one()
+    return [frase for frase, tem in zip(_FRASES_DO_PAPEL, poderes, strict=True) if tem]
 
 
 @lru_cache
