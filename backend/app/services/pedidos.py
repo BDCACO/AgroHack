@@ -22,6 +22,7 @@ from app.schemas.compras import (
     Situacao,
 )
 from app.schemas.estoque import MovimentacaoResposta
+from app.services import auditoria
 
 # Situações em que ainda falta chegar alguma coisa.
 EM_ANDAMENTO = ("aberto", "parcial")
@@ -79,7 +80,9 @@ def detalhar_pedido(db: Session, pedido_id: int) -> PedidoResposta:
     return resposta(buscar_pedido(db, pedido_id), hoje())
 
 
-def atualizar_pedido(db: Session, pedido_id: int, dados: PedidoEntrada) -> PedidoResposta:
+def atualizar_pedido(
+    db: Session, pedido_id: int, dados: PedidoEntrada, origem: auditoria.Origem
+) -> PedidoResposta:
     """Só enquanto nada chegou: depois, as entradas já gravadas apontam para as linhas, e
     mudar o pedido as deixaria contando outra história. Muda os campos enviados e troca as
     linhas pelas do corpo; a linha do mesmo insumo é a mesma, com a quantidade nova."""
@@ -90,6 +93,7 @@ def atualizar_pedido(db: Session, pedido_id: int, dados: PedidoEntrada) -> Pedid
             "antes de chegar qualquer coisa. Faça um pedido novo."
         )
     _conferir(db, dados)
+    antes = _combinado(pedido)
     for campo in ("fornecedor_id", "feito_em", "previsto_para", "observacao"):
         if campo in dados.model_fields_set:
             setattr(pedido, campo, getattr(dados, campo))
@@ -108,19 +112,50 @@ def atualizar_pedido(db: Session, pedido_id: int, dados: PedidoEntrada) -> Pedid
             atuais[insumo_id].valor_unitario = novo.valor_unitario
         else:
             pedido.itens.append(ItemDoPedido(**novo.model_dump()))
+    # O que a revenda vai entregar, e quanto vai cobrar: quem mudou fica na trilha.
+    if mudou := auditoria.diferencas(antes, _combinado(pedido)):
+        auditoria.registrar(db, origem, "pedido.alterado", "pedido", pedido.id, mudou)
     db.commit()
     db.refresh(pedido)
     return resposta(pedido, hoje())
 
 
-def cancelar_pedido(db: Session, pedido_id: int) -> PedidoResposta:
+def cancelar_pedido(db: Session, pedido_id: int, origem: auditoria.Origem) -> PedidoResposta:
     """O que falta chegar não vem mais. O que já chegou fica: está no galpão e no estoque.
-    Cancelar de novo não muda nada (o app pode reenviar)."""
+    Cancelar de novo não muda nada (o app pode reenviar), e não deixa outro evento."""
     pedido = buscar_pedido(db, pedido_id, travar=True)
     if pedido.situacao == "recebido":
         raise PedidoFechado(
             "Este pedido já chegou inteiro: não há o que cancelar. Se algo veio errado, "
             "lance a devolução como descarte."
+        )
+    if pedido.situacao != "cancelado":
+        # O que faltava chegar de cada linha: é o que deixou de vir, e a análise deixou de
+        # descontar.
+        auditoria.registrar(
+            db,
+            origem,
+            "pedido.cancelado",
+            "pedido",
+            pedido.id,
+            {
+                "situacao_antes": pedido.situacao,
+                "fornecedor_id": pedido.fornecedor_id,
+                "fornecedor": None if pedido.fornecedor is None else pedido.fornecedor.nome,
+                "feito_em": pedido.feito_em,
+                "previsto_para": pedido.previsto_para,
+                "itens": [
+                    {
+                        "insumo_id": item.insumo_id,
+                        "insumo": item.insumo.nome,
+                        "quantidade": item.quantidade,
+                        "valor_unitario": item.valor_unitario,
+                        "quantidade_recebida": item.quantidade_recebida,
+                        "falta_receber": item.falta_receber,
+                    }
+                    for item in pedido.itens
+                ],
+            },
         )
     pedido.situacao = "cancelado"
     db.commit()
@@ -249,6 +284,28 @@ def resposta(pedido: Pedido, referencia: date) -> PedidoResposta:
         ),
         itens=itens,
     )
+
+
+def _combinado(pedido: Pedido) -> dict[str, object]:
+    """O que se combinou com a revenda: o que se compara numa alteração. As linhas pelo
+    insumo, para a ordem em que foram gravadas não parecer mudança."""
+    return {
+        "fornecedor_id": pedido.fornecedor_id,
+        "feito_em": pedido.feito_em,
+        "previsto_para": pedido.previsto_para,
+        "observacao": pedido.observacao,
+        "itens": sorted(
+            (
+                {
+                    "insumo_id": item.insumo_id,
+                    "quantidade": item.quantidade,
+                    "valor_unitario": item.valor_unitario,
+                }
+                for item in pedido.itens
+            ),
+            key=lambda item: item["insumo_id"],
+        ),
+    }
 
 
 def _conferir(db: Session, dados: PedidoEntrada) -> None:

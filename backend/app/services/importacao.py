@@ -14,7 +14,7 @@ import csv
 import io
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from zipfile import ZipFile
 
@@ -30,6 +30,7 @@ from app.schemas.estoque import (
     SEM_CARACTERE_DE_CONTROLE,
     VALOR_UNITARIO_MAXIMO,
 )
+from app.services import auditoria
 
 COLUNAS_OBRIGATORIAS = ("data", "insumo", "tipo", "quantidade")
 # Colunas de número, que decidem juntas se a vírgula é decimal ou milhar. `valor` (o preço
@@ -130,10 +131,11 @@ type _Lidas = list[tuple[int, list[Celula] | str]]
 
 
 def importar(
-    db: Session, arquivo: str | bytes, *, confirmar: bool, usuario_id: int | None = None
+    db: Session, arquivo: str | bytes, *, confirmar: bool, origem: auditoria.Origem
 ) -> ResultadoImportacao:
     """Confere a planilha — texto = CSV, bytes = .xlsx — e devolve o resumo. Com
-    `confirmar` e sem erros, grava em nome de `usuario_id` (quem importou)."""
+    `confirmar` e sem erros, grava em nome de quem importou (`origem`), e o resumo vai
+    para a trilha de auditoria na mesma transação."""
     resultado = ResultadoImportacao()
     if isinstance(arquivo, bytes):
         lido = _ler_xlsx(arquivo, resultado.erros)
@@ -204,7 +206,7 @@ def importar(
             talhao_id=linha.talhao and linha.talhao.id,
             # Pela relação, e não pelo id: o fornecedor novo só ganha id ao gravar.
             fornecedor=linha.fornecedor,
-            usuario_id=usuario_id,
+            usuario_id=origem.usuario_id,
         )
         if linha.insumo.id is None:
             linha.insumo.movimentacoes.append(movimentacao)
@@ -214,6 +216,27 @@ def importar(
     db.add_all(novos.values())
     db.add_all(fornecedores_novos.values())
     # A categoria nova vai junto com o insumo novo que a usa (a relação a grava).
+    # Milhares de lançamentos de uma vez: o resumo, e não cada linha (a planilha é a cópia
+    # dela, e cada movimentação já diz quem a lançou), basta para saber o que entrou.
+    auditoria.registrar(
+        db,
+        origem,
+        "importacao.confirmada",
+        "importacao",
+        None,
+        {
+            "formato": "xlsx" if isinstance(arquivo, bytes) else "csv",
+            "linhas": resultado.linhas,
+            "entradas": resultado.entradas,
+            "saidas": resultado.saidas,
+            "primeira_data": resultado.primeira_data,
+            "ultima_data": resultado.ultima_data,
+            "ja_lancadas": resultado.ja_lancadas,
+            "insumos": [asdict(total) for total in resultado.insumos],
+            "fornecedores_novos": resultado.fornecedores_novos,
+            "categorias_novas": resultado.categorias_novas,
+        },
+    )
     db.commit()
     resultado.importado = True
     return resultado

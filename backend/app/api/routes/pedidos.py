@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.permissoes import usuario_atual
+from app.api.permissoes import origem_do_pedido, usuario_atual
 from app.core.database import get_db
 from app.models import Usuario
 from app.schemas.compras import (
@@ -14,6 +14,7 @@ from app.schemas.compras import (
 )
 from app.services import pedidos as servico
 from app.services import sugestao_de_pedido
+from app.services.auditoria import Origem
 
 # O funcionário consulta os pedidos e recebe a carga (é ele quem confere no galpão o que
 # chegou); o dono faz, altera e cancela, porque é quem compra e paga.
@@ -70,12 +71,15 @@ def detalhar_pedido(pedido_id: int, db: Session = Depends(get_db)) -> PedidoResp
 
 @gestao.put("/pedidos/{pedido_id}", response_model=PedidoResposta)
 def atualizar_pedido(
-    pedido_id: int, dados: PedidoEntrada, db: Session = Depends(get_db)
+    pedido_id: int,
+    dados: PedidoEntrada,
+    db: Session = Depends(get_db),
+    origem: Origem = Depends(origem_do_pedido),
 ) -> PedidoResposta:
     """Só o pedido aberto, antes de chegar qualquer coisa (senão `409`). Muda os campos
     enviados e troca as linhas pelas do corpo."""
     try:
-        return servico.atualizar_pedido(db, pedido_id, dados)
+        return servico.atualizar_pedido(db, pedido_id, dados, origem)
     except servico.PedidoInexistente:
         raise _INEXISTENTE from None
     except servico.PedidoFechado as erro:
@@ -85,11 +89,13 @@ def atualizar_pedido(
 
 
 @gestao.post("/pedidos/{pedido_id}/cancelar", response_model=PedidoResposta)
-def cancelar_pedido(pedido_id: int, db: Session = Depends(get_db)) -> PedidoResposta:
+def cancelar_pedido(
+    pedido_id: int, db: Session = Depends(get_db), origem: Origem = Depends(origem_do_pedido)
+) -> PedidoResposta:
     """O que falta chegar não vem mais; o que já chegou fica no estoque. O pedido que chegou
     inteiro não se cancela (`409`)."""
     try:
-        return servico.cancelar_pedido(db, pedido_id)
+        return servico.cancelar_pedido(db, pedido_id, origem)
     except servico.PedidoInexistente:
         raise _INEXISTENTE from None
     except servico.PedidoFechado as erro:

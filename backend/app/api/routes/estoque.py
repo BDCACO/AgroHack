@@ -227,14 +227,15 @@ def remover_movimentacao(
 def importar_planilha(
     pedido: PedidoDeImportacao,
     db: Session = Depends(get_db),
-    usuario: Usuario | None = Depends(usuario_atual),
+    origem: Origem = Depends(origem_do_pedido),
 ) -> ResultadoImportacao:
     """Movimentações de uma planilha, em `xlsx` (base64) ou `conteudo` (texto do CSV), com
     as colunas data, insumo, unidade, tipo, quantidade e validade. Sem `confirmar`, só
     confere e resume. Com um erro sequer, nada é gravado: a resposta lista os erros por
-    linha e `importado` vem falso."""
+    linha e `importado` vem falso. A importação confirmada deixa o resumo na trilha de
+    auditoria (`importacao.confirmada`)."""
     arquivo = pedido.xlsx if pedido.xlsx is not None else pedido.conteudo
-    return importar(db, arquivo, confirmar=pedido.confirmar, usuario_id=_id(usuario))
+    return importar(db, arquivo, confirmar=pedido.confirmar, origem=origem)
 
 
 @gestao.get(

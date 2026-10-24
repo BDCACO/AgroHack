@@ -364,3 +364,139 @@ def test_fornecedor_alterado_so_no_que_veio_e_removido(
             "demonstracao": False,
         },
     )
+
+
+def test_pedido_cancelado_guarda_o_que_faltava_chegar(
+    fazenda: SimpleNamespace, db: Session
+) -> None:
+    api, f = fazenda.api, fazenda
+    feito = str(HOJE - timedelta(days=2))
+    pedido = ok(
+        api.post(
+            f"{API}/pedidos",
+            headers=f.dono,
+            json={
+                "fornecedor_id": f.revenda,
+                "feito_em": feito,
+                "itens": [{"insumo_id": f.ureia, "quantidade": 1000, "valor_unitario": 3.2}],
+            },
+        ),
+        201,
+    )
+    linha = pedido["itens"][0]["id"]
+    ok(
+        api.post(
+            f"{API}/pedidos/{pedido['id']}/receber",
+            headers=f.do_ze,
+            json={"itens": [{"item_id": linha, "quantidade": 400}]},
+        )
+    )
+
+    ok(api.post(f"{API}/pedidos/{pedido['id']}/cancelar", headers=f.dono))
+    # Cancelar de novo não muda nada, e não há o que registrar.
+    ok(api.post(f"{API}/pedidos/{pedido['id']}/cancelar", headers=f.dono))
+
+    # Receber é lançamento comum: as entradas já dizem quem conferiu.
+    [evento] = eventos(db)
+    assert (evento.acao, evento.entidade, evento.entidade_id, evento.usuario_id) == (
+        "pedido.cancelado",
+        "pedido",
+        pedido["id"],
+        f.maria.id,
+    )
+    assert evento.dados == {
+        "situacao_antes": "parcial",
+        "fornecedor_id": f.revenda,
+        "fornecedor": "Revenda Boa Safra",
+        "feito_em": feito,
+        "previsto_para": None,
+        "itens": [
+            {
+                "insumo_id": f.ureia,
+                "insumo": "Ureia",
+                "quantidade": 1000.0,
+                "valor_unitario": 3.2,
+                "quantidade_recebida": 400.0,
+                "falta_receber": 600.0,
+            }
+        ],
+    }
+
+
+def test_pedido_alterado_guarda_o_antes_e_o_depois(fazenda: SimpleNamespace, db: Session) -> None:
+    api, f = fazenda.api, fazenda
+    linha = {"insumo_id": f.ureia, "quantidade": 1000, "valor_unitario": 3.2}
+    pedido = ok(api.post(f"{API}/pedidos", headers=f.dono, json={"itens": [linha]}), 201)
+    previsto = str(HOJE + timedelta(days=5))
+
+    ok(
+        api.put(
+            f"{API}/pedidos/{pedido['id']}",
+            headers=f.dono,
+            json={"previsto_para": previsto, "itens": [linha | {"quantidade": 800}]},
+        )
+    )
+
+    [evento] = eventos(db, "pedido.alterado")
+    assert evento.entidade_id == pedido["id"]
+    assert evento.dados == {
+        "antes": {
+            "previsto_para": None,
+            "itens": [{"insumo_id": f.ureia, "quantidade": 1000.0, "valor_unitario": 3.2}],
+        },
+        "depois": {
+            "previsto_para": previsto,
+            "itens": [{"insumo_id": f.ureia, "quantidade": 800.0, "valor_unitario": 3.2}],
+        },
+    }
+
+
+def test_importacao_confirmada_guarda_o_resumo(fazenda: SimpleNamespace, db: Session) -> None:
+    api, f = fazenda.api, fazenda
+    planilha = (
+        "data;insumo;unidade;tipo;quantidade\n"
+        "01/10/2026;Ureia;kg;entrada;1.000\n"
+        "05/10/2026;Ureia;kg;saída;150\n"
+        "03/10/2026;Glifosato;L;entrada;40\n"
+    )
+
+    # A prévia não grava, e não há o que registrar.
+    ok(api.post(f"{API}/importacoes", headers=f.dono, json={"conteudo": planilha}))
+    assert eventos(db) == []
+    corpo = {"conteudo": planilha, "confirmar": True}
+    assert ok(api.post(f"{API}/importacoes", headers=f.dono, json=corpo))["importado"]
+
+    [evento] = eventos(db)
+    assert (evento.acao, evento.entidade, evento.entidade_id, evento.usuario_id) == (
+        "importacao.confirmada",
+        "importacao",
+        None,
+        f.maria.id,
+    )
+    assert evento.dados == {
+        "formato": "csv",
+        "linhas": 3,
+        "entradas": 2,
+        "saidas": 1,
+        "primeira_data": "2026-10-01",
+        "ultima_data": "2026-10-05",
+        "ja_lancadas": 0,
+        "insumos": [
+            {"nome": "Ureia", "unidade": "kg", "novo": False, "entradas": 1000.0, "saidas": 150.0},
+            {"nome": "Glifosato", "unidade": "L", "novo": True, "entradas": 40.0, "saidas": 0.0},
+        ],
+        "fornecedores_novos": [],
+        "categorias_novas": [],
+    }
+
+
+def test_importacao_com_erro_nao_grava_nem_deixa_evento(
+    fazenda: SimpleNamespace, db: Session
+) -> None:
+    planilha = "data;insumo;unidade;tipo;quantidade\n01/10/2026;Ureia;kg;entrada;-5\n"
+    corpo = {"conteudo": planilha, "confirmar": True}
+
+    resultado = ok(fazenda.api.post(f"{API}/importacoes", headers=fazenda.dono, json=corpo))
+
+    assert not resultado["importado"]
+    assert eventos(db) == []
