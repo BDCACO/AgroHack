@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models import Sessao, Usuario
 from app.services import autenticacao
+from app.services.auditoria import Origem
 
 # auto_error=False: a falta do token é decidida aqui (pode ser permitida), não pelo FastAPI.
 _bearer = HTTPBearer(auto_error=False, description="O token devolvido por POST /auth/entrar.")
@@ -38,6 +39,17 @@ def sessao_atual(
 def usuario_atual(sessao: Sessao | None = Depends(sessao_atual)) -> Usuario | None:
     """Quem fez o pedido (para a auditoria), ou None sem login."""
     return None if sessao is None else sessao.usuario
+
+
+def origem_do_pedido(request: Request, sessao: Sessao | None = Depends(sessao_atual)) -> Origem:
+    """Quem fez e de onde, para a trilha de auditoria. O IP é o que o uvicorn viu: atrás de
+    um proxy, o do proxy, a não ser que o uvicorn confie nele (`--forwarded-allow-ips`).
+    O `X-Forwarded-For` não é lido aqui: qualquer um o escreve."""
+    return Origem(
+        usuario_id=None if sessao is None else sessao.usuario_id,
+        ip=None if request.client is None else request.client.host,
+        dispositivo=None if sessao is None else sessao.dispositivo,
+    )
 
 
 def exigir_sessao(sessao: Sessao | None = Depends(sessao_atual)) -> Sessao:

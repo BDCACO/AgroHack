@@ -36,7 +36,7 @@ from app.schemas.estoque import (
     PrecoPago,
     como_o_banco,
 )
-from app.services import pedidos
+from app.services import auditoria, pedidos
 
 # Campos que vieram depois do site e do app: um PUT que não os manda (de uma versão que
 # não os conhece) mantém o que está gravado, em vez de apagá-los.
@@ -165,13 +165,22 @@ def criar_insumo(db: Session, dados: InsumoCadastro) -> InsumoResposta:
     return _resposta(insumo, hoje())
 
 
-def atualizar_insumo(db: Session, insumo_id: int, dados: InsumoCadastro) -> InsumoResposta:
+def atualizar_insumo(
+    db: Session, insumo_id: int, dados: InsumoCadastro, origem: auditoria.Origem
+) -> InsumoResposta:
     insumo = _buscar_insumo(db, insumo_id)
     _conferir_categoria(db, dados.categoria_id)
+    antes = _cadastro(insumo)
     for campo, valor in dados.model_dump().items():
         if campo in _CAMPOS_OPCIONAIS_NOVOS and campo not in dados.model_fields_set:
             continue
         setattr(insumo, campo, valor)
+    # O mínimo, o prazo, a embalagem e a carência mudam os alertas e a reposição de todos:
+    # quem os mudou, e de quanto para quanto, fica na trilha.
+    if mudou := auditoria.diferencas(antes, _cadastro(insumo)):
+        auditoria.registrar(
+            db, origem, "insumo.alterado", "insumo", insumo.id, {"nome": insumo.nome, **mudou}
+        )
     _salvar(db)
     _recarregar_categoria(db, insumo)
     return _resposta(insumo, hoje(), a_caminho(db, insumo_id).get(insumo_id, []))
@@ -249,8 +258,14 @@ def precos_pagos(compras: list[tuple[Movimentacao, Insumo]]) -> list[PrecoPago]:
     return precos
 
 
-def remover_insumo(db: Session, insumo_id: int) -> None:
-    insumo = _buscar_insumo(db, insumo_id)
+def remover_insumo(db: Session, insumo_id: int, origem: auditoria.Origem) -> None:
+    # Trava o insumo antes de ler o que vai junto: um lançamento dele ao mesmo tempo espera
+    # (e depois falha, sem o insumo), em vez de sumir no CASCADE sem estar no evento.
+    insumo = db.scalars(
+        select(Insumo).where(Insumo.id == insumo_id).with_for_update(of=Insumo)
+    ).one_or_none()
+    if insumo is None:
+        raise InsumoInexistente
     talhoes = db.scalars(
         select(Talhao.nome)
         .join(Movimentacao, Movimentacao.talhao_id == Talhao.id)
@@ -260,6 +275,41 @@ def remover_insumo(db: Session, insumo_id: int) -> None:
     ).all()
     if talhoes:
         raise InsumoAplicadoEmTalhao(insumo.nome, list(talhoes))
+    # Tudo o que sai junto vai para o evento: o cadastro, cada movimentação (sem talhão:
+    # o insumo aplicado não chega aqui) e as linhas de pedido.
+    itens = db.scalars(
+        select(ItemDoPedido).where(ItemDoPedido.insumo_id == insumo_id).order_by(ItemDoPedido.id)
+    ).all()
+    so_dele = select(Pedido.id).where(
+        Pedido.itens.any(ItemDoPedido.insumo_id == insumo_id),
+        ~Pedido.itens.any(ItemDoPedido.insumo_id != insumo_id),
+    )
+    auditoria.registrar(
+        db,
+        origem,
+        "insumo.removido",
+        "insumo",
+        insumo.id,
+        {
+            "insumo": {"id": insumo.id, **_cadastro(insumo)}
+            | {"categoria": insumo.categoria and insumo.categoria.nome}
+            | {"demonstracao": insumo.demonstracao},
+            "movimentacoes": [
+                auditoria.retrato_da_movimentacao(m, insumo.nome, None)
+                for m in sorted(insumo.movimentacoes, key=lambda m: (m.data, m.id))
+            ],
+            "itens_de_pedido": [
+                {
+                    "pedido_id": item.pedido_id,
+                    "quantidade": item.quantidade,
+                    "valor_unitario": item.valor_unitario,
+                    "quantidade_recebida": item.quantidade_recebida,
+                }
+                for item in itens
+            ],
+            "pedidos_removidos": list(db.scalars(so_dele.order_by(Pedido.id))),
+        },
+    )
     # As outras movimentações vão junto pelo ON DELETE CASCADE, e as linhas de pedido dele
     # também. O pedido que fica sem linha nenhuma não diz mais nada: sai junto.
     db.delete(insumo)
@@ -403,10 +453,29 @@ def registrar_inventario(
     )
 
 
-def remover_movimentacao(db: Session, movimentacao_id: int) -> bool:
-    movimentacao = db.get(Movimentacao, movimentacao_id)
+def remover_movimentacao(db: Session, movimentacao_id: int, origem: auditoria.Origem) -> bool:
+    # Travada: duas remoções da mesma ao mesmo tempo não deixam dois eventos; a segunda
+    # espera e já não a encontra.
+    movimentacao = db.scalars(
+        select(Movimentacao)
+        .where(Movimentacao.id == movimentacao_id)
+        .with_for_update(of=Movimentacao)
+    ).one_or_none()
     if movimentacao is None:
         return False
+    talhao = None if movimentacao.talhao_id is None else db.get(Talhao, movimentacao.talhao_id)
+    auditoria.registrar(
+        db,
+        origem,
+        "movimentacao.removida",
+        "movimentacao",
+        movimentacao.id,
+        auditoria.retrato_da_movimentacao(
+            movimentacao,
+            _buscar_insumo(db, movimentacao.insumo_id).nome,
+            None if talhao is None else talhao.nome,
+        ),
+    )
     if movimentacao.item_do_pedido_id is not None:
         # A entrada recebeu parte de um pedido: removida (digitada errado), essa parte volta
         # a faltar, e o pedido volta a parcial ou aberto. Na mesma transação.
@@ -451,6 +520,21 @@ def _buscar_insumo(db: Session, insumo_id: int) -> Insumo:
     if insumo is None:
         raise InsumoInexistente
     return insumo
+
+
+def _cadastro(insumo: Insumo) -> dict[str, object]:
+    """O que o dono preenche no cadastro: o que se compara numa alteração e se guarda de
+    um insumo removido."""
+    return {
+        "nome": insumo.nome,
+        "unidade": insumo.unidade,
+        "estoque_minimo": insumo.estoque_minimo,
+        "prazo_reposicao_dias": insumo.prazo_reposicao_dias,
+        "embalagem": insumo.embalagem,
+        "pedido_minimo": insumo.pedido_minimo,
+        "carencia_dias": insumo.carencia_dias,
+        "categoria_id": insumo.categoria_id,
+    }
 
 
 def _conferir_categoria(db: Session, categoria_id: int | None) -> None:

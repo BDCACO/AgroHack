@@ -3,7 +3,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.permissoes import usuario_atual
+from app.api.permissoes import origem_do_pedido, usuario_atual
 from app.api.routes.talhoes import Periodo
 from app.core.database import get_db
 from app.core.relogio import hoje
@@ -23,6 +23,7 @@ from app.schemas.estoque import (
 )
 from app.services import estoque as servico
 from app.services import planilha_modelo, relatorio, resumo, sincronizacao
+from app.services.auditoria import Origem
 from app.services.importacao import ResultadoImportacao, importar
 
 # Dois níveis (app/api/permissoes.py): o campo lê e lança, o que o funcionário faz; a gestão
@@ -72,10 +73,13 @@ def criar_insumo(dados: InsumoCadastro, db: Session = Depends(get_db)) -> Insumo
 
 @gestao.put("/insumos/{insumo_id}", response_model=InsumoResposta)
 def atualizar_insumo(
-    insumo_id: int, dados: InsumoCadastro, db: Session = Depends(get_db)
+    insumo_id: int,
+    dados: InsumoCadastro,
+    db: Session = Depends(get_db),
+    origem: Origem = Depends(origem_do_pedido),
 ) -> InsumoResposta:
     try:
-        return servico.atualizar_insumo(db, insumo_id, dados)
+        return servico.atualizar_insumo(db, insumo_id, dados, origem)
     except servico.InsumoInexistente:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
     except servico.NomeDuplicado:
@@ -94,11 +98,14 @@ def detalhar_insumo(insumo_id: int, db: Session = Depends(get_db)) -> InsumoDeta
 
 
 @gestao.delete("/insumos/{insumo_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remover_insumo(insumo_id: int, db: Session = Depends(get_db)) -> Response:
+def remover_insumo(
+    insumo_id: int, db: Session = Depends(get_db), origem: Origem = Depends(origem_do_pedido)
+) -> Response:
     """Remove o insumo e todas as movimentações dele. 409 se ele foi aplicado em algum
-    talhão: a rastreabilidade e a carência não somem com ele."""
+    talhão: a rastreabilidade e a carência não somem com ele. O cadastro e cada
+    movimentação ficam na trilha de auditoria (`insumo.removido`)."""
     try:
-        servico.remover_insumo(db, insumo_id)
+        servico.remover_insumo(db, insumo_id, origem)
     except servico.InsumoInexistente:
         raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
     except servico.InsumoAplicadoEmTalhao as erro:
@@ -204,9 +211,14 @@ def sincronizar_movimentacoes(
 
 
 @gestao.delete("/movimentacoes/{movimentacao_id}", status_code=status.HTTP_204_NO_CONTENT)
-def remover_movimentacao(movimentacao_id: int, db: Session = Depends(get_db)) -> Response:
-    """Para corrigir lançamento errado: remove e lança de novo."""
-    if not servico.remover_movimentacao(db, movimentacao_id):
+def remover_movimentacao(
+    movimentacao_id: int,
+    db: Session = Depends(get_db),
+    origem: Origem = Depends(origem_do_pedido),
+) -> Response:
+    """Para corrigir lançamento errado: remove e lança de novo. O conteúdo inteiro fica na
+    trilha de auditoria (`movimentacao.removida`), o bastante para relançá-lo."""
+    if not servico.remover_movimentacao(db, movimentacao_id, origem):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Movimentação não encontrada.")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
