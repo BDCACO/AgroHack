@@ -42,9 +42,11 @@ test-frontend: ## Vitest do frontend
 	$(WEB_RUN) sh -c "npm install --no-audit --no-fund && npm test"
 
 # Num banco à parte (campocerto_teste), criado na hora: o schema dele é apagado a cada rodada.
+# Com a URL do dono (as migrations e o preparo de cada teste); a API dos testes sobe com um
+# papel da aplicação próprio (campocerto_app_teste), criado pela suíte.
 test-integracao: ## API real (uvicorn) + PostgreSQL real, por HTTP (exige `make up` rodando)
 	$(COMPOSE) exec db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc "select 1 from pg_database where datname = '"'"'campocerto_teste'"'"'" | grep -q 1 || createdb -U "$$POSTGRES_USER" campocerto_teste'
-	$(COMPOSE) exec api sh -c 'INTEGRACAO_DATABASE_URL="$${DATABASE_URL%/*}/campocerto_teste" pytest -p no:cacheprovider tests/integracao'
+	$(COMPOSE) exec api sh -c 'INTEGRACAO_DATABASE_URL="$${MIGRATIONS_DATABASE_URL%/*}/campocerto_teste" pytest -p no:cacheprovider tests/integracao'
 
 test: test-backend test-frontend ## Todos os testes unitários
 
@@ -56,5 +58,7 @@ lint: ## ruff + vue-tsc + eslint
 check-db: ## Confere a cadeia real API → PostgreSQL (exige `make up` rodando)
 	curl -fsS http://127.0.0.1:$${API_PORT:-8000}/api/v1/ready && echo
 	$(COMPOSE) exec db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc "select version_num from alembic_version"'
+	@# Com quem a API conecta: o papel da aplicação (campocerto_app), e não o dono.
+	$(COMPOSE) exec api python -c "from sqlalchemy import text; from app.core.database import get_engine; print(get_engine().connect().scalar(text('select current_user')))"
 
 verify: lint test ## Tudo que precisa passar antes de um commit
