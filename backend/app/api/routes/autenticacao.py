@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.permissoes import exigir_sessao
+from app.api.permissoes import exigir_sessao, ip_do_pedido, origem_do_pedido
 from app.core.database import get_db
 from app.models import Sessao
 from app.schemas.usuario import Entrada, PedidoDeEntrada, TrocaDeSenha, UsuarioResumo
 from app.services import autenticacao as servico
+from app.services.auditoria import Origem
 
 # Dois routers: entrar é público (é como se consegue o token); o resto é da própria sessão.
 publico = APIRouter(prefix="/auth", tags=["autenticação"])
@@ -17,11 +18,13 @@ router = APIRouter(prefix="/auth", tags=["autenticação"])
     response_model=Entrada,
     responses={status.HTTP_401_UNAUTHORIZED: {"description": "Login ou senha incorretos"}},
 )
-def entrar(pedido: PedidoDeEntrada, db: Session = Depends(get_db)) -> Entrada:
+def entrar(pedido: PedidoDeEntrada, request: Request, db: Session = Depends(get_db)) -> Entrada:
     """Abre uma sessão e devolve o token, uma vez só: mande-o em cada pedido no cabeçalho
     `Authorization: Bearer <token>`. Vale 30 dias, a não ser que se saia antes."""
     try:
-        token, sessao = servico.entrar(db, pedido.login, pedido.senha, pedido.dispositivo)
+        token, sessao = servico.entrar(
+            db, pedido.login, pedido.senha, pedido.dispositivo, ip_do_pedido(request)
+        )
     except servico.LoginRecusado as erro:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, str(erro), headers={"WWW-Authenticate": "Bearer"}
@@ -47,12 +50,15 @@ def quem_sou_eu(sessao: Sessao = Depends(exigir_sessao)) -> UsuarioResumo:
 
 @router.put("/senha", status_code=status.HTTP_204_NO_CONTENT)
 def trocar_senha(
-    troca: TrocaDeSenha, sessao: Sessao = Depends(exigir_sessao), db: Session = Depends(get_db)
+    troca: TrocaDeSenha,
+    sessao: Sessao = Depends(exigir_sessao),
+    db: Session = Depends(get_db),
+    origem: Origem = Depends(origem_do_pedido),
 ) -> Response:
     """Troca a própria senha (mínimo de 8 caracteres) e encerra as sessões dos outros
     aparelhos; a deste continua."""
     try:
-        servico.trocar_senha(db, sessao, troca.senha_atual, troca.senha_nova)
+        servico.trocar_senha(db, sessao, troca.senha_atual, troca.senha_nova, origem)
     except servico.SenhaAtualIncorreta:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A senha atual não confere.") from None
     return Response(status_code=status.HTTP_204_NO_CONTENT)

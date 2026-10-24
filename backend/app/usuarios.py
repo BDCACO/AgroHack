@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_sessionmaker
 from app.models import Usuario
 from app.schemas.usuario import SENHA_MINIMA, UsuarioCadastro
-from app.services import usuarios
+from app.services import auditoria, usuarios
 
 # Lida aqui, e não em core/config.py: é entrada deste comando, não configuração da API.
 VARIAVEL_DA_SENHA = "SENHA_DO_DONO"
@@ -40,7 +40,7 @@ def criar_dono(db: Session, login: str, nome: str, senha: str, *, outro_dono: bo
     dono_ativo = exists().where(Usuario.papel == "dono", Usuario.ativo)
     if not outro_dono and db.scalar(select(dono_ativo)):
         raise JaHaDono
-    return usuarios.criar(db, dados)
+    return usuarios.criar(db, dados, auditoria.TERMINAL)
 
 
 def main(argumentos: list[str] | None = None) -> None:

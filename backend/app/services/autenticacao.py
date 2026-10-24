@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core import senha
 from app.core.relogio import agora
 from app.models import Sessao, Usuario
+from app.services import auditoria
 
 # 30 dias, e não horas: o app fica dias no campo sem sinal, lançando na fila, e um login
 # vencido no meio da lida obrigaria o funcionário a achar sinal e lembrar a senha só para
@@ -58,10 +59,12 @@ def normalizar_login(login: str) -> str:
 
 
 def entrar(
-    db: Session, login: str, senha_digitada: str, dispositivo: str | None
+    db: Session, login: str, senha_digitada: str, dispositivo: str | None, ip: str | None
 ) -> tuple[str, Sessao]:
     """Confere login e senha e abre uma sessão. Devolve o token (a única vez em que ele
-    existe fora do aparelho) e a sessão."""
+    existe fora do aparelho) e a sessão. A recusa de um login que existe vai para a trilha
+    de auditoria, com o IP e o aparelho que o pedido disse ser."""
+    origem = auditoria.Origem(ip=ip, dispositivo=dispositivo)
     login = normalizar_login(login)
     # O PostgreSQL não aceita caractere nulo num texto: a busca daria erro, e não a
     # resposta do login que não existe. Nenhum login cadastrado tem um.
@@ -72,10 +75,15 @@ def entrar(
         usuario = db.scalar(select(Usuario).where(Usuario.login == login).with_for_update())
     if usuario is None:
         # O mesmo hash lento de um login que existe: sem ele, a resposta rápida denunciaria
-        # quais logins existem.
+        # quais logins existem. Sem evento: não há a quem atribuir, e o que se digitou no
+        # campo do login pode ser a senha.
         senha.conferir(senha_digitada, _hash_de_mentira())
         raise LoginRecusado
-    if not _conferir_contando_erros(db, usuario, senha_digitada) or not usuario.ativo:
+    if not _conferir_contando_erros(db, usuario, senha_digitada, origem):
+        db.commit()
+        raise LoginRecusado
+    if not usuario.ativo:
+        registrar_recusa(db, origem, usuario, "usuario_desativado")
         db.commit()
         raise LoginRecusado
     if senha.precisa_refazer(usuario.senha_hash):
@@ -119,18 +127,24 @@ def sair(db: Session, sessao: Sessao) -> None:
     db.commit()
 
 
-def trocar_senha(db: Session, sessao: Sessao, senha_atual: str, senha_nova: str) -> None:
+def trocar_senha(
+    db: Session, sessao: Sessao, senha_atual: str, senha_nova: str, origem: auditoria.Origem
+) -> None:
     """Troca a senha e encerra as outras sessões do usuário: se a troca é porque alguém
     soube a senha, o aparelho dele perde o acesso. A sessão de quem trocou continua."""
     usuario = sessao.usuario
     db.refresh(usuario, with_for_update=True)
     # Conta como tentativa de login: quem pegou o celular com a sessão aberta não pode
     # testar senhas por aqui sem limite.
-    if not _conferir_contando_erros(db, usuario, senha_atual):
+    if not _conferir_contando_erros(db, usuario, senha_atual, origem, "senha_atual_incorreta"):
         db.commit()
         raise SenhaAtualIncorreta
     usuario.senha_hash = senha.gerar_hash(senha_nova)
     revogar_sessoes(db, usuario.id, exceto=sessao.id)
+    # A sessão roubada que troca a senha tranca o dono fora: fica na trilha.
+    auditoria.registrar(
+        db, origem, "usuario.senha_trocada", "usuario", usuario.id, {"login": usuario.login}
+    )
     db.commit()
 
 
@@ -142,24 +156,59 @@ def revogar_sessoes(db: Session, usuario_id: int, exceto: int | None = None) -> 
     db.execute(consulta.values(revogada_em=agora()))
 
 
-def _conferir_contando_erros(db: Session, usuario: Usuario, senha_digitada: str) -> bool:
+def _conferir_contando_erros(
+    db: Session,
+    usuario: Usuario,
+    senha_digitada: str,
+    origem: auditoria.Origem,
+    motivo_do_erro: str = "senha_incorreta",
+) -> bool:
     """Confere a senha respeitando o bloqueio: o erro conta, o acerto zera, e bloqueado
-    nada confere (nem a senha certa). Não grava: quem chama faz o commit."""
+    nada confere (nem a senha certa). A recusa e o bloqueio vão para a trilha de auditoria
+    junto com a contagem, na mesma transação. Não grava: quem chama faz o commit."""
     momento = agora()
     # Sempre o hash lento, mesmo bloqueado: o tempo da resposta não denuncia o bloqueio.
     confere = senha.conferir(senha_digitada, usuario.senha_hash)
     if usuario.bloqueado_ate is not None and usuario.bloqueado_ate > momento:
         # Sem contar o erro nem estender o prazo: senão, quem tenta sem parar empurraria o
         # fim do bloqueio para sempre, e o funcionário nunca mais entraria.
+        registrar_recusa(db, origem, usuario, "bloqueado")
         return False
     if confere:
         usuario.falhas_seguidas, usuario.bloqueado_ate = 0, None
         return True
+    registrar_recusa(db, origem, usuario, motivo_do_erro)
     usuario.falhas_seguidas += 1
     if usuario.falhas_seguidas >= TENTATIVAS_ANTES_DO_BLOQUEIO:
         # Zera a conta: passado o bloqueio, são mais 5 tentativas, e não uma.
         usuario.falhas_seguidas, usuario.bloqueado_ate = 0, momento + TEMPO_DE_BLOQUEIO
+        auditoria.registrar(
+            db,
+            origem,
+            "login.bloqueado",
+            "usuario",
+            usuario.id,
+            {
+                "login": usuario.login,
+                "tentativas": TENTATIVAS_ANTES_DO_BLOQUEIO,
+                "bloqueado_ate": usuario.bloqueado_ate,
+            },
+        )
     return False
+
+
+def registrar_recusa(db: Session, origem: auditoria.Origem, usuario: Usuario, motivo: str) -> None:
+    """O login recusado de um usuário que existe. Quem tentou não é conhecido (no login,
+    `origem` não tem usuário); o alvo vai em `entidade_id`, e o motivo, que a resposta não
+    conta a quem tentou, fica para o dono."""
+    auditoria.registrar(
+        db,
+        origem,
+        "login.recusado",
+        "usuario",
+        usuario.id,
+        {"login": usuario.login, "motivo": motivo},
+    )
 
 
 def _hash_do_token(token: str) -> str:

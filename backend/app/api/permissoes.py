@@ -42,14 +42,19 @@ def usuario_atual(sessao: Sessao | None = Depends(sessao_atual)) -> Usuario | No
 
 
 def origem_do_pedido(request: Request, sessao: Sessao | None = Depends(sessao_atual)) -> Origem:
-    """Quem fez e de onde, para a trilha de auditoria. O IP é o que o uvicorn viu: atrás de
-    um proxy, o do proxy, a não ser que o uvicorn confie nele (`--forwarded-allow-ips`).
-    O `X-Forwarded-For` não é lido aqui: qualquer um o escreve."""
+    """Quem fez e de onde, para a trilha de auditoria: o usuário e o aparelho da sessão."""
     return Origem(
         usuario_id=None if sessao is None else sessao.usuario_id,
-        ip=None if request.client is None else request.client.host,
+        ip=ip_do_pedido(request),
         dispositivo=None if sessao is None else sessao.dispositivo,
     )
+
+
+def ip_do_pedido(request: Request) -> str | None:
+    """O endereço que o uvicorn viu: atrás de um proxy, o do proxy, a não ser que o
+    uvicorn confie nele (`--forwarded-allow-ips`) e troque pelo do cliente. O
+    `X-Forwarded-For` não é lido aqui: qualquer um o escreve."""
+    return None if request.client is None else request.client.host
 
 
 def exigir_sessao(sessao: Sessao | None = Depends(sessao_atual)) -> Sessao:
