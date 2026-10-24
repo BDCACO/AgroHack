@@ -8,7 +8,7 @@ from datetime import date
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String, Uuid, false
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, String, Uuid, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -110,10 +110,19 @@ class Movimentacao(Base):
             "item_do_pedido_id IS NULL OR (tipo = 'entrada' AND motivo IS NULL)",
             name="pedido_so_em_compra",
         ),
+        # A lista é sempre "as mais recentes primeiro" (data desc, id desc): com este índice,
+        # a primeira página sai lendo só as linhas dela, sem ordenar a tabela inteira; e o
+        # relatório por período (`data` entre duas datas) lê só o trecho do período.
+        Index("ix_movimentacoes_data_id", "data", "id"),
+        # As movimentações de um insumo (a página dele, o filtro, a busca e a categoria, que
+        # viram `insumo_id IN (...)`), já na ordem da lista. Começa por insumo_id, então
+        # também serve à FK (o CASCADE ao remover o insumo) e substitui o índice simples.
+        Index("ix_movimentacoes_insumo_id_data_id", "insumo_id", "data", "id"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    insumo_id: Mapped[int] = mapped_column(ForeignKey("insumos.id", ondelete="CASCADE"), index=True)
+    # Sem index=True: o índice composto (insumo_id, data, id) já começa por ela.
+    insumo_id: Mapped[int] = mapped_column(ForeignKey("insumos.id", ondelete="CASCADE"))
     tipo: Mapped[str] = mapped_column(String(7))
     data: Mapped[date]
     quantidade: Mapped[float] = mapped_column(Quantidade)

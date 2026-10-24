@@ -403,3 +403,28 @@ def test_categoria_com_insumo_nao_se_apaga_nem_fora_da_api(banco: Engine) -> Non
         banco.begin() as conexao,
     ):
         conexao.execute(text("DELETE FROM categorias"))
+
+
+def _indices_de_movimentacoes(banco: Engine) -> set[str]:
+    with banco.connect() as conexao:
+        return set(
+            conexao.scalars(
+                text("SELECT indexname FROM pg_indexes WHERE tablename = 'movimentacoes'")
+            )
+        )
+
+
+def test_indices_da_lista_de_movimentacoes_sobem_e_descem(banco: Engine) -> None:
+    novos = {"ix_movimentacoes_data_id", "ix_movimentacoes_insumo_id_data_id"}
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, categorias RESTART IDENTITY CASCADE"))
+
+    assert novos <= _indices_de_movimentacoes(banco)
+    # O composto começa por insumo_id: o simples sairia redundante.
+    assert "ix_movimentacoes_insumo_id" not in _indices_de_movimentacoes(banco)
+
+    alembic("-x", "descartar_categorias=sim", "downgrade", "0010")
+    depois = _indices_de_movimentacoes(banco)
+    assert not novos & depois
+    assert "ix_movimentacoes_insumo_id" in depois
+    alembic("upgrade", "head")
