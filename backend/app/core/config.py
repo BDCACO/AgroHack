@@ -8,7 +8,7 @@ descobrir em produção que o banco era o default de alguém.
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +26,22 @@ class Settings(BaseSettings):
     # Sem default também: não existe banco "padrão" aceitável.
     # Formato: postgresql+psycopg://usuario:senha@host:5432/banco
     database_url: str
+
+    # Tempos-limite da conexão da API com o PostgreSQL. Sem eles, uma consulta presa, um
+    # `FOR UPDATE` esperando trava (login, recebimento de pedido) ou uma transação esquecida
+    # aberta seguram a conexão e as travas para sempre, e a API fica pendurada. Zero, no
+    # PostgreSQL, desliga o limite: por isso só valores positivos.
+    # Consulta: a maior medida (relatório com 50 mil movimentações, o máximo de uma
+    # planilha) levou 0,5 s; 30 s dão folga para o banco crescer anos sem cortar o normal.
+    db_statement_timeout_ms: int = Field(default=30_000, gt=0)
+    # Espera por trava: nenhuma trava legítima dura mais que uma requisição curta. Cinco
+    # segundos e o pedido desiste com "tente de novo", em vez de fila sem fim.
+    db_lock_timeout_ms: int = Field(default=5_000, gt=0)
+    # Transação aberta sem fazer nada: o relatório gasta uns 3 s de Python entre consultas,
+    # a importação uns 4 s. Um minuto só derruba a transação esquecida.
+    db_idle_in_transaction_timeout_ms: int = Field(default=60_000, gt=0)
+    # Espera por uma conexão livre no pool, em segundos.
+    db_pool_timeout_s: float = Field(default=10, gt=0)
 
     log_level: str = "INFO"
 
