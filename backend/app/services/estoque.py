@@ -310,6 +310,9 @@ def remover_insumo(db: Session, insumo_id: int, origem: auditoria.Origem) -> Non
         delete(Pedido).where(~exists().where(ItemDoPedido.pedido_id == Pedido.id)),
         execution_options={"synchronize_session": False},
     )
+    # O que fica perdeu a linha dele: a situação passa a ser a do que sobrou (o parcial
+    # em que só faltava este insumo chegou inteiro; o que só tinha recebido dele, nada).
+    pedidos.recalcular_a_situacao(db, {item.pedido_id for item in itens})
     db.commit()
 
 

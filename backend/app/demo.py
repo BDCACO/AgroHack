@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_sessionmaker
 from app.core.relogio import hoje
 from app.models import Categoria, Fornecedor, Insumo, ItemDoPedido, Movimentacao, Pedido, Talhao
-from app.services import auditoria
+from app.services import auditoria, pedidos
 
 DIAS_DE_HISTORICO = 180
 TALHOES = (
@@ -144,6 +144,15 @@ def limpar(db: Session) -> None:
 
 def _apagar(db: Session) -> dict[str, int]:
     """Apaga a demonstração, sem commit, e diz quanto de cada coisa saiu."""
+    # Os pedidos (reais também) com linha de insumo de demonstração: perdem a linha, e a
+    # situação dos que ficam é recalculada no fim.
+    com_linha_da_demo = set(
+        db.scalars(
+            select(ItemDoPedido.pedido_id).where(
+                ItemDoPedido.insumo_id.in_(select(Insumo.id).where(Insumo.demonstracao))
+            )
+        )
+    )
     # As movimentações vão junto pelo ON DELETE CASCADE, e com elas as aplicações nos
     # talhões de demonstração.
     insumos = db.execute(delete(Insumo).where(Insumo.demonstracao)).rowcount
@@ -154,9 +163,10 @@ def _apagar(db: Session) -> dict[str, int]:
     # E deixa de ser demonstração: guarda dado real, e a tela não pode chamá-lo de fictício.
     db.execute(update(Talhao).where(Talhao.demonstracao).values(demonstracao=False))
     # As linhas de pedido dos insumos apagados foram junto; o pedido vazio sai também.
-    pedidos = db.execute(
+    pedidos_apagados = db.execute(
         delete(Pedido).where(~exists().where(ItemDoPedido.pedido_id == Pedido.id))
     ).rowcount
+    pedidos.recalcular_a_situacao(db, com_linha_da_demo)
     # O fornecedor de demonstração com compra ou pedido real fica, pelo mesmo motivo do
     # talhão, e deixa de ser demonstração.
     com_historia = exists().where(Movimentacao.fornecedor_id == Fornecedor.id) | exists().where(
@@ -170,7 +180,7 @@ def _apagar(db: Session) -> dict[str, int]:
         "insumos": insumos,
         "talhoes": talhoes,
         "fornecedores": fornecedores,
-        "pedidos": pedidos,
+        "pedidos": pedidos_apagados,
     }
 
 

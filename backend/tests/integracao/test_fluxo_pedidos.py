@@ -5,6 +5,8 @@ dá a entrada em duas vezes; o preço pago a cada revenda fica lado a lado. E o 
 com a aba Pedidos e a cópia de segurança que devolve de quem foi cada compra."""
 
 import base64
+import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -16,6 +18,7 @@ from sqlalchemy import Engine, text
 
 from app.core.relogio import hoje
 from app.core.senha import gerar_hash
+from tests.integracao.conftest import BACKEND, ambiente_do_entrypoint
 
 HOJE = hoje()
 SENHA = "senha-do-fluxo-1"
@@ -393,3 +396,91 @@ def test_aba_pedidos_com_mais_de_200_a_caminho(api: httpx.Client, banco: Engine)
     assert len(linhas) == 202
     assert mais_antigo in {linha[0] for linha in linhas}
     assert sorted(linha[8] for linha in linhas)[0] == 6  # o parcial: faltam 6 dos 10
+
+
+def _pedido_meio_recebido(
+    api: httpx.Client, real: int, outro: int, recebe: int, quantidade: float
+) -> dict[str, Any]:
+    """Pedido atrasado com duas linhas de 10, das quais `recebe` recebe `quantidade`."""
+    feito = ok(
+        api.post(
+            "/pedidos",
+            json={
+                "feito_em": dia(-10),
+                "previsto_para": dia(-2),
+                "itens": [
+                    {"insumo_id": real, "quantidade": 10},
+                    {"insumo_id": outro, "quantidade": 10},
+                ],
+            },
+        ),
+        201,
+    )
+    linha = next(i["id"] for i in feito["itens"] if i["insumo_id"] == recebe)
+    recebido = ok(
+        api.post(
+            f"/pedidos/{feito['id']}/receber",
+            json={"itens": [{"item_id": linha, "quantidade": quantidade}]},
+        )
+    )
+    assert recebido["pedido"]["situacao"] == "parcial"
+    return feito
+
+
+def _conferir_o_que_sobrou(
+    api: httpx.Client, chegou_o_resto: dict[str, Any], nada_chegou: dict[str, Any], real: int
+) -> None:
+    recebido = ok(api.get(f"/pedidos/{chegou_o_resto['id']}"))
+    assert (recebido["situacao"], recebido["atrasado"]) == ("recebido", False)
+    [linha] = recebido["itens"]
+    de_novo = api.post(
+        f"/pedidos/{chegou_o_resto['id']}/receber",
+        json={"itens": [{"item_id": linha["id"], "quantidade": 1}]},
+    )
+    assert de_novo.status_code == 409
+    assert ok(api.get(f"/pedidos/{nada_chegou['id']}"))["situacao"] == "aberto"
+    ok(
+        api.put(
+            f"/pedidos/{nada_chegou['id']}",
+            json={"itens": [{"insumo_id": real, "quantidade": 12}]},
+        )
+    )
+
+
+def test_remover_insumo_recalcula_a_situacao_do_pedido_que_fica(api: httpx.Client) -> None:
+    adubo = ok(api.post("/insumos", json={"nome": "Adubo", "unidade": "kg"}), 201)["id"]
+    calcario = ok(api.post("/insumos", json={"nome": "Calcário", "unidade": "t"}), 201)["id"]
+    sal = ok(api.post("/insumos", json={"nome": "Sal mineral", "unidade": "kg"}), 201)["id"]
+    chegou_o_resto = _pedido_meio_recebido(api, adubo, sal, recebe=adubo, quantidade=10)
+    nada_chegou = _pedido_meio_recebido(api, calcario, sal, recebe=sal, quantidade=4)
+
+    ok(api.delete(f"/insumos/{sal}"), 204)
+
+    _conferir_o_que_sobrou(api, chegou_o_resto, nada_chegou, calcario)
+
+
+def test_limpar_a_demonstracao_recalcula_a_situacao_do_pedido_real(
+    api: httpx.Client,
+) -> None:
+    # O comando de verdade, com o papel da aplicação, como o `make demo-limpar`.
+    def demo(acao: str) -> None:
+        rodou = subprocess.run(  # noqa: S603 (comando fixo)
+            [sys.executable, "-m", "app.demo", acao],
+            cwd=BACKEND,
+            env=ambiente_do_entrypoint(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert rodou.returncode == 0, rodou.stderr
+
+    demo("carregar")
+    sal = next(i["id"] for i in ok(api.get("/insumos")) if i["nome"] == "Sal mineral 80P")
+    adubo = ok(api.post("/insumos", json={"nome": "Adubo da fazenda", "unidade": "kg"}), 201)["id"]
+    calcario = ok(api.post("/insumos", json={"nome": "Calcário", "unidade": "t"}), 201)["id"]
+    chegou_o_resto = _pedido_meio_recebido(api, adubo, sal, recebe=adubo, quantidade=10)
+    nada_chegou = _pedido_meio_recebido(api, calcario, sal, recebe=sal, quantidade=4)
+
+    demo("limpar")
+
+    _conferir_o_que_sobrou(api, chegou_o_resto, nada_chegou, calcario)

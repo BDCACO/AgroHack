@@ -5,6 +5,7 @@ aberto ou parcial entra na análise do insumo (`estoque.a_caminho`): sem isso, a
 mandaria comprar de novo o que está a caminho.
 """
 
+from collections.abc import Iterable
 from datetime import date
 
 from sqlalchemy import select
@@ -239,6 +240,22 @@ def situacao_pelo_recebido(pedido: Pedido) -> str:
     if any(item.quantidade_recebida for item in pedido.itens):
         return "parcial"
     return "aberto"
+
+
+def recalcular_a_situacao(db: Session, pedido_ids: Iterable[int]) -> None:
+    """A situação dos pedidos que perderam linhas (o insumo removido levou as dele pelo ON
+    DELETE CASCADE), pelo que sobrou, como no recebimento: o que já chegou inteiro vira
+    recebido (e deixa de aparecer atrasado e de aceitar carga), o que não tem mais nada
+    recebido volta a aberto (e se altera de novo). O cancelado continua cancelado, e o
+    pedido que ficou vazio, já apagado, não aparece. Sem commit: vai junto com a remoção."""
+    ids = set(pedido_ids)
+    if not ids:
+        return
+    # populate_existing: as linhas apagadas pelo banco ainda podem estar na sessão, na
+    # lista de itens de um pedido lido antes; relê do banco o que sobrou.
+    consulta = select(Pedido).where(Pedido.id.in_(ids)).execution_options(populate_existing=True)
+    for pedido in db.scalars(consulta).unique():
+        pedido.situacao = situacao_pelo_recebido(pedido)
 
 
 def buscar_pedido(db: Session, pedido_id: int, *, travar: bool = False) -> Pedido:

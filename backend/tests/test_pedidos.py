@@ -564,3 +564,73 @@ def test_altera_pedido_de_fornecedor_desativado_depois(client: TestClient) -> No
     assert (mesmo.json()["fornecedor_id"], mesmo.json()["previsto_para"]) == (loja["id"], dia(4))
     assert trocado.status_code == 422
     assert "Agropecuária Vale Verde está desativado" in trocado.json()["detail"]
+
+
+def _linha(feito: dict[str, Any], insumo: dict[str, Any]) -> int:
+    return next(i["id"] for i in feito["itens"] if i["insumo_id"] == insumo["id"])
+
+
+def test_remover_insumo_recalcula_a_situacao_do_pedido_que_fica(client: TestClient) -> None:
+    adubo = criar(client, "/api/v1/insumos", {"nome": "Adubo", "unidade": "kg"})
+    sal = criar(client, "/api/v1/insumos", {"nome": "Sal mineral", "unidade": "kg"})
+    calcario = criar(client, "/api/v1/insumos", {"nome": "Calcário", "unidade": "t"})
+    # 1. O adubo chegou inteiro e o sal não: parcial e atrasado. Sem o sal, chegou tudo.
+    chegou_o_resto = pedido(
+        client,
+        feito_em=dia(-10),
+        previsto_para=dia(-2),
+        itens=[
+            {"insumo_id": adubo["id"], "quantidade": 70},
+            {"insumo_id": sal["id"], "quantidade": 100},
+        ],
+    )
+    receber(
+        client,
+        chegou_o_resto["id"],
+        itens=[{"item_id": _linha(chegou_o_resto, adubo), "quantidade": 70}],
+    )
+    # 2. Só chegou parte do sal: parcial. Sem o sal, não chegou nada: volta a aberto.
+    nada_chegou = pedido(
+        client,
+        itens=[
+            {"insumo_id": calcario["id"], "quantidade": 2},
+            {"insumo_id": sal["id"], "quantidade": 100},
+        ],
+    )
+    receber(
+        client, nada_chegou["id"], itens=[{"item_id": _linha(nada_chegou, sal), "quantidade": 50}]
+    )
+    # 3. O cancelado continua cancelado, chegue o que chegar.
+    cancelado = pedido(
+        client,
+        itens=[
+            {"insumo_id": adubo["id"], "quantidade": 5},
+            {"insumo_id": sal["id"], "quantidade": 5},
+        ],
+    )
+    receber(client, cancelado["id"], itens=[{"item_id": _linha(cancelado, adubo), "quantidade": 5}])
+    assert client.post(f"/api/v1/pedidos/{cancelado['id']}/cancelar").status_code == 200
+    antes = {p["id"]: p["situacao"] for p in client.get("/api/v1/pedidos").json()}
+    assert antes == {
+        chegou_o_resto["id"]: "parcial",
+        nada_chegou["id"]: "parcial",
+        cancelado["id"]: "cancelado",
+    }
+
+    assert client.delete(f"/api/v1/insumos/{sal['id']}").status_code == 204
+
+    recebido = client.get(f"/api/v1/pedidos/{chegou_o_resto['id']}").json()
+    assert (recebido["situacao"], recebido["atrasado"]) == ("recebido", False)
+    de_novo = receber(
+        client,
+        chegou_o_resto["id"],
+        itens=[{"item_id": _linha(chegou_o_resto, adubo), "quantidade": 1}],
+    )
+    assert de_novo.status_code == 409
+    assert client.get(f"/api/v1/pedidos/{nada_chegou['id']}").json()["situacao"] == "aberto"
+    alterado = client.put(
+        f"/api/v1/pedidos/{nada_chegou['id']}",
+        json={"itens": [{"insumo_id": calcario["id"], "quantidade": 3}]},
+    )
+    assert alterado.status_code == 200, alterado.json()
+    assert client.get(f"/api/v1/pedidos/{cancelado['id']}").json()["situacao"] == "cancelado"

@@ -241,7 +241,12 @@ Decisões:
   revenda cobra hoje (sem ele, o custo médio). Cada grupo vai como está para
   `POST /pedidos`; o que já foi pedido sai da sugestão.
 - **Remover o insumo** leva as linhas de pedido dele (CASCADE, como as movimentações), e o
-  pedido que fica vazio sai junto.
+  pedido que fica vazio sai junto. O que fica tem a situação recalculada pelo que sobrou
+  (`pedidos.recalcular_a_situacao`, a regra do recebimento): o parcial em que só faltava
+  aquele insumo chegou inteiro e vira recebido (deixa de aparecer atrasado e de aceitar
+  carga); o que só tinha recebido dele volta a aberto (e se altera de novo); o cancelado
+  continua cancelado. O mesmo no `limpar` da demonstração, para o pedido real com linha de
+  insumo de demonstração.
 - **Planilha**: coluna opcional `fornecedor`, só em compra. O fornecedor que não existe é
   **cadastrado pelo nome**, como o insumo novo, e não recusado como o talhão: o talhão
   precisa da área, o fornecedor só do nome, e a cópia de segurança restaurada num sistema

@@ -211,3 +211,44 @@ def test_carregar_e_limpar_deixam_rastro(db: Session) -> None:
     assert primeira.dados == {"referencia": str(hoje()), "criados": tudo, "removidos": nada}
     assert segunda.dados["removidos"] == tudo
     assert limpeza.dados == {"removidos": tudo}
+
+
+def test_limpar_recalcula_a_situacao_do_pedido_real_que_fica(
+    client: TestClient, db: Session
+) -> None:
+    # Pedidos reais com uma linha de insumo de demonstração: ela sai com o insumo, e o
+    # pedido que fica tem a situação pelo que sobrou, e não a de antes.
+    carregar(db, hoje())
+    sal = next(i for i in client.get("/api/v1/insumos").json() if i["nome"] == "Sal mineral 80P")
+    adubo = client.post("/api/v1/insumos", json={"nome": "Adubo da fazenda", "unidade": "kg"})
+    calcario = client.post("/api/v1/insumos", json={"nome": "Calcário", "unidade": "t"})
+
+    def pedir_e_receber(real: dict, recebe_o_real: bool) -> int:
+        feito = client.post(
+            "/api/v1/pedidos",
+            json={
+                "feito_em": str(hoje() - timedelta(days=10)),
+                "previsto_para": str(hoje() - timedelta(days=2)),
+                "itens": [
+                    {"insumo_id": real["id"], "quantidade": 10},
+                    {"insumo_id": sal["id"], "quantidade": 10},
+                ],
+            },
+        ).json()
+        recebe = real["id"] if recebe_o_real else sal["id"]
+        linha = next(i["id"] for i in feito["itens"] if i["insumo_id"] == recebe)
+        recebido = client.post(
+            f"/api/v1/pedidos/{feito['id']}/receber",
+            json={"itens": [{"item_id": linha, "quantidade": 10 if recebe_o_real else 4}]},
+        )
+        assert recebido.json()["pedido"]["situacao"] == "parcial"
+        return feito["id"]
+
+    chegou_o_resto = pedir_e_receber(adubo.json(), recebe_o_real=True)
+    nada_chegou = pedir_e_receber(calcario.json(), recebe_o_real=False)
+
+    limpar(db)
+
+    recebido = client.get(f"/api/v1/pedidos/{chegou_o_resto}").json()
+    assert (recebido["situacao"], recebido["atrasado"]) == ("recebido", False)
+    assert client.get(f"/api/v1/pedidos/{nada_chegou}").json()["situacao"] == "aberto"
