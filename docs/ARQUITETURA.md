@@ -866,7 +866,8 @@ segurança, registro do pedido, limite de escritas por IP, limite do corpo. Deci
   `Dockerfile`): ele leva a query string, não tem o id nem o usuário, e cada pedido sairia em
   duas linhas.
 - **Erro inesperado: `500` com frase e id.** O traceback vai para o log (logger `app.erro`, com
-  o id, o método e o caminho); a resposta leva só "Algo deu errado no servidor. Tente de novo;
+  o id, o método e o caminho em JSON, como no log de acesso: ele chega decodificado, e um
+  `%0A` cru forjaria uma linha no log); a resposta leva só "Algo deu errado no servidor. Tente de novo;
   se continuar, informe ao suporte o código do pedido." e `id_da_requisicao`, nunca o traceback.
   Pego no middleware do registro, e não num `exception_handler(Exception)`: o do Starlette roda
   por fora de todos os middlewares, e o `500` sairia sem o id e sem os cabeçalhos. O `503` dos

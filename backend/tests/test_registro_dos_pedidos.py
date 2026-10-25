@@ -157,3 +157,26 @@ def test_503_do_banco_e_422_do_dado_tambem_levam_o_id(client: TestClient) -> Non
         assert resposta.status_code == status
         assert resposta.json()["id_da_requisicao"] == resposta.headers["X-Request-ID"]
         assert resposta.json()["detail"]
+
+
+def test_caminho_com_quebra_de_linha_nao_forja_linha_no_log_de_erro(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    # O caminho chega decodificado: o %0A vira uma quebra de linha de verdade, e escrito cru
+    # no log do erro forjaria uma linha inteira (com data e nível inventados).
+    def quebrar() -> None:
+        raise RuntimeError("defeito")
+
+    # A rota com o caminho já decodificado: um `{resto:path}` não casa com a quebra de linha.
+    forjado = "/api/v1/teste-quebra/x\n2026-10-25 ERROR forjado\r\x1b[31m"
+    client.app.add_api_route(forjado, quebrar)
+
+    with caplog.at_level(logging.INFO):
+        resposta = client.get("/api/v1/teste-quebra/x%0A2026-10-25 ERROR forjado%0D%1B[31m")
+
+    assert resposta.status_code == 500
+    [erro] = [r for r in caplog.records if r.name == "app.erro"]
+    mensagem = erro.getMessage()
+    assert not any(c in mensagem for c in "\n\r\x1b")
+    # Como no log de acesso: o caminho em JSON, com as quebras escritas como \n e \r.
+    assert json.dumps(forjado, ensure_ascii=False) in mensagem

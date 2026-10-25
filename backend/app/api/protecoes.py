@@ -101,9 +101,13 @@ class RegistroDosPedidos:
             # Aqui, e não num exception_handler: o do Starlette para `Exception` roda fora de
             # todos os middlewares, e a resposta sairia sem o id e sem os cabeçalhos de
             # segurança. Engolido depois de logado: o servidor não loga o mesmo traceback
-            # de novo.
+            # de novo. O caminho chega decodificado (um %0A é uma quebra de linha de
+            # verdade): vai em JSON, como no log de acesso, para não forjar uma linha.
             logger_de_erros.exception(
-                "Erro inesperado no pedido %s (%s %s).", id_, scope["method"], scope["path"]
+                "Erro inesperado no pedido %s (%s %s).",
+                id_,
+                scope["method"],
+                json.dumps(scope["path"], ensure_ascii=False),
             )
             if status_enviado is None:
                 resposta = JSONResponse(
