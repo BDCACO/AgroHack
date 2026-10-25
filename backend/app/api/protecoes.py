@@ -4,6 +4,8 @@
 A ordem, de fora para dentro, está em `app/main.py`.
 """
 
+import base64
+import hashlib
 import json
 import logging
 import re
@@ -167,3 +169,110 @@ async def _corpo_grande_demais(scope: Scope, send: Send) -> None:
 
 async def _nada_a_receber() -> Message:
     return {"type": "http.disconnect"}
+
+
+# Em toda resposta da API. Nenhuma é página para o navegador montar: são JSON e o Excel.
+_CABECALHOS_FIXOS = {
+    # O navegador não adivinha o tipo: um JSON com "<script>" nunca vira HTML.
+    "X-Content-Type-Options": "nosniff",
+    # Nenhuma resposta vai para dentro de um <iframe> de outro site (clickjacking). O mesmo
+    # que o `frame-ancestors 'none'` da CSP, para navegador antigo que só conhece este.
+    "X-Frame-Options": "DENY",
+    # O endereço (que pode levar um filtro de busca) não vai para outro site num link.
+    "Referrer-Policy": "no-referrer",
+    # Outro site não embute a resposta (<img>, <script>) com a sessão de quem o visita. O
+    # site é a mesma origem (o proxy do Vite) e o app não é navegador: nenhum dos dois sente.
+    "Cross-Origin-Resource-Policy": "same-origin",
+    # Dado da fazenda (preços, estoque, usuários, quem tentou entrar, o token do login) não
+    # fica no cache do navegador nem de um proxy no caminho. Em toda resposta, e não só nas
+    # de /auth, /usuarios e /auditoria: quase tudo aqui é dado da fazenda, nada é estático,
+    # e uma regra só não deixa rota nova escapar.
+    "Cache-Control": "no-store",
+}
+# JSON e Excel não carregam nada: a política mais fechada. Se um dia uma resposta for aberta
+# como página (um erro que ecoa o que se mandou), nada roda nem é enviado dali.
+CSP_DA_API = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+# O Swagger (/docs, fora de produção) é uma página: o JS e o CSS vêm do CDN que o FastAPI
+# usa, e o script que o inicia está na própria página. Liberado só aquele script, pelo
+# hash, calculado da página que sai (muda com a URL do schema e com a versão do FastAPI),
+# e não `'unsafe-inline'`, que deixaria rodar qualquer script injetado. O estilo em linha
+# fica liberado: o Swagger escreve atributos `style` nas descrições, e estilo não roda
+# código. `connect-src 'self'`: o "Try it out" só fala com esta API.
+_CDN_DO_SWAGGER = "https://cdn.jsdelivr.net"
+_ICONE_DO_SWAGGER = "https://fastapi.tiangolo.com"
+_SCRIPT_EM_LINHA = re.compile(rb"<script>(.*?)</script>", re.DOTALL)
+
+
+class CabecalhosDeSeguranca:
+    """Põe os cabeçalhos de segurança em toda resposta, inclusive nos erros, no 413 do corpo
+    e no 500 do registro: por isso fica por fora de todas as outras proteções."""
+
+    def __init__(self, app: ASGIApp, caminho_do_swagger: str | None, hsts_segundos: int) -> None:
+        self.app = app
+        self.caminho_do_swagger = caminho_do_swagger
+        self.cabecalhos = dict(_CABECALHOS_FIXOS)
+        if hsts_segundos > 0:
+            # Só com HTTPS na frente (ver `hsts_segundos` em app/core/config.py).
+            self.cabecalhos["Strict-Transport-Security"] = f"max-age={hsts_segundos}"
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        if scope["path"] == self.caminho_do_swagger:
+            await self._swagger(scope, receive, send)
+            return
+
+        async def enviar(mensagem: Message) -> None:
+            if mensagem["type"] == "http.response.start":
+                self._por(mensagem, CSP_DA_API)
+            await send(mensagem)
+
+        await self.app(scope, receive, enviar)
+
+    async def _swagger(self, scope: Scope, receive: Receive, send: Send) -> None:
+        # A página é pequena: junta o corpo para calcular o hash do script antes de mandar
+        # os cabeçalhos.
+        inicio: Message | None = None
+        corpo = bytearray()
+
+        async def juntar(mensagem: Message) -> None:
+            nonlocal inicio
+            if mensagem["type"] == "http.response.start":
+                inicio = mensagem
+                return
+            if mensagem["type"] != "http.response.body" or inicio is None:
+                await send(mensagem)
+                return
+            corpo.extend(mensagem.get("body", b""))
+            if not mensagem.get("more_body", False):
+                self._por(inicio, _csp_do_swagger(bytes(corpo)))
+                await send(inicio)
+                await send({"type": "http.response.body", "body": bytes(corpo)})
+
+        await self.app(scope, receive, juntar)
+
+    def _por(self, inicio: Message, csp: str) -> None:
+        cabecalhos = MutableHeaders(scope=inicio)
+        for nome, valor in self.cabecalhos.items():
+            cabecalhos[nome] = valor
+        cabecalhos["Content-Security-Policy"] = csp
+
+
+def _csp_do_swagger(pagina: bytes) -> str:
+    hashes = " ".join(
+        f"'sha256-{base64.b64encode(hashlib.sha256(script).digest()).decode()}'"
+        for script in _SCRIPT_EM_LINHA.findall(pagina)
+    )
+    return "; ".join(
+        (
+            "default-src 'none'",
+            f"script-src {_CDN_DO_SWAGGER} {hashes}",
+            f"style-src {_CDN_DO_SWAGGER} 'unsafe-inline'",
+            f"img-src 'self' data: {_ICONE_DO_SWAGGER}",
+            "connect-src 'self'",
+            "frame-ancestors 'none'",
+            "base-uri 'none'",
+            "form-action 'none'",
+        )
+    )

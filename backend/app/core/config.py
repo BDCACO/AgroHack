@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # ainda não têm tela de login continuarem funcionando. Em produção é obrigatória.
     autenticacao: bool = False
 
+    # HSTS: o navegador passa a só usar HTTPS com este endereço, por tantos segundos. Zero
+    # (o padrão) não manda o cabeçalho: no desenvolvimento em http://, ligado, o navegador
+    # recusaria o http://localhost de todos os projetos até o prazo vencer. Ligar só com
+    # HTTPS na frente da API (um ano: 31536000).
+    hsts_segundos: int = Field(default=0, ge=0)
+
     @model_validator(mode="after")
     def _producao_exige_autenticacao(self) -> Self:
         # Fail-closed, como o ENVIRONMENT: esquecer a variável não pode deixar a API de

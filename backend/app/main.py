@@ -7,7 +7,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DataError, OperationalError, SQLAlchemyError
 from sqlalchemy.exc import TimeoutError as PoolSemConexao
 
-from app.api.protecoes import LimiteDoCorpo, RegistroDosPedidos, id_da_requisicao
+from app.api.protecoes import (
+    CabecalhosDeSeguranca,
+    LimiteDoCorpo,
+    RegistroDosPedidos,
+    id_da_requisicao,
+)
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.database import get_engine, problemas_do_papel
@@ -61,10 +66,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(api_router, prefix=prefixo)
 
     # As proteções de todo pedido (app/api/protecoes.py). A última a entrar é a de fora; de
-    # fora para dentro: o registro (o id e a linha do log, inclusive do que as outras
-    # recusam) e o limite do corpo, que recusa antes de a API ler o pedido.
+    # fora para dentro: os cabeçalhos de segurança (em toda resposta, até no 500), o
+    # registro (o id, a linha do log, inclusive do que as outras recusam, e o 500) e o
+    # limite do corpo, que recusa antes de a API ler o pedido.
     app.add_middleware(LimiteDoCorpo, maximo=CORPO_MAXIMO)
     app.add_middleware(RegistroDosPedidos)
+    app.add_middleware(
+        CabecalhosDeSeguranca,
+        caminho_do_swagger=app.docs_url,
+        hsts_segundos=settings.hsts_segundos,
+    )
 
     @app.exception_handler(DataError)
     async def dado_que_o_banco_recusa(request: Request, _: DataError) -> JSONResponse:
