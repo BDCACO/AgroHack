@@ -28,6 +28,11 @@ Agrupamento = Literal["mes", "semana", "dia"]
 # Pontos num gráfico que ainda se lê na tela do celular: um ano e um mês por dia, quase
 # oito anos por semana, mais de trinta por mês. Acima, a resposta pesaria sem dizer mais.
 MAXIMO_DE_PERIODOS = 400
+# A faixa das datas: folgada para qualquer registro de uma fazenda, e longe das pontas do
+# `date` do Python (o ano 1 e o 9999), onde o mês, a semana ou o dia seguinte não existem
+# e a conta virava um 500.
+DATA_MINIMA = date(1900, 1, 1)
+DATA_MAXIMA = date(2999, 12, 31)
 
 _MESES = ("jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez")
 # Sempre no plural: o teto só se passa com mais de um.
@@ -40,6 +45,20 @@ class MuitosPeriodos(Exception):
             f"São {quantos} {_PERIODOS[agrupar]} no período, e o relatório mostra até "
             f"{MAXIMO_DE_PERIODOS}: encurte o período ou agrupe por um intervalo maior."
         )
+
+
+class DataForaDaFaixa(Exception):
+    def __init__(self) -> None:
+        super().__init__(
+            f"As datas do relatório vão de {DATA_MINIMA:%d/%m/%Y} a {DATA_MAXIMA:%d/%m/%Y}: "
+            "confira o ano."
+        )
+
+
+def conferir_a_faixa(*datas: date) -> None:
+    """DataForaDaFaixa se alguma das datas cai fora de DATA_MINIMA a DATA_MAXIMA."""
+    if any(not DATA_MINIMA <= dia <= DATA_MAXIMA for dia in datas):
+        raise DataForaDaFaixa
 
 
 @dataclass(frozen=True)
@@ -133,7 +152,9 @@ def periodos(desde: date, ate: date, agrupar: Agrupamento) -> list[tuple[date, d
     """Os intervalos de `desde` a `ate`, cortados nas pontas: pedir de 15/08 a 10/10 por
     mês dá 15/08 a 31/08, setembro inteiro e 01/10 a 10/10. A semana vai de segunda a
     domingo. Acima de MAXIMO_DE_PERIODOS, MuitosPeriodos (contado antes de montar a
-    lista: um período de séculos por dia não chega a ser montado)."""
+    lista: um período de séculos por dia não chega a ser montado); fora da faixa das
+    datas, DataForaDaFaixa."""
+    conferir_a_faixa(desde, ate)
     if (quantos := _quantos(desde, ate, agrupar)) > MAXIMO_DE_PERIODOS:
         raise MuitosPeriodos(quantos, agrupar)
     intervalos = []

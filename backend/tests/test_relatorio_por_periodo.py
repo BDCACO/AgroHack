@@ -9,7 +9,10 @@ from datetime import date
 import pytest
 
 from app.domain.relatorio_por_periodo import (
+    DATA_MAXIMA,
+    DATA_MINIMA,
     MAXIMO_DE_PERIODOS,
+    DataForaDaFaixa,
     InsumoDoRelatorio,
     Lancamento,
     MuitosPeriodos,
@@ -327,3 +330,21 @@ def test_nomes_na_ordem_da_lista_de_insumos() -> None:
     assert r.limitacoes[0] == (
         "Consumo sem valor em reais (insumo sem compra com preço): Ácido bórico, adubo, Zinco."
     )
+
+
+@pytest.mark.parametrize(
+    ("desde", "ate", "agrupar"),
+    [
+        (date(9999, 12, 1), date(9999, 12, 31), "mes"),
+        (date(9999, 12, 27), date(9999, 12, 31), "semana"),
+        (date(9999, 12, 31), date(9999, 12, 31), "dia"),
+        (date(1, 1, 1), date(1, 3, 1), "mes"),
+        (date(1899, 12, 31), date(1900, 1, 1), "dia"),
+    ],
+)
+def test_datas_fora_da_faixa(desde: date, ate: date, agrupar: str) -> None:
+    # Nas pontas do `date`, o mês, a semana ou o dia seguinte não existem.
+    with pytest.raises(DataForaDaFaixa, match="01/01/1900 a 31/12/2999"):
+        periodos(desde, ate, agrupar)
+    assert periodos(DATA_MAXIMA, DATA_MAXIMA, agrupar)[-1][1] == DATA_MAXIMA
+    assert periodos(DATA_MINIMA, DATA_MINIMA, agrupar)[0][0] == DATA_MINIMA

@@ -29,9 +29,16 @@ def relatorio_por_periodo(
     os últimos 12 meses até hoje): o consumo de cada insumo (só a retirada para uso, na
     unidade dele e em reais), o gasto nas compras com preço, as perdas (descarte e falta
     da contagem, pelo custo médio) e os totais por categoria e por fornecedor. O período
-    sem movimento vem zerado. Até 400 períodos (por dia, uns 13 meses)."""
+    sem movimento vem zerado. Até 400 períodos (por dia, uns 13 meses), com as datas de
+    01/01/1900 a 31/12/2999."""
     ate = ate or hoje()
-    desde = desde or servico.inicio_dos_ultimos_meses(ate)
+    try:
+        # O `ate` antes de contar os doze meses para trás: a partir do ano 1, seria o ano 0.
+        dominio.conferir_a_faixa(ate)
+        desde = desde or max(servico.inicio_dos_ultimos_meses(ate), dominio.DATA_MINIMA)
+        dominio.conferir_a_faixa(desde)
+    except dominio.DataForaDaFaixa as erro:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(erro)) from None
     if desde > ate:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,

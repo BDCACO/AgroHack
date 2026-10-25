@@ -167,3 +167,39 @@ def test_poucas_consultas_ao_banco(client: TestClient, safra: dict[str, Any], db
         event.remove(db.get_bind(), "before_cursor_execute", contar)
 
     assert len(consultas) <= 3, consultas
+
+
+@pytest.mark.parametrize(
+    "consulta",
+    [
+        # O mês seguinte a dezembro de 9999 seria o ano 10000.
+        "?desde=9999-12-01&ate=9999-12-31&agrupar=mes",
+        # A semana e o dia seguintes passam do último dia que o Python conhece.
+        "?desde=9999-12-27&ate=9999-12-31&agrupar=semana",
+        "?desde=9999-12-31&ate=9999-12-31&agrupar=dia",
+        # Sem `desde`, doze meses antes de março do ano 1 seria o ano 0.
+        "?ate=0001-03-01",
+        "?desde=1899-12-31&ate=1900-01-31",
+    ],
+)
+def test_datas_fora_da_faixa_sao_422_com_a_frase(client: TestClient, consulta: str) -> None:
+    resposta = client.get(f"/api/v1/relatorios/periodo{consulta}")
+
+    assert resposta.status_code == 422, resposta.text
+    assert resposta.json()["detail"] == (
+        "As datas do relatório vão de 01/01/1900 a 31/12/2999: confira o ano."
+    )
+
+
+def test_datas_nas_pontas_da_faixa_passam(client: TestClient) -> None:
+    for consulta in (
+        "?desde=1900-01-01&ate=1900-01-31&agrupar=dia",
+        "?desde=2999-12-01&ate=2999-12-31&agrupar=mes",
+        "?desde=2999-12-25&ate=2999-12-31&agrupar=semana",
+        "?desde=2999-12-31&ate=2999-12-31&agrupar=dia",
+        # Sem `desde`, os doze meses começam no primeiro dia da faixa, e não antes.
+        "?ate=1900-03-01",
+    ):
+        resposta = client.get(f"/api/v1/relatorios/periodo{consulta}")
+        assert resposta.status_code == 200, (consulta, resposta.text)
+    assert resposta.json()["desde"] == "1900-01-01"
