@@ -1,7 +1,6 @@
 """Casos de uso do estoque: cadastro de insumos, movimentações e a análise de cada
 insumo a partir do que está no banco."""
 
-import unicodedata
 from dataclasses import dataclass, replace
 from datetime import date
 from typing import Literal
@@ -141,19 +140,12 @@ def ids_pelo_nome(db: Session, busca: str) -> list[int]:
     com a extensão `unaccent`, que o SQLite dos testes não tem, e o `lower()` do SQLite só
     conhece as letras sem acento ("É" ficaria "É"). Feita em Python, dá o mesmo resultado
     nos dois. Os insumos de uma fazenda são centenas, e ler só id e nome custa pouco."""
-    procurado = _como_se_busca(busca)
+    procurado = dominio.como_se_busca(busca)
     return [
         insumo_id
         for insumo_id, nome in db.execute(select(Insumo.id, Insumo.nome))
-        if procurado in _como_se_busca(nome)
+        if procurado in dominio.como_se_busca(nome)
     ]
-
-
-def _como_se_busca(texto: str) -> str:
-    # NFKD separa a letra do acento ("é" vira "e" + acento), e o acento sai; casefold é o
-    # lower() que também iguala letras como o "ß".
-    decomposto = unicodedata.normalize("NFKD", texto.strip())
-    return "".join(c for c in decomposto if not unicodedata.combining(c)).casefold()
 
 
 def criar_insumo(db: Session, dados: InsumoCadastro) -> InsumoResposta:

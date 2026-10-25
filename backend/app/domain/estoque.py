@@ -4,6 +4,7 @@ Puras: sem I/O, sem banco, sem relógio. A data de referência entra como parâm
 para que a mesma entrada dê sempre o mesmo resultado — e o teste não dependa do dia.
 """
 
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
@@ -219,3 +220,18 @@ def dinheiro_legivel(valor: float) -> str:
 def dias_legivel(dias: float) -> str:
     inteiro = round(dias)
     return "1 dia" if inteiro == 1 else f"{inteiro} dias"
+
+
+def como_se_busca(texto: str) -> str:
+    """O nome como a busca o compara e a ordem por nome o ordena: sem diferenciar
+    maiúsculas nem acentos ("Uréia" e "ureia" são o mesmo)."""
+    # NFKD separa a letra do acento ("é" vira "e" + acento), e o acento sai; casefold é o
+    # lower() que também iguala letras como o "ß".
+    decomposto = unicodedata.normalize("NFKD", texto.strip())
+    return "".join(c for c in decomposto if not unicodedata.combining(c)).casefold()
+
+
+def pelo_nome(nome: str) -> tuple[str, str]:
+    """Chave de `sorted` para nomes: como a busca e, no empate ("Adubo" e "adubo"), o
+    próprio nome, para a ordem não depender da ordem de chegada."""
+    return como_se_busca(nome), nome

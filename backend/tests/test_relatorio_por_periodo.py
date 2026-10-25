@@ -301,3 +301,29 @@ def test_um_ano_por_dia_nao_compara_cada_lancamento_com_cada_dia() -> None:
     assert len(r.periodos) == 365
     assert r.total.consumo[0].quantidade == 7300
     assert _DataContada.comparacoes < 50 * len(lancamentos)
+
+
+def test_nomes_na_ordem_da_lista_de_insumos() -> None:
+    # Sem diferenciar maiúsculas nem acento, como a busca: pelo código do caractere, "Zinco"
+    # viria antes de "adubo", e "Ácido bórico" depois de todos.
+    zinco = InsumoDoRelatorio(11, "Zinco", "kg", 21, "Zinco quelatado", custo_medio=None)
+    adubo = InsumoDoRelatorio(12, "adubo", "kg", 22, "adubos", custo_medio=None)
+    acido = InsumoDoRelatorio(13, "Ácido bórico", "kg", 23, "Ácidos", custo_medio=None)
+    insumos = {i.id: i for i in (zinco, adubo, acido)}
+    dia = date(2026, 9, 1)
+    lancamentos = [
+        compra(dia, zinco, 1, 2.0, fornecedor_id=1, fornecedor="Zé Insumos"),
+        compra(dia, adubo, 1, 2.0, fornecedor_id=2, fornecedor="agro Norte"),
+        compra(dia, acido, 1, 2.0, fornecedor_id=3, fornecedor="Água Boa"),
+        *(retirada(dia, insumo, 1) for insumo in (zinco, adubo, acido)),
+    ]
+
+    r = relatorio(lancamentos, insumos, dia, dia, "dia")
+
+    assert [c.insumo for c in r.total.consumo] == ["Ácido bórico", "adubo", "Zinco"]
+    assert [c.categoria for c in r.total.por_categoria] == ["Ácidos", "adubos", "Zinco quelatado"]
+    fornecedores = [f.fornecedor for f in r.total.por_fornecedor]
+    assert fornecedores == ["agro Norte", "Água Boa", "Zé Insumos"]
+    assert r.limitacoes[0] == (
+        "Consumo sem valor em reais (insumo sem compra com preço): Ácido bórico, adubo, Zinco."
+    )

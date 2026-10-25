@@ -21,6 +21,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Literal
 
+from app.domain.estoque import pelo_nome
+
 Agrupamento = Literal["mes", "semana", "dia"]
 
 # Pontos num gráfico que ainda se lê na tela do celular: um ano e um mês por dia, quase
@@ -94,6 +96,8 @@ class TotalDoFornecedor:
 
 @dataclass(frozen=True)
 class Totais:
+    # Os nomes na ordem da lista de insumos: sem diferenciar maiúsculas nem acentos
+    # (`pelo_nome`), e não pelo código do caractere, que poria "Zinco" antes de "adubo".
     consumo: list[ConsumoDoInsumo]  # pelo nome do insumo
     gasto: float
     compras_sem_preco: int  # fora do gasto
@@ -220,7 +224,7 @@ def _somar(lancamentos: list[Lancamento], insumos: Mapping[int, InsumoDoRelatori
     return Totais(
         consumo=sorted(
             (_consumo(insumos[insumo_id], quantidade) for insumo_id, quantidade in consumo.items()),
-            key=lambda c: c.insumo,
+            key=lambda c: pelo_nome(c.insumo),
         ),
         gasto=round(gasto, 2),
         compras_sem_preco=compras_sem_preco,
@@ -237,7 +241,7 @@ def _somar(lancamentos: list[Lancamento], insumos: Mapping[int, InsumoDoRelatori
                 )
                 for categoria_id, somas in categorias.items()
             ),
-            key=lambda c: (c.categoria is None, c.categoria or ""),
+            key=lambda c: (c.categoria is None, pelo_nome(c.categoria or "")),
         ),
         por_fornecedor=sorted(
             (
@@ -250,7 +254,7 @@ def _somar(lancamentos: list[Lancamento], insumos: Mapping[int, InsumoDoRelatori
                 )
                 for fornecedor_id, somas in fornecedores.items()
             ),
-            key=lambda f: (f.fornecedor is None, f.fornecedor or ""),
+            key=lambda f: (f.fornecedor is None, pelo_nome(f.fornecedor or "")),
         ),
     )
 
@@ -279,7 +283,7 @@ def _limitacoes(
             if n == 1
             else f"{n} perdas de insumos sem preço ficaram fora do valor das perdas."
         )
-    sem_valor = sorted(c.insumo for c in total.consumo if c.valor is None)
+    sem_valor = sorted((c.insumo for c in total.consumo if c.valor is None), key=pelo_nome)
     if sem_valor:
         limitacoes.append(
             f"Consumo sem valor em reais (insumo sem compra com preço): {', '.join(sem_valor)}."
