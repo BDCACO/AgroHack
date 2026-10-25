@@ -71,8 +71,9 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 | `app/services/fornecedores.py` | Cadastro dos fornecedores e o detalhe com as compras recentes e o preço médio pago por insumo |
 | `app/services/pedidos.py` | Pedidos de compra: fazer, alterar, cancelar e receber (a carga vira as entradas); a situação pelo que já chegou |
 | `app/services/sugestao_de_pedido.py` | O pedido sugerido: as reposições do motor, agrupadas pelo fornecedor da última compra, com o preço dela |
-| `app/models/usuario.py` | `usuarios` (login em minúsculas, hash da senha, papel, ativo, falhas seguidas e bloqueio) e `sessoes` (o SHA-256 do token, validade, encerramento, aparelho) |
-| `app/services/autenticacao.py` | Login, a sessão conferida a cada pedido, sair, trocar a senha e o bloqueio por senhas erradas |
+| `app/models/usuario.py` | `usuarios` (login em minúsculas, hash da senha, papel, ativo, falhas seguidas e bloqueio) e `sessoes` (o SHA-256 do token, validade, encerramento, aparelho, último uso e IP do login) |
+| `app/services/autenticacao.py` | Login, a sessão conferida a cada pedido (com o último uso e a validade renovada de 5 em 5 minutos), sair, trocar a senha e o bloqueio por senhas erradas |
+| `app/services/sessoes.py` | As sessões abertas de cada um: listar, encerrar uma (o celular perdido) ou todas menos a atual, pelo próprio usuário ou pelo dono |
 | `app/services/usuarios.py` | Gestão pelo dono: cadastrar, alterar, desativar, redefinir a senha; o último dono ativo |
 | `app/usuarios.py` | O comando que cria o primeiro dono no servidor (`make usuario-dono`) |
 | `app/models/auditoria.py` | `eventos_de_auditoria`: quem, quando, a ação, sobre o quê, o conteúdo em JSONB e de onde; somente acrescentar |
@@ -438,10 +439,46 @@ dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Dec
   cada pedido precisa ser rápida). O servidor procura a sessão a cada pedido, então sair,
   trocar a senha e desativar o usuário valem **na hora**, sem lista de revogação. Vai no
   cabeçalho `Authorization: Bearer <token>`.
-- **Validade de 30 dias**, fixa, conferida a cada pedido. O app passa dias no campo sem sinal,
-  lançando na fila, e um login vencido no meio da lida obrigaria o funcionário a achar sinal e
-  lembrar a senha só para continuar. O risco do prazo longo (celular perdido) se resolve pelo
-  dono, que desativa o usuário ou redefine a senha: as sessões dele caem na hora.
+- **Validade de 30 dias sem uso, renovada com o uso, com teto de 90 dias desde o login**,
+  conferida a cada pedido. O app passa dias no campo sem sinal, lançando na fila, e um login
+  vencido no meio da lida obrigaria o funcionário a achar sinal e lembrar a senha só para
+  continuar. Antes eram 30 dias fixos, e quem usava todo dia era derrubado no 30º, às vezes
+  no campo; agora os 30 dias contam do último uso, e o que vence é a sessão esquecida (o
+  aparelho que ninguém mais abre). O teto existe porque, sem ele, um token copiado (de um
+  backup do celular, de um computador emprestado) viveria para sempre enquanto alguém o
+  usasse; e pedir a senha a cada três meses é pouco incômodo e a mantém na memória de quem
+  a usa. A regra mora em `app/services/autenticacao.py` (`VALIDADE_DA_SESSAO`,
+  `TETO_DA_SESSAO`, `validade_renovada`): `expira_em` continua sendo a única coluna que diz
+  se a sessão vale, e o uso a empurra para `min(uso + 30 dias, login + 90 dias)`. O login
+  ainda devolve `expira_em` (30 dias, o primeiro prazo); a lista de sessões mostra o atual.
+- **Último uso, de 5 em 5 minutos, e não a cada pedido.** `sessoes.ultimo_uso_em` diz qual
+  aparelho está em uso e é o que renova a validade. O pedido que chega 5 minutos ou mais
+  depois do último registro grava o uso e a validade nova; os outros não gravam nada. O
+  Painel abre vários pedidos de uma vez e recarrega tudo a cada lançamento: gravar em cada
+  um seria um `UPDATE` por leitura, e os pedidos paralelos do mesmo token esperariam um pelo
+  outro na trava da linha. 5 minutos ainda respondem "está em uso agora?", que é o que o dono
+  pergunta ao procurar o celular perdido, e somem diante dos 30 dias da validade; no pior
+  caso, um aparelho usado sem parar grava 12 vezes por hora. O `UPDATE` repete a condição
+  (dois pedidos que viram o uso velho gravam uma vez só; a sessão encerrada no meio não
+  volta) e o **commit sai na hora**, na conferência do token, antes de a rota começar: a
+  trava da linha dura milissegundos (segurada até o fim de um relatório, os outros pedidos
+  do aparelho cairiam no `lock_timeout`), e nenhuma transação fica aberta além do que a rota
+  já abriria (`idle_in_transaction_session_timeout`). O papel da aplicação já tem `UPDATE`
+  em `sessoes`. Junto, `sessoes.ip`: o IP do login, pelo critério da auditoria
+  (`request.client.host`, nunca o `X-Forwarded-For`).
+- **Sessões de cada um (o celular perdido).** Antes, a sessão do celular perdido só caía
+  desativando o usuário ou redefinindo a senha, e com ela todos os outros aparelhos. Agora
+  cada um vê onde tem login aberto (`GET /auth/sessoes`: aparelho, IP do login, criada,
+  último uso, expira e `atual`, a deste pedido; nunca o token nem o hash) e encerra uma
+  (`DELETE /auth/sessoes/{id}`) ou todas menos a atual (`POST /auth/sessoes/encerrar-outras`),
+  sem trocar a senha. A sessão de outro usuário é **`404`**, com a mesma frase da que não
+  existe, a já encerrada ou a vencida: o id não conta nada (nem o dono encerra a de outro
+  por aqui). O dono faz o mesmo pelos outros na gestão de usuários: `GET
+  /usuarios/{id}/sessoes`, `DELETE /usuarios/{id}/sessoes/{sessao_id}` e `POST
+  /usuarios/{id}/sessoes/encerrar` (todas, sem desativar nem trocar a senha; sobre o próprio
+  dono, a do pedido fica, para ele não se trancar fora sem querer). A lista mostra só as
+  ativas, a usada por último primeiro. Encerrar trava a linha (`FOR UPDATE OF sessoes`):
+  dois encerramentos da mesma sessão não deixam dois eventos.
 - **Respostas:** `401` com `WWW-Authenticate: Bearer` e a frase do motivo (falta o login,
   sessão inválida, encerrada, vencida, usuário desativado); `403` quando o papel não permite
   ("Só o dono da fazenda pode fazer isto: peça a ele.").
@@ -475,16 +512,21 @@ dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Dec
 - **Migration 0009.** O downgrade apagaria os usuários e o registro de quem lançou: ele se
   recusa enquanto houver usuário, e só segue com `alembic -x descartar_usuarios=sim downgrade
   0008`.
+- **Migration 0013.** `sessoes.ultimo_uso_em` (as sessões que já existem começam com o último
+  uso no login, o único uso que se sabe delas) e `sessoes.ip` (vazio nas que já existem). O
+  downgrade só tira as duas colunas, **sem `-x`**: são anotações sobre a sessão, e não dado do
+  produtor, e a sessão continua valendo pela `expira_em`, que fica (a renovada por esta versão
+  fica como está, dentro dos 90 dias).
 
 **Matriz de permissões** (com a autenticação ligada; desligada, ver acima):
 
 | Nível | Quem | Rotas |
 |---|---|---|
 | Pública | qualquer um | `GET /health`, `GET /ready`, `/docs` e `/openapi.json` (fora de produção), `POST /auth/entrar` |
-| Sessão | qualquer usuário logado, sobre si | `POST /auth/sair`, `GET /auth/eu`, `PUT /auth/senha` (exigem login mesmo desligada) |
+| Sessão | qualquer usuário logado, sobre si | `POST /auth/sair`, `GET /auth/eu`, `PUT /auth/senha`, `GET /auth/sessoes`, `DELETE /auth/sessoes/{id}`, `POST /auth/sessoes/encerrar-outras` (exigem login mesmo desligada) |
 | Funcionário | funcionário e dono | `GET /insumos`, `GET /insumos/{id}`, `GET /movimentacoes`, `GET /talhoes`, `GET /talhoes/{id}`, `GET /resumo`, `GET /categorias`, `GET /relatorios/periodo`, `GET /fornecedores`, `GET /fornecedores/{id}`, `GET /pedidos`, `GET /pedidos/{id}`, `GET /pedidos/sugestao`; `POST /movimentacoes`, `POST /movimentacoes/lote`, `POST /insumos/{id}/inventario`, `POST /pedidos/{id}/receber` |
 | Dono | só o dono | `POST`/`PUT`/`DELETE /insumos`, `DELETE /movimentacoes/{id}`, `POST`/`PUT`/`DELETE /talhoes`, `POST`/`PUT`/`DELETE /categorias`, `POST`/`PUT`/`DELETE /fornecedores`, `POST /pedidos`, `PUT /pedidos/{id}`, `POST /pedidos/{id}/cancelar`, `POST /importacoes`, `GET /importacoes/modelo.xlsx`, `GET /relatorio.xlsx`, `POST /analises` |
-| Gestão | só o dono, sempre com login | `GET /usuarios`, `POST /usuarios`, `PUT /usuarios/{id}`, `PUT /usuarios/{id}/senha`, `GET /auditoria` |
+| Gestão | só o dono, sempre com login | `GET /usuarios`, `POST /usuarios`, `PUT /usuarios/{id}`, `PUT /usuarios/{id}/senha`, `GET /usuarios/{id}/sessoes`, `DELETE /usuarios/{id}/sessoes/{sessao_id}`, `POST /usuarios/{id}/sessoes/encerrar`, `GET /auditoria` |
 
 O funcionário lê os insumos com o custo médio e o valor em estoque (as telas que ele usa são as
 mesmas), e o preço pago a cada fornecedor; o relatório, com todos os preços e a cópia de
@@ -515,6 +557,7 @@ sensível ou destrutivo grava um evento em `eventos_de_auditoria` (`app/models/a
   | `usuario.senha_redefinida` · `usuario.senha_trocada` | O login (e, na redefinida, se desfez um bloqueio). Quem redefine a senha de alguém pode entrar como ele; a sessão roubada que troca a senha tranca o dono fora |
   | `login.recusado` · `login.bloqueado` | O login e o motivo (`senha_incorreta`, `bloqueado`, `usuario_desativado`, `senha_atual_incorreta`), que a resposta não conta a quem tentou; no bloqueio, até quando |
   | `login.limitado` | Um IP passou do limite de tentativas de login (ver "Blindagem da API"): o `limite`, a janela (`janela_segundos`, 60 ou 3600) e `liberado_em`. Um evento por rodada, na primeira recusa, e não um por tentativa: quem insiste não enche a trilha. Sem usuário nem login (o IP vai na coluna `ip`) |
+  | `sessao.encerrada` · `sessao.encerradas` | Um aparelho derrubado sem desativar ninguém: o dono encerrando a sessão de alguém (uma ou todas), ou alguém encerrando **outro** aparelho seu (uma, ou "as outras"). `entidade` é o usuário dono das sessões; `dados`: o login e, de cada sessão encerrada, o id, o aparelho, o IP do login, quando foi aberta e o último uso. Entra também quando é o próprio usuário: quem pegou a sessão de alguém pode derrubar os aparelhos do dono dela, e é ele quem quer saber de qual aparelho saiu. Encerrar a sessão do próprio pedido é sair, e não entra; "todas" sem nenhuma a encerrar também não. Um grupo só (`sessao`), para o filtro por grupo trazer os dois |
   | `demo.carregada` · `demo.limpa` | Quanto saiu e quanto entrou (a demonstração apaga e cria em massa) |
 
 - **O que não entra, de propósito.** A leitura (o relatório inclusive). O lançamento comum
@@ -523,8 +566,9 @@ sensível ou destrutivo grava um evento em `eventos_de_auditoria` (`app/models/a
   isso. A carga **a mais** no recebimento também não: a entrada fica, com quem conferiu e a
   linha do pedido, e o excesso se vê comparando `quantidade_recebida` com `quantidade`; se
   alguém a remover depois, aí sim há evento. O cadastro novo (insumo, talhão, pedido...): ele
-  mesmo é o registro, e nada se perde. O login aceito e o sair: a sessão (`sessoes`) já guarda
-  quem, quando, o aparelho e quando foi encerrada. O login que **não existe**: não há a quem
+  mesmo é o registro, e nada se perde. O login aceito e o sair (inclusive encerrar pela lista a
+  sessão do próprio pedido): a sessão (`sessoes`) já guarda quem, quando, o aparelho, o IP e
+  quando foi encerrada. O login que **não existe**: não há a quem
   atribuir, e o que se digitou no campo do login pode ser a senha. A prévia da importação e a
   planilha com erro: nada é gravado. Não há rota que apague pedido (ele se cancela, e o
   cancelamento entra).
@@ -812,9 +856,15 @@ segurança, registro do pedido, limite de escritas por IP, limite do corpo. Deci
 | Rota | O que faz |
 |---|---|
 | `GET /api/v1/health` | Liveness: o processo está no ar. Não toca o banco |
-| `POST /api/v1/auth/entrar` | `{login, senha, dispositivo?}` → `{token, expira_em, usuario: {id, nome, login, papel}}`. O token vem uma vez só e vale 30 dias. Recusa sempre com o mesmo `401`; tentativas demais do mesmo IP, `429` com `Retry-After` |
+| `POST /api/v1/auth/entrar` | `{login, senha, dispositivo?}` → `{token, expira_em, usuario: {id, nome, login, papel}}`. O token vem uma vez só e vale 30 dias sem uso, renovados com o uso até 90 dias desde o login (o `expira_em` do login é o primeiro prazo). Recusa sempre com o mesmo `401`; tentativas demais do mesmo IP, `429` com `Retry-After` |
 | `POST /api/v1/auth/sair` · `GET /api/v1/auth/eu` | Encerra a sessão deste token (`204`) / quem está logado |
 | `PUT /api/v1/auth/senha` | `{senha_atual, senha_nova}` (mínimo 8): troca a própria senha e encerra as sessões dos outros aparelhos (`204`); senha atual errada é `400` |
+| `GET /api/v1/auth/sessoes` | As sessões ativas do próprio usuário, a usada por último primeiro: `id`, `dispositivo`, `ip` (do login), `criada_em`, `ultimo_uso_em` (de 5 em 5 minutos), `expira_em` e `atual` (a deste pedido). Nunca o token |
+| `DELETE /api/v1/auth/sessoes/{id}` | Encerra uma sessão sua, e só ela (`204`); a de outro usuário, a encerrada e a vencida são `404`, como a que não existe. A deste pedido é o mesmo que sair |
+| `POST /api/v1/auth/sessoes/encerrar-outras` | Encerra todas as suas sessões menos a deste pedido, sem trocar a senha: `{encerradas}` |
+| `GET /api/v1/usuarios/{id}/sessoes` | Só o dono: as sessões ativas do usuário (o mesmo formato; `atual` só na do próprio dono). Usuário inexistente `404` |
+| `DELETE /api/v1/usuarios/{id}/sessoes/{sessao_id}` | Só o dono: encerra aquela sessão do usuário (`204`), que continua ativo e com a mesma senha; os outros aparelhos dele seguem. A sessão que não é dele, `404` |
+| `POST /api/v1/usuarios/{id}/sessoes/encerrar` | Só o dono: encerra todas as sessões do usuário sem desativá-lo (`{encerradas}`); sobre si mesmo, a do pedido fica |
 | `GET /api/v1/usuarios` · `POST /api/v1/usuarios` | Usuários com `ativo` e `bloqueado_ate` / cadastra (`nome`, `login`, `senha`, `papel`); login repetido `409` |
 | `PUT /api/v1/usuarios/{id}` | `nome`, `papel`, `ativo` (o que não vier fica). Desativar derruba as sessões; o último dono ativo não sai (`409`) |
 | `PUT /api/v1/usuarios/{id}/senha` | Redefine a senha (`senha_nova`), derruba as sessões e desfaz o bloqueio (`204`) |
@@ -878,6 +928,17 @@ login com a frase da API; no `403`, mostrar a frase sem deslogar; esconder dos f
 (`usuario.papel`) o que é do dono (cadastro, remover, importar, relatório, Usuários); tela de
 Usuários para o dono e "Trocar senha" para todos; "Sair" chama `POST /auth/sair`. Mostrar
 `lancado_por` nas movimentações.
+
+**Para as sessões** (seção 2, "Autenticação e papéis"), o site precisa: uma tela "Onde estou
+conectado" para todos (`GET /auth/sessoes`: o aparelho, o último uso em palavras, "agora" se
+foi há menos de 5 minutos, e o IP; a `atual` marcada como "este aparelho", sem o botão de
+encerrar, ou com ele dizendo que é sair), com "Encerrar" em cada outra (`DELETE
+/auth/sessoes/{id}`) e "Encerrar todas as outras" (`POST /auth/sessoes/encerrar-outras`); e,
+na tela de Usuários do dono, os aparelhos de cada um, com "Encerrar" e "Encerrar todas"
+(`/usuarios/{id}/sessoes`), deixando claro que o usuário continua ativo. O `404` ao
+encerrar é "essa sessão já não existe": recarregar a lista. A trilha ganha os códigos
+`sessao.encerrada` e `sessao.encerradas` para traduzir. Nada quebra sem isso: o login, o
+sair e o resto não mudaram.
 
 **Para a trilha de auditoria** (seção 2, "Trilha de auditoria"), uma tela só do dono, escondida
 do funcionário: a lista de `GET /auditoria` com quando, quem (`feito_por`; vazio é "sistema" ou
@@ -1012,9 +1073,15 @@ precisa:
 
 **Para o login**, o app precisa do mesmo que o site (seção 3), mais: guardar o token no
 armazenamento seguro do celular (Keystore/Keychain, `flutter_secure_storage`), não em texto
-puro; mandar `dispositivo` no login ("Celular do Zé"); a sessão vale 30 dias, então o login é
-raro, mas o `401` pode chegar no **envio da fila**: aí a fila **fica** no celular (nada foi
-gravado), o app pede o login e reenvia o mesmo lote com os mesmos uuids depois.
+puro; mandar `dispositivo` no login ("Celular do Zé"), que é como o dono reconhece o
+aparelho na lista de sessões; a sessão vale 30 dias sem uso e se renova sozinha com o uso,
+até 90 dias desde o login, então o login é raro, mas o `401` pode chegar no **envio da
+fila** (o teto, ou o dono encerrou a sessão do celular perdido): aí a fila **fica** no
+celular (nada foi gravado), o app pede o login e reenvia o mesmo lote com os mesmos uuids
+depois. Para o teto não pegar o funcionário no campo sem sinal, o app pode ler o
+`expira_em` da sessão `atual` em `GET /auth/sessoes` quando tiver sinal e, faltando poucos
+dias, pedir para entrar de novo antes de sair para a lavoura. A tela "Onde estou
+conectado" é a mesma do site.
 
 ## 5. Infraestrutura
 
@@ -1123,6 +1190,10 @@ tecnologias que não se aplicam.
    `429`, e as telas mostrarem o `id_da_requisicao` do `500` e do `503` ("informe ao suporte o
    código ..."). O app pode mandar o próprio `X-Request-ID` (o uuid do envio) para o mesmo
    código aparecer no celular e no log do servidor.
+9. **Sessões nas telas.** A API já lista e encerra as sessões de cada um e, para o dono, as
+   dos outros (seção 2, "Autenticação e papéis"); o site e o app ainda não têm a tela "Onde
+   estou conectado" nem os aparelhos na tela de Usuários (seções 3 e 4). Enquanto isso, o
+   celular perdido se resolve pelo `/docs` ou, como antes, desativando o usuário.
 
 Decididas desde a versão anterior deste documento: a autenticação existe (dono e funcionário,
 obrigatória em produção, seção 2); a importação de planilha existe (Excel e
