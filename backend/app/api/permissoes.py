@@ -13,6 +13,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.api.protecoes import anotar_o_usuario
 from app.core.database import get_db
 from app.models import Sessao, Usuario
 from app.services import autenticacao
@@ -23,6 +24,7 @@ _bearer = HTTPBearer(auto_error=False, description="O token devolvido por POST /
 
 
 def sessao_atual(
+    request: Request,
     credencial: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: Session = Depends(get_db),
 ) -> Sessao | None:
@@ -31,9 +33,11 @@ def sessao_atual(
     if credencial is None:
         return None
     try:
-        return autenticacao.sessao_do_token(db, credencial.credentials)
+        sessao = autenticacao.sessao_do_token(db, credencial.credentials)
     except autenticacao.SessaoInvalida as erro:
         raise _nao_autenticado(str(erro)) from None
+    anotar_o_usuario(request, sessao.usuario_id)
+    return sessao
 
 
 def usuario_atual(sessao: Sessao | None = Depends(sessao_atual)) -> Usuario | None:

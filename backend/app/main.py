@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DataError, OperationalError, SQLAlchemyError
 from sqlalchemy.exc import TimeoutError as PoolSemConexao
 
+from app.api.protecoes import RegistroDosPedidos
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.database import get_engine, problemas_do_papel
@@ -72,6 +73,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 {"detail": "Arquivo grande demais: o máximo é 5 MB."}, status_code=413
             )
         return await call_next(request)
+
+    # O último a entrar é o de fora: o registro vê todo pedido, inclusive os que as outras
+    # proteções recusam, e dá o id que os tratadores de erro abaixo usam.
+    app.add_middleware(RegistroDosPedidos)
 
     @app.exception_handler(DataError)
     async def dado_que_o_banco_recusa(_: Request, __: DataError) -> JSONResponse:

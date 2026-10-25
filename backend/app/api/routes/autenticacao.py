@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.permissoes import exigir_sessao, ip_do_pedido, origem_do_pedido
+from app.api.protecoes import anotar_o_usuario
 from app.core.database import get_db
 from app.models import Sessao
 from app.schemas.usuario import Entrada, PedidoDeEntrada, TrocaDeSenha, UsuarioResumo
@@ -29,6 +30,7 @@ def entrar(pedido: PedidoDeEntrada, request: Request, db: Session = Depends(get_
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED, str(erro), headers={"WWW-Authenticate": "Bearer"}
         ) from None
+    anotar_o_usuario(request, sessao.usuario_id)
     return Entrada(
         token=token,
         expira_em=sessao.expira_em,
