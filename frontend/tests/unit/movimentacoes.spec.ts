@@ -33,6 +33,11 @@ const ureia: Insumo = {
   unidade: 'kg',
   estoque_minimo: null,
   prazo_reposicao_dias: null,
+  embalagem: null,
+  pedido_minimo: null,
+  carencia_dias: null,
+  custo_medio: null,
+  valor_em_estoque: null,
   demonstracao: false,
   estoque_atual: 80,
   analise: { consumo_diario: null, cobertura_dias: null, alertas: [], reposicao: null, limitacoes: [] },
@@ -93,6 +98,61 @@ describe('Movimentações no celular', () => {
     expect(wrapper.find('[data-teste="confirmacao"]').text()).toBe(
       'Saída de 3 kg de Ureia agrícola lançada.',
     )
+  })
+})
+
+describe('Preço da compra', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.mocked(api.listarInsumos).mockResolvedValue([ureia])
+    vi.mocked(api.listarMovimentacoes).mockResolvedValue([])
+    vi.mocked(api.registrarMovimentacao).mockReset()
+  })
+
+  it('numa entrada, manda o preço por unidade e o repete na confirmação', async () => {
+    vi.mocked(api.registrarMovimentacao).mockResolvedValue({
+      ...mov(4, 0, 'entrada', 100),
+      valor_unitario: 3.2,
+    })
+    const wrapper = await montar()
+
+    await wrapper.find('input[value="entrada"]').setValue(true)
+    await wrapper.find('select').setValue(1)
+    expect(wrapper.find('[data-teste="preco"]').element.closest('label')?.textContent).toContain(
+      'Preço (R$/kg)',
+    )
+    await wrapper.find('input[type="number"]').setValue(100)
+    await wrapper.find('[data-teste="preco"]').setValue(3.2)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(api.registrarMovimentacao).toHaveBeenCalledWith(
+      expect.objectContaining({ tipo: 'entrada', quantidade: 100, valor_unitario: 3.2 }),
+    )
+    expect(wrapper.find('[data-teste="confirmacao"]').text()).toMatch(
+      /^Entrada de 100 kg de Ureia agrícola, a R\$\s3,20\/kg lançada\.$/,
+    )
+    wrapper.unmount()
+  })
+
+  it('numa saída, não há campo de preço, e o que foi digitado não vai junto', async () => {
+    vi.mocked(api.registrarMovimentacao).mockResolvedValue(mov(4, 0, 'saida', 3))
+    const wrapper = await montar()
+
+    await wrapper.find('input[value="entrada"]').setValue(true)
+    await wrapper.find('[data-teste="preco"]').setValue(3.2)
+    await wrapper.find('input[value="saida"]').setValue(true)
+    expect(wrapper.find('[data-teste="preco"]').exists()).toBe(false)
+
+    await wrapper.find('select').setValue(1)
+    await wrapper.find('input[type="number"]').setValue(3)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(api.registrarMovimentacao).toHaveBeenCalledWith(
+      expect.objectContaining({ tipo: 'saida', valor_unitario: null }),
+    )
+    wrapper.unmount()
   })
 })
 

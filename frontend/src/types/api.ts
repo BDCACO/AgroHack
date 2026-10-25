@@ -21,6 +21,7 @@ export type TipoAlerta =
   | 'excesso'
   | 'baixa_movimentacao'
   | 'consumo_incomum'
+  | 'carencia' // do talhão: colher antes da data é proibido
 
 export interface Alerta {
   tipo: TipoAlerta
@@ -33,6 +34,7 @@ export interface Reposicao {
   pedir_hoje: boolean // decidido pela API, na data de Rondônia
   quantidade: number
   justificativa: string
+  custo_estimado: number | null // quantidade × custo médio; null sem preço nas compras
 }
 
 export interface Analise {
@@ -48,12 +50,19 @@ export interface InsumoCadastro {
   unidade: string
   estoque_minimo: number | null
   prazo_reposicao_dias: number | null
+  // Na unidade do insumo (50 para o saco de 50 kg): a reposição sai em embalagens fechadas.
+  embalagem: number | null
+  pedido_minimo: number | null
+  // Dias entre aplicar e poder colher ou abater; 0 = não tem carência; null = não informada.
+  carencia_dias: number | null
 }
 
 export interface Insumo extends InsumoCadastro {
   id: number
   demonstracao: boolean // gerado por `make demo`: não é dado real
   estoque_atual: number
+  custo_medio: number | null // R$ por unidade, das compras com preço
+  valor_em_estoque: number | null // estoque atual (se positivo) × custo médio
   analise: Analise
 }
 
@@ -63,10 +72,14 @@ export interface MovimentacaoEntrada {
   data: string // AAAA-MM-DD
   quantidade: number
   validade: string | null
+  valor_unitario?: number | null // R$ por unidade, só numa entrada (o preço da compra)
+  talhao_id?: number | null // onde foi aplicado, só numa saída (retirada para uso)
 }
 
 export interface Movimentacao extends MovimentacaoEntrada {
   id: number
+  motivo?: 'descarte' | 'inventario' | null
+  lancado_por?: string | null // nome de quem lançou, com login (auditoria); null sem login
 }
 
 export interface PontoDeEstoque {
@@ -101,4 +114,72 @@ export interface ResultadoImportacao {
   ja_lancadas: number // linhas iguais a movimentações já no banco: planilha repetida?
   erros: string[] // "Linha 7: ..." — com um erro sequer, nada é gravado
   importado: boolean
+}
+
+/** `GET /resumo`: a visão geral do estoque em reais. */
+export interface Resumo {
+  insumos: number
+  valor_em_estoque: number | null // null se nenhum insumo tem custo médio
+  insumos_sem_preco: number
+  perdas: { ultimos_30_dias: number; total: number } // descartes e faltas da contagem
+  compras_sugeridas: {
+    valor: number | null // custo das reposições dos próximos 30 dias; null sem preço
+    pedidos: number
+    pedir_hoje: number
+  }
+  alertas: Record<Gravidade, number>
+  talhoes_em_carencia: number
+  limitacoes: string[]
+}
+
+export type Papel = 'dono' | 'funcionario'
+
+export interface Usuario {
+  id: number
+  nome: string
+  login: string
+  papel: Papel
+}
+
+/** `POST /auth/entrar`: o token vem uma vez só; mande-o em `Authorization: Bearer`. */
+export interface Entrada {
+  token: string
+  expira_em: string
+  usuario: Usuario
+}
+
+export interface TalhaoCadastro {
+  nome: string
+  area_ha: number // maior que zero: divide o custo por hectare
+  cultura: string | null
+}
+
+export interface Talhao extends TalhaoCadastro {
+  id: number
+  demonstracao: boolean
+  colheita_liberada_em: string | null // AAAA-MM-DD; null: nada com carência aplicado
+  em_carencia: boolean // colher hoje é proibido
+  alertas: Alerta[] // a carência, com a conta; vazio quando liberado
+  custo_total: number | null // R$ do que foi aplicado no período; null sem preço
+  custo_por_ha: number | null
+  limitacoes: string[]
+}
+
+export interface ConsumoNoTalhao {
+  insumo_id: number
+  insumo: string
+  unidade: string
+  quantidade: number
+  custo: number | null
+}
+
+export interface TalhaoDetalhe extends Talhao {
+  aplicacoes: Movimentacao[] // do período, as mais recentes primeiro
+  consumo: ConsumoNoTalhao[] // por insumo, o que mais custou primeiro
+}
+
+/** Recorte de uma safra no custo e nas aplicações (a carência olha todas). AAAA-MM-DD. */
+export interface Periodo {
+  desde?: string
+  ate?: string
 }

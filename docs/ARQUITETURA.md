@@ -219,9 +219,8 @@ dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Dec
 
 - **Liga e desliga, fail-closed em produção.** `AUTENTICACAO=true|false`. Em `production`, a API
   **não sobe** sem `AUTENTICACAO=true` (como o `ENVIRONMENT` inválido): esquecer a variável não
-  pode deixar a produção aberta. Em `development` e `test` o padrão é desligada, para o site e o
-  app, que ainda não têm tela de login, continuarem funcionando; ao subir assim, a API avisa no
-  log.
+  pode deixar a produção aberta. Em `development` e `test` o padrão é desligada, para o app, que
+  ainda não tem tela de login, continuar funcionando; ao subir assim, a API avisa no log.
 - **Desligada**, pedido sem token passa como antes, com os poderes do dono. Mas o token enviado
   vale: válido, o usuário é reconhecido (vai para a auditoria) e o papel dele conta (funcionário
   em rota do dono é `403`); falso, vencido ou encerrado é `401`. Assim o site e o app implementam
@@ -391,25 +390,42 @@ tem banco a orquestrar e chama o motor direto.
 |---|---|
 | `src/main.ts` | Instala Pinia e Router, importa o CSS |
 | `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só |
-| `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, barra de baixo no celular e no tablet, resumo de status |
-| `src/pages/` | Uma página por rota: Painel (alertas, reposição com lista de compras para o WhatsApp, limitações), Insumos (cadastro), página do insumo (`/insumos/:id`: resumo, gráfico, alertas, movimentações, remover), Movimentações (entradas e saídas), Importar dados (Excel ou CSV, com prévia), Sistema |
-| `src/components/` | Reutilizáveis, sem chamada à API: `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `EstadoVazio`, `GraficoDeEstoque`, `IconeSvg`, `IndicadorDeStatus`, `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
-| `src/stores/` | Pinia: estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração |
-| `src/services/http.ts` | **Cliente HTTP único** (Axios). Normaliza erro em `ApiError` |
+| `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, barra de baixo no celular e no tablet, quem está logado e "Sair", resumo de status |
+| `src/pages/` | Uma página por rota: Painel (alertas, talhões em carência à parte, estoque em reais do `GET /resumo`, reposição com o custo e a lista de compras para o WhatsApp, limitações), Insumos (cadastro, com embalagem, pedido mínimo e carência, e o valor em estoque), página do insumo (`/insumos/:id`: resumo com custo médio e valor em estoque, gráfico, alertas, movimentações, remover), Movimentações (entradas, com o preço da compra, e saídas, com o talhão onde foi aplicado), Talhões (cadastro, carência e custo por hectare), página do talhão (`/talhoes/:id`: carência, consumo por insumo, aplicações, recorte por período), Importar dados (Excel ou CSV, com prévia), Sistema |
+| `src/components/` | Reutilizáveis, sem chamada à API (o `BotaoDeDownload` recebe a função que baixa): `BotaoDeDownload`, `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `EstadoVazio`, `GraficoDeEstoque`, `IconeSvg`, `IndicadorDeStatus`, `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
+| `src/stores/` | Pinia: estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração; `sessao` guarda quem está logado e decide `podeGerir` |
+| `src/services/http.ts` | **Cliente HTTP único** (Axios). Põe o token em todo pedido, avisa o App no `401` e normaliza erro em `ApiError` |
+| `src/services/token.ts` | O token da sessão no `localStorage` (na memória, se o navegador não deixar guardar) |
 | `src/services/*.ts` | Uma função por endpoint |
 | `src/types/` | Tipos TypeScript dos contratos da API |
 | `src/styles/main.css` | Tailwind v4: tokens da marca e de movimento (`@theme`), componentes base (`.cartao`, `.botao-*`, `.campo`, `.esqueleto`) e as transições (ver "Design e movimento") |
 | `public/modelo-movimentacoes.csv` | Modelo alternativo em CSV, servido como arquivo estático (com BOM, para o Excel abrir os acentos); o principal é o `.xlsx` gerado pela API |
 | `tests/unit/` | Vitest + Vue Test Utils |
 
-**Para o login** (a API já está pronta, seção 2, "Autenticação e papéis"), o site precisa: tela
-de login (`POST /auth/entrar`, com `dispositivo` como "Navegador"), guardar o token (em
-`sessionStorage` ou `localStorage`; nunca na URL) e mandá-lo em todo pedido pelo interceptador
-do `services/http.ts` (`Authorization: Bearer <token>`); no `401`, apagar o token e voltar ao
-login com a frase da API; no `403`, mostrar a frase sem deslogar; esconder dos funcionários
-(`usuario.papel`) o que é do dono (cadastro, remover, importar, relatório, Usuários); tela de
-Usuários para o dono e "Trocar senha" para todos; "Sair" chama `POST /auth/sair`. Mostrar
-`lancado_por` nas movimentações.
+**Login** (a API, seção 2, "Autenticação e papéis"):
+
+- **Sob demanda.** O site não pergunta se a autenticação está ligada: manda o token se tem um, e
+  reage ao `401`. Desligada, sem login, tudo funciona como antes, com os poderes do dono (como a
+  API trata o pedido); ligada, o primeiro pedido volta `401` e o site leva a `/entrar`.
+- **Tela `/entrar`**, fora do layout: `POST /auth/entrar` com `dispositivo` "Navegador"; a frase
+  da API no erro (a mesma para senha errada, login inexistente e bloqueio); depois, volta para
+  `?volta=` (só caminho do próprio site, nunca `//outro.site`).
+- **Token no `localStorage`**, nunca na URL: vale 30 dias, e o login não pode cair a cada aba
+  fechada. O risco é um script injetado lê-lo; o site não monta HTML com texto do usuário
+  (`v-html` não é usado), e sair ou o dono desativar o usuário o invalida na hora no servidor.
+- **No `401`** (fora do próprio login), o interceptador do `http.ts` chama o App, que apaga a
+  sessão e leva a `/entrar?volta=<onde estava>`. **No `403`**, a frase da API aparece onde a
+  ação foi feita, sem deslogar.
+- **Papéis.** `sessao.podeGerir` (dono, ou sem login): o funcionário não vê Importar no menu nem
+  na barra de baixo (`meta.soDono`; o endereço digitado leva ao Painel, com o guarda na própria
+  rota esperando a sessão carregar), nem cadastrar, alterar, remover ou baixar o relatório.
+  Esconder é conforto: quem decide é a API, que responde `403`.
+- **Downloads pelo cliente HTTP.** O relatório e a planilha modelo vêm como `Blob` pelo `http`
+  (um link comum não levaria o token), com o nome do `Content-Disposition`.
+- **Quem lançou:** `lancado_por` em cada movimentação ("por Zé do Campo").
+- **Sair** chama `POST /auth/sair` e apaga o token, mesmo se a API não responder.
+
+Falta: a tela de Usuários para o dono e "Trocar senha" para todos (a API já tem).
 
 Regras: componente `.vue` **não chama axios** (passa por `services/`) e **não decide** regra de
 negócio: mostra o que a API calculou.
@@ -598,24 +614,21 @@ tecnologias que não se aplicam.
 
 ## 7. Próximas decisões (pendentes)
 
-1. **Login nas telas.** A API já tem login com papéis (seção 2, "Autenticação e papéis"); o site
-   e o app ainda não têm a tela de login nem mandam o token (seções 3 e 4), por isso a
-   autenticação fica desligada no desenvolvimento. Enquanto isso, com ela desligada, qualquer um
-   que alcance a tela lê e altera tudo (as portas da API e do banco ficam só em 127.0.0.1; a do
-   front fica aberta na rede).
+1. **Login no app, e Usuários no site.** O site já tem o login com papéis (seção 3); faltam lá
+   a tela de Usuários e "Trocar senha", e o app ainda não tem a tela de login nem manda o token
+   (seção 4), por isso a autenticação fica desligada no desenvolvimento. Com ela desligada,
+   qualquer um que alcance a tela lê e altera tudo (as portas da API e do banco ficam só em
+   127.0.0.1; a do front fica aberta na rede).
 2. **Geração de tipos TS a partir do OpenAPI** (`openapi-typescript`) quando a API crescer. Com o
    app, os modelos em Dart entram na mesma conta.
 3. **App nas lojas.** Ícone, assinatura do Android, conta de desenvolvedor da Apple e a API em
    `https://` em algum endereço público.
-4. **Reais nas telas.** A API já devolve preço, custo médio, valor em estoque, embalagem, pedido
-   mínimo e o `GET /resumo`; o site e o app ainda não têm campo para o preço ao lançar uma
-   compra nem para a embalagem no cadastro, e não mostram o resumo. As justificativas, que as
-   telas já exibem, trazem os valores.
-5. **Talhões nas telas.** A API já tem o cadastro de talhões, a carência no insumo, a aplicação
-   (`talhao_id` na retirada e no lote) e a leitura com carência e custo por hectare; o site e o
-   app ainda não têm a tela de Talhões, o campo de carência no cadastro do insumo nem a escolha do
-   talhão ao lançar uma retirada. Hoje, o talhão em carência aparece no relatório (aba Talhões) e
-   no `/docs`.
+4. **Reais no app.** O site já tem o preço ao lançar uma compra, a embalagem e o pedido mínimo
+   no cadastro, o resumo em reais no Painel e o custo de cada reposição; o app ainda não. Lá,
+   as justificativas, que o app já exibe, trazem os valores.
+5. **Talhões no app.** O site já tem a tela de Talhões (cadastro, carência e custo por hectare),
+   a página de cada talhão com o período, a carência no cadastro do insumo, o talhão ao lançar
+   uma retirada e os talhões em carência no Painel; o app ainda não.
 
 Decididas desde a versão anterior deste documento: a autenticação existe (dono e funcionário,
 obrigatória em produção, seção 2); a importação de planilha existe (Excel e

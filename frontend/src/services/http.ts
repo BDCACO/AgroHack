@@ -1,5 +1,7 @@
 import axios, { AxiosError } from 'axios'
 
+import { lerToken } from './token'
+
 /** Cliente HTTP único do front. Nenhum componente chama axios direto.
  *
  * `baseURL` relativa: front e API vivem na mesma origem (proxy do Vite em dev,
@@ -29,12 +31,30 @@ export class ApiError extends Error {
   }
 }
 
+// O token da sessão vai em todo pedido.
+http.interceptors.request.use((config) => {
+  const token = lerToken()
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
+
+/** Quem cuida da sessão perdida (o App: limpa a sessão e leva à tela de entrada). Fica
+ * registrado de fora para este módulo não depender do roteador. */
+let aoPerderSessao: (() => void) | null = null
+export function definirAoPerderSessao(funcao: (() => void) | null) {
+  aoPerderSessao = funcao
+}
+
 http.interceptors.response.use(
   (resposta) => resposta,
   (erro: unknown) => {
     if (erro instanceof AxiosError) {
+      const status = erro.response?.status ?? null
+      // 401 = falta o login, ou o token venceu, foi encerrado ou o usuário desativado. No
+      // próprio login, 401 é só senha errada: a tela de entrada mostra a frase.
+      if (status === 401 && !erro.config?.url?.startsWith('/auth/entrar')) aoPerderSessao?.()
       // Sem `response` = rede caiu, timeout ou proxy sem destino.
-      return Promise.reject(new ApiError(erro.response?.status ?? null, erro.response?.data))
+      return Promise.reject(new ApiError(status, erro.response?.data))
     }
     return Promise.reject(erro)
   },

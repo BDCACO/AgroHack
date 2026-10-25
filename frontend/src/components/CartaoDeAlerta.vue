@@ -15,6 +15,7 @@ const rotulo: Record<TipoAlerta, string> = {
   excesso: 'Excesso de estoque',
   baixa_movimentacao: 'Baixa movimentação',
   consumo_incomum: 'Consumo incomum',
+  carencia: 'Em carência',
 }
 
 const faixa = { alta: 'bg-red-500', media: 'bg-amber-400', baixa: 'bg-sky-400' } as const

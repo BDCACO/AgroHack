@@ -13,12 +13,12 @@ mostra a conta que o justifica e o que a conta não sabe.**
 4. Ter à mão `docs/exemplos/planilha-com-erros.csv` e o Excel (ou o LibreOffice) instalado,
    para abrir a planilha modelo.
 
-**Login (opcional, fora do roteiro).** A demonstração roda com a autenticação desligada, porque
-o site e o app ainda não têm a tela de login. Para mostrar os papéis pelo `/docs`: `AUTENTICACAO=true`
-no `.env`, `make up`, `make usuario-dono LOGIN=maria NOME="Dona Maria"`; no `/docs`,
-`POST /auth/entrar` com a dona, Authorize com o token, `POST /usuarios` com um funcionário; entre
-como ele e tente `DELETE /insumos/{id}`: `403`, "Só o dono da fazenda pode fazer isto". Depois,
-volte `AUTENTICACAO=false` para as telas funcionarem.
+**Login (opcional, fora do roteiro).** A demonstração roda com a autenticação desligada (o app
+ainda não tem a tela de login). Para mostrar os papéis no site: `AUTENTICACAO=true` no `.env`,
+`make up`, `make usuario-dono LOGIN=maria NOME="Dona Maria"`; no `/docs`, `POST /auth/entrar`
+com a dona, Authorize com o token e `POST /usuarios` com um funcionário. No site, entre como ele:
+sem Importar no menu, sem cadastrar, alterar, remover nem baixar o relatório, e cada
+movimentação diz quem a lançou. Depois, volte `AUTENTICACAO=false` para o app funcionar.
 
 ## O que cada insumo da demonstração mostra
 
@@ -67,18 +67,19 @@ E os talhões (as retiradas da fazenda foram aplicadas neles; carências fictíc
    não existe, "dez" no lugar de 10, unidade diferente da cadastrada, insumo novo sem unidade).
 7. **Lançar uma movimentação** (página da ureia → "Lançar movimentação"): uma entrada de 700 kg
    com a data de hoje, e os alertas da ureia somem do Painel na hora.
-8. **Talhão em carência** (segurança do alimento). O site e o app ainda não têm a tela de
-   talhões: mostre no relatório em Excel, aba **Talhões**, ou em
-   `http://localhost:5173/api/v1/docs` → `GET /talhoes`. O Talhão Norte aparece em vermelho:
+8. **Talhão em carência** (segurança do alimento). O Painel já avisa em "Não colher"; abra a
+   tela **Talhões** (no app, ainda não há: lá, mostre o relatório em Excel, aba Talhões). O
+   Talhão Norte aparece em vermelho:
    "não colher nem abater antes de" uma data daqui a 5 dias, porque o glifosato foi aplicado há
    2 dias e a carência dele é de 7. É a mesma ideia dos alertas: a data vem com a conta. Ao lado,
    o custo do que foi aplicado em cada talhão, total e por hectare, e o que a conta não sabe (o
    calcário do Pasto 1 sem carência cadastrada; o custo pelo custo médio de hoje). Carga com
-   resíduo acima do permitido é recusada; o CampoCerto avisa antes da colheita.
-9. **Fechamento.** O que vem depois: a tela de login no site e no app (a API já tem dono e
-   funcionário), sazonalidade da safra no consumo,
-   o resumo em reais (valor em estoque, perdas, compras do mês) e os talhões nas telas do site
-   e do app.
+   resíduo acima do permitido é recusada; o CampoCerto avisa antes da colheita. Na página do
+   talhão, cada aplicação (data, insumo, quantidade, quem lançou) e o período para recortar a
+   safra.
+9. **Fechamento.** O que vem depois: a tela de login no app e a de Usuários no site (a API já
+   tem dono e funcionário), sazonalidade da safra no consumo, e o resumo em reais e os
+   talhões também no app.
 
 Depois da apresentação, `make demo-limpar` apaga a fazenda fictícia, com os talhões dela (um
 talhão de demonstração em que se lançou a aplicação de um insumo real fica, para não perder

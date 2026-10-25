@@ -51,8 +51,9 @@ Sem `make`? Os alvos são atalhos de `docker compose`: `docker compose up --buil
 ## Login
 
 A API tem login com dois papéis: o **dono** (tudo) e o **funcionário** (lê e lança no campo).
-Em produção é obrigatório (`AUTENTICACAO=true`); no desenvolvimento fica desligado por padrão,
-porque o site e o app ainda não têm a tela de login. Para ligar:
+Em produção é obrigatório (`AUTENTICACAO=true`); no desenvolvimento fica desligado por padrão
+(o app ainda não tem a tela de login). O site tem: com a autenticação ligada, ele pede o login
+e esconde do funcionário o que é do dono. Para ligar:
 
 ```bash
 # no .env: AUTENTICACAO=true, e então:
@@ -60,8 +61,8 @@ make up
 make usuario-dono LOGIN=maria NOME="Dona Maria"   # a senha é pedida no terminal
 ```
 
-O dono entra por `POST /api/v1/auth/entrar` e cadastra os funcionários em `POST /api/v1/usuarios`
-(pelo `/docs`, botão Authorize, até as telas existirem). Quem pode o quê está em
+O dono entra pelo site e, por enquanto, cadastra os funcionários em `POST /api/v1/usuarios`
+(pelo `/docs`, botão Authorize, até a tela de Usuários existir). Quem pode o quê está em
 [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md), "Autenticação e papéis".
 
 ## Demonstração
