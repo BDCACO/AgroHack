@@ -349,7 +349,16 @@ Com dezenas de insumos e anos de movimentações, a lista inteira deixa de servi
   ela seria uma segunda tela de cadastro, escondida). A que não existe é **cadastrada pelo nome**,
   como o fornecedor, e não recusada como o talhão: só precisa do nome, e a cópia de segurança
   restaurada num sistema vazio devolve cada insumo à sua categoria. A prévia lista
-  `categorias_novas`; o mesmo insumo novo em duas categorias é erro na linha. O modelo traz a
+  `categorias_novas`; o mesmo insumo novo em duas categorias é erro na linha. O nome casa sem
+  diferenciar maiúsculas, como o do insumo e o do fornecedor: com "Adubo" e "adubo" cadastradas
+  (o cadastro as aceita), a linha que cita uma delas é **erro na linha** ("há mais de uma
+  categoria cadastrada como..."), e não a última lida por acaso. As novas em duas grafias são
+  uma só, com a da primeira linha: a cópia de segurança de um sistema que tinha as duas,
+  restaurada num vazio, junta-as, e a prévia mostra a que vai ser criada. Recusar no cadastro o
+  nome que só difere em maiúsculas ficou de fora: os insumos, fornecedores e talhões também os
+  aceitam (a planilha trata os quatro do mesmo jeito), e seria preciso uma migration com um
+  índice único em `lower(nome)` que falharia nos bancos que já têm as duas, além de transformar
+  em `409` um cadastro que hoje passa. O modelo traz a
   coluna, a lista (que só sugere) e a aba Categorias cadastradas; o relatório escreve a categoria
   de cada insumo na aba Movimentações.
 - **Permissões:** ler categorias e o relatório por período é do **funcionário**, como o

@@ -149,3 +149,48 @@ def test_copia_de_seguranca_devolve_a_categoria(client: TestClient, db: Session)
 
     assert (restaurado["erros"], restaurado["importado"]) == ([], True)
     assert _categorias(client) == {"Sal mineral": None, "Ureia": "Fertilizante"}
+
+
+def test_categoria_que_so_difere_em_maiusculas_e_erro_na_linha(client: TestClient) -> None:
+    # O cadastro aceita "Adubo" e "adubo"; a planilha não diferencia maiúsculas, e escolher
+    # uma delas seria chute (antes, a última lida vencia). Como o fornecedor.
+    _post(client, "categorias", nome="Adubo")
+    _post(client, "categorias", nome="adubo")
+    _post(client, "insumos", nome="Calcário", unidade="t")
+    planilha = (
+        "data;insumo;unidade;tipo;quantidade;categoria\n"
+        f"{_br(3)};Ureia;kg;entrada;100;ADUBO\n"
+        f"{_br(3)};Superfosfato;kg;entrada;50;Adubo\n"
+        # Insumo já cadastrado: a categoria da planilha não vale, e não há o que escolher.
+        f"{_br(2)};Calcário;t;entrada;2;adubo\n"
+    )
+
+    previa = _importar(client, planilha, confirmar=True)
+
+    assert previa["importado"] is False
+    assert previa["erros"] == [
+        'Linha 2: há mais de uma categoria cadastrada como "ADUBO" (Adubo, adubo); '
+        "renomeie uma delas antes de importar.",
+        'Linha 3: há mais de uma categoria cadastrada como "Adubo" (Adubo, adubo); '
+        "renomeie uma delas antes de importar.",
+    ]
+
+
+def test_categoria_nova_em_duas_grafias_vira_uma_so(client: TestClient) -> None:
+    # A cópia de segurança de um sistema com "Adubo" e "adubo", restaurada num sistema
+    # vazio: como o insumo e o fornecedor novos, a planilha não diferencia maiúsculas, e as
+    # duas grafias são uma categoria só, com a grafia da primeira linha. A prévia mostra
+    # uma, para conferir antes de gravar.
+    planilha = (
+        "data;insumo;unidade;tipo;quantidade;categoria\n"
+        f"{_br(3)};Ureia;kg;entrada;100;Adubo\n"
+        f"{_br(3)};Superfosfato;kg;entrada;50;adubo\n"
+    )
+
+    previa = _importar(client, planilha)
+    importado = _importar(client, planilha, confirmar=True)
+
+    assert (previa["erros"], previa["categorias_novas"]) == ([], ["Adubo"])
+    assert importado["importado"] is True
+    assert _categorias(client) == {"Superfosfato": "Adubo", "Ureia": "Adubo"}
+    assert [c["nome"] for c in client.get("/api/v1/categorias").json()] == ["Adubo"]

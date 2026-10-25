@@ -161,7 +161,9 @@ def importar(
     for fornecedor in db.scalars(select(Fornecedor).order_by(Fornecedor.nome)):
         fornecedores.setdefault(fornecedor.nome.casefold(), []).append(fornecedor)
     fornecedores_novos: dict[str, Fornecedor] = {}
-    categorias = _Cadastro({c.nome.casefold(): c for c in db.scalars(select(Categoria))}, novos={})
+    categorias = _Cadastro(cadastradas={}, novos={})
+    for categoria in db.scalars(select(Categoria).order_by(Categoria.nome)):
+        categorias.cadastradas.setdefault(categoria.nome.casefold(), []).append(categoria)
     linhas: list[_Linha] = []
     for numero, celulas in lidas:
         if isinstance(celulas, str):
@@ -469,11 +471,13 @@ def _pista(texto: str) -> str | None:
 
 @dataclass
 class _Cadastro:
-    """As categorias pelo nome sem diferenciar maiúsculas (o nome é único também assim na
-    prática: duas que só diferem nelas seriam a mesma para o produtor), e as que a planilha
-    vai cadastrar."""
+    """As categorias pelo nome sem diferenciar maiúsculas, como o insumo e o fornecedor: o
+    cadastro aceita "Adubo" e "adubo", e a planilha casa a chave com as duas (aí é erro na
+    linha). E as que a planilha vai cadastrar, uma por chave: "Adubo" e "adubo" novas são
+    uma só, com a grafia da primeira linha (a cópia de segurança de um sistema que tinha as
+    duas, restaurada num vazio, junta-as; a prévia mostra a que vai ser criada)."""
 
-    cadastradas: dict[str, Categoria]
+    cadastradas: dict[str, list[Categoria]]
     novos: dict[str, Categoria]
 
 
@@ -614,9 +618,17 @@ def _categorizar(insumo: Insumo, nome: str, categorias: _Cadastro) -> None:
     nome, como o fornecedor: só precisa dele, e a cópia de segurança restaurada num sistema
     vazio devolve cada insumo à sua categoria sem cadastro à mão."""
     chave = nome.casefold()
-    categoria = categorias.cadastradas.get(chave) or categorias.novos.setdefault(
-        chave, Categoria(nome=nome)
-    )
+    match categorias.cadastradas.get(chave, []):
+        case [categoria]:
+            pass
+        case []:
+            categoria = categorias.novos.setdefault(chave, Categoria(nome=nome))
+        case varias:
+            # O cadastro diferencia maiúsculas; a planilha, não. Escolher uma seria chute.
+            raise ValueError(
+                f'há mais de uma categoria cadastrada como "{nome}" '
+                f"({', '.join(c.nome for c in varias)}); renomeie uma delas antes de importar."
+            )
     if insumo.categoria is None:
         insumo.categoria = categoria
     elif insumo.categoria is not categoria:
