@@ -119,6 +119,10 @@ def subir_uvicorn(**variaveis: str) -> Iterator[str]:
             "ENVIRONMENT": "test",
             "DATABASE_URL": URL_DA_APP,
             "LOG_LEVEL": "WARNING",
+            # Os servidores da sessão atendem a suíte inteira, toda de 127.0.0.1: com o
+            # limite por IP, um teste gastaria a cota do outro. Quem prova o limite sobe o
+            # seu, com ele ligado (test_blindagem_da_api.py).
+            "LIMITE_POR_IP": "false",
         }
         | variaveis
     )
