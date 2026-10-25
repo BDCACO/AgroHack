@@ -1,13 +1,13 @@
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DataError, OperationalError, SQLAlchemyError
 from sqlalchemy.exc import TimeoutError as PoolSemConexao
 
-from app.api.protecoes import RegistroDosPedidos
+from app.api.protecoes import LimiteDoCorpo, RegistroDosPedidos
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.database import get_engine, problemas_do_papel
@@ -60,22 +60,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.include_router(api_router, prefix=prefixo)
 
-    @app.middleware("http")
-    async def limitar_o_corpo(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        # Sem isto, o corpo inteiro iria para a memória antes de qualquer validação.
-        # ponytail: confia no Content-Length; pedido "chunked" sem ele passa — limitar
-        # no proxy reverso se a API sair da rede da fazenda.
-        tamanho = request.headers.get("content-length", "")
-        if tamanho.isdigit() and int(tamanho) > CORPO_MAXIMO:
-            return JSONResponse(
-                {"detail": "Arquivo grande demais: o máximo é 5 MB."}, status_code=413
-            )
-        return await call_next(request)
-
-    # O último a entrar é o de fora: o registro vê todo pedido, inclusive os que as outras
-    # proteções recusam, e dá o id que os tratadores de erro abaixo usam.
+    # As proteções de todo pedido (app/api/protecoes.py). A última a entrar é a de fora; de
+    # fora para dentro: o registro (o id e a linha do log, inclusive do que as outras
+    # recusam) e o limite do corpo, que recusa antes de a API ler o pedido.
+    app.add_middleware(LimiteDoCorpo, maximo=CORPO_MAXIMO)
     app.add_middleware(RegistroDosPedidos)
 
     @app.exception_handler(DataError)

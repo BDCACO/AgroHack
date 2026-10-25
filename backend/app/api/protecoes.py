@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger_de_acesso = logging.getLogger("app.acesso")
@@ -79,3 +80,66 @@ def _id_aceito(enviado: str | None) -> str | None:
     if enviado is not None and _ID_SEGURO.fullmatch(enviado):
         return enviado
     return None
+
+
+FRASE_DO_CORPO_GRANDE = "Arquivo grande demais: o máximo é 5 MB."
+
+
+class LimiteDoCorpo:
+    """Recusa com 413 o pedido cujo corpo passa de `maximo` bytes, contando os bytes que
+    chegam, e não só o `Content-Length`: o pedido `Transfer-Encoding: chunked` não o traz e,
+    sem a conta, iria inteiro para a memória (o FastAPI lê o corpo todo antes de validar).
+
+    O `Content-Length` acima do limite é recusado antes de ler um byte. Sem ele, o `receive`
+    embrulhado soma o que chega; ao passar do limite, responde 413 dali mesmo e diz à API
+    que o cliente se foi (`http.disconnect`): ela para de ler, e o que tentar responder
+    depois é descartado. O uvicorn fecha a conexão com o resto do corpo sem ler."""
+
+    def __init__(self, app: ASGIApp, maximo: int) -> None:
+        self.app = app
+        self.maximo = maximo
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        tamanho = Headers(scope=scope).get("content-length", "")
+        if tamanho.isdigit() and int(tamanho) > self.maximo:
+            await _corpo_grande_demais(scope, send)
+            return
+        recebidos = 0
+        estourou = False
+        respondeu = False
+
+        async def receber() -> Message:
+            nonlocal recebidos, estourou
+            if estourou:
+                return {"type": "http.disconnect"}
+            mensagem = await receive()
+            if mensagem["type"] == "http.request":
+                recebidos += len(mensagem.get("body", b""))
+                if recebidos > self.maximo:
+                    estourou = True
+                    if not respondeu:
+                        await _corpo_grande_demais(scope, send)
+                    return {"type": "http.disconnect"}
+            return mensagem
+
+        async def enviar(mensagem: Message) -> None:
+            nonlocal respondeu
+            if estourou:
+                return  # o 413 já foi; a resposta da API ao "cliente que se foi" não vai
+            if mensagem["type"] == "http.response.start":
+                respondeu = True
+            await send(mensagem)
+
+        await self.app(scope, receber, enviar)
+
+
+async def _corpo_grande_demais(scope: Scope, send: Send) -> None:
+    resposta = JSONResponse({"detail": FRASE_DO_CORPO_GRANDE}, status_code=413)
+    await resposta(scope, _nada_a_receber, send)
+
+
+async def _nada_a_receber() -> Message:
+    return {"type": "http.disconnect"}
