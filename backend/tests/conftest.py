@@ -94,6 +94,14 @@ def criar_usuario(db: Session) -> CriarUsuario:
     return criar
 
 
+def erro_inesperado(caplog: pytest.LogCaptureFixture) -> BaseException:
+    """O erro que virou 500: a API responde com frase e id, e o erro em si vai só para o
+    log (`app.erro`, com o traceback). É por ele que o teste confere o que quebrou."""
+    erros = [r for r in caplog.records if r.name == "app.erro" and r.exc_info]
+    assert erros, "nenhum erro inesperado no log"
+    return erros[-1].exc_info[1]  # type: ignore[index]
+
+
 def entrar(cliente: TestClient, login: str, senha_digitada: str = SENHA) -> dict[str, str]:
     """Faz login e devolve o cabeçalho com o token, pronto para os pedidos."""
     resposta = cliente.post("/api/v1/auth/entrar", json={"login": login, "senha": senha_digitada})

@@ -16,6 +16,14 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger_de_acesso = logging.getLogger("app.acesso")
+logger_de_erros = logging.getLogger("app.erro")
+
+# O 500 não conta o defeito a quem pediu (o traceback mostra código, consultas e às vezes
+# dados): diz o que fazer e dá o código para achar o traceback no log.
+FRASE_DO_ERRO_INESPERADO = (
+    "Algo deu errado no servidor. Tente de novo; se continuar, informe ao suporte o código "
+    "do pedido."
+)
 
 # O id que o cliente manda só é aceito se for seguro de escrever num log e num cabeçalho:
 # letras sem acento, números, hífen e sublinhado, até 64 (um UUID cabe). Qualquer outra
@@ -34,7 +42,8 @@ def anotar_o_usuario(request: Request, usuario_id: int) -> None:
 
 
 class RegistroDosPedidos:
-    """Dá um id a cada pedido (`X-Request-ID`) e escreve uma linha de log por pedido.
+    """Dá um id a cada pedido (`X-Request-ID`), escreve uma linha de log por pedido e
+    transforma o erro inesperado em 500 com frase e id (o traceback vai só para o log).
 
     A linha é JSON, para se filtrar no log sem expressão regular: id, método, caminho (sem a
     query string, que pode trazer o que se buscou), status, duração em ms, usuário e IP.
@@ -51,24 +60,39 @@ class RegistroDosPedidos:
         estado = scope.setdefault("state", {})
         estado["id_da_requisicao"] = id_
         inicio = time.perf_counter()
-        status = 500
+        status_enviado: int | None = None
 
         async def enviar(mensagem: Message) -> None:
-            nonlocal status
+            nonlocal status_enviado
             if mensagem["type"] == "http.response.start":
-                status = mensagem["status"]
+                status_enviado = mensagem["status"]
                 MutableHeaders(scope=mensagem)["X-Request-ID"] = id_
             await send(mensagem)
 
         try:
             await self.app(scope, receive, enviar)
+        except Exception:
+            # Aqui, e não num exception_handler: o do Starlette para `Exception` roda fora de
+            # todos os middlewares, e a resposta sairia sem o id e sem os cabeçalhos de
+            # segurança. Engolido depois de logado: o servidor não loga o mesmo traceback
+            # de novo.
+            logger_de_erros.exception(
+                "Erro inesperado no pedido %s (%s %s).", id_, scope["method"], scope["path"]
+            )
+            if status_enviado is None:
+                resposta = JSONResponse(
+                    {"detail": FRASE_DO_ERRO_INESPERADO, "id_da_requisicao": id_},
+                    status_code=500,
+                )
+                await resposta(scope, receive, enviar)
         finally:
             cliente = scope.get("client")
             linha = {
                 "id": id_,
                 "metodo": scope["method"],
                 "caminho": scope["path"],
-                "status": status,
+                # Sem resposta: o erro veio depois de ela começar, ou o cliente se foi.
+                "status": status_enviado or 500,
                 "duracao_ms": round((time.perf_counter() - inicio) * 1000, 1),
                 "usuario_id": estado.get("usuario_id"),
                 "ip": cliente[0] if cliente else None,

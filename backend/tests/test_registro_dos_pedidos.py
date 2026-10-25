@@ -8,6 +8,8 @@ from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import DataError
+from sqlalchemy.exc import TimeoutError as PoolSemConexao
 
 from tests.conftest import SENHA, CriarUsuario, entrar
 
@@ -107,3 +109,51 @@ def test_log_de_acesso_leva_o_usuario_e_nunca_senha_token_nem_corpo(
     token = cabecalho["Authorization"].removeprefix("Bearer ")
     for segredo in (token, SENHA, "errada-de-proposito", "Insumo-secreto"):
         assert segredo not in log_do_servidor(caplog)
+
+
+FRASE_DO_500 = (
+    "Algo deu errado no servidor. Tente de novo; se continuar, informe ao suporte o código "
+    "do pedido."
+)
+
+
+def test_erro_inesperado_responde_frase_e_id_e_o_traceback_so_vai_ao_log(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    def quebrar() -> None:
+        raise RuntimeError("detalhe-interno-do-defeito")
+
+    client.app.add_api_route("/api/v1/teste-quebra", quebrar)
+
+    with caplog.at_level(logging.INFO):
+        resposta = client.get("/api/v1/teste-quebra")
+
+    id_ = resposta.headers["X-Request-ID"]
+    assert resposta.status_code == 500
+    assert resposta.json() == {"detail": FRASE_DO_500, "id_da_requisicao": id_}
+    assert "detalhe-interno-do-defeito" not in resposta.text
+    assert "Traceback" not in resposta.text
+    # No log, o traceback inteiro, com o id para achá-lo a partir do que o produtor informou.
+    [erro] = [r for r in caplog.records if r.name == "app.erro"]
+    assert id_ in erro.getMessage()
+    assert erro.exc_info is not None
+    assert "detalhe-interno-do-defeito" in str(erro.exc_info[1])
+    [linha] = linhas_de_acesso(caplog)
+    assert (linha["id"], linha["status"]) == (id_, 500)
+
+
+def test_503_do_banco_e_422_do_dado_tambem_levam_o_id(client: TestClient) -> None:
+    def sem_conexao() -> None:
+        raise PoolSemConexao()
+
+    def dado_recusado() -> None:
+        raise DataError("SELECT 1", {}, Exception("fora do integer"))
+
+    client.app.add_api_route("/api/v1/teste-503", sem_conexao)
+    client.app.add_api_route("/api/v1/teste-422", dado_recusado)
+
+    for caminho, status in (("/api/v1/teste-503", 503), ("/api/v1/teste-422", 422)):
+        resposta = client.get(caminho)
+        assert resposta.status_code == status
+        assert resposta.json()["id_da_requisicao"] == resposta.headers["X-Request-ID"]
+        assert resposta.json()["detail"]

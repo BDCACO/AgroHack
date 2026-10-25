@@ -20,6 +20,7 @@ from app.core.config import Settings
 from app.core.database import argumentos_do_engine
 from app.core.relogio import hoje
 from app.services import estoque
+from tests.conftest import erro_inesperado
 
 POSTGRES = "postgresql+psycopg://campocerto_app:abc123@db:5432/campocerto"
 
@@ -125,13 +126,18 @@ def test_pool_sem_conexao_livre_vira_503(client: TestClient) -> None:
     assert resposta.headers["Retry-After"] == "5"
 
 
-def test_outro_erro_operacional_continua_erro_do_servidor(client: TestClient) -> None:
+def test_outro_erro_operacional_continua_erro_do_servidor(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
     # Banco fora do ar, senha errada: não é espera que passa sozinha, e esconder num 503
     # "tente de novo" atrasaria quem precisa consertar.
     _rota_que_estoura(client, OperationalError("SELECT 1", {}, Exception("conexão recusada")))
 
-    with pytest.raises(OperationalError):
-        client.get("/api/v1/teste-estoura")
+    resposta = client.get("/api/v1/teste-estoura")
+
+    assert resposta.status_code == 500
+    assert "Retry-After" not in resposta.headers
+    assert isinstance(erro_inesperado(caplog), OperationalError)
 
 
 def test_lote_que_estoura_o_tempo_para_e_o_app_reenvia(

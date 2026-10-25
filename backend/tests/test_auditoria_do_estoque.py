@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.relogio import hoje
 from app.models import Insumo, Movimentacao, Usuario
 from app.services import autenticacao
-from tests.conftest import CriarUsuario
+from tests.conftest import CriarUsuario, erro_inesperado
 from tests.test_eventos_de_auditoria import eventos
 
 HOJE = hoje()
@@ -237,19 +237,22 @@ def test_acao_que_falha_nao_deixa_evento(fazenda: SimpleNamespace, db: Session) 
     assert eventos(db) == []
 
 
-def test_evento_que_falha_desfaz_a_acao(fazenda: SimpleNamespace, db: Session) -> None:
+def test_evento_que_falha_desfaz_a_acao(
+    fazenda: SimpleNamespace, db: Session, caplog: pytest.LogCaptureFixture
+) -> None:
     """Sem onde gravar o evento, a remoção não acontece: os dois vão na mesma transação."""
     api, f = fazenda.api, fazenda
     compra = {"insumo_id": f.ureia, "tipo": "entrada", "data": str(HOJE), "quantidade": 200}
     lancada = ok(api.post(f"{API}/movimentacoes", headers=f.do_ze, json=compra), 201)
     db.execute(text("DROP TABLE eventos_de_auditoria"))
 
-    with pytest.raises(OperationalError, match="eventos_de_auditoria"):
-        api.delete(f"{API}/movimentacoes/{lancada['id']}", headers=f.dono)
-    db.rollback()
-    with pytest.raises(OperationalError, match="eventos_de_auditoria"):
-        api.delete(f"{API}/insumos/{f.ureia}", headers=f.dono)
-    db.rollback()
+    for caminho in (f"{API}/movimentacoes/{lancada['id']}", f"{API}/insumos/{f.ureia}"):
+        caplog.clear()
+        assert api.delete(caminho, headers=f.dono).status_code == 500
+        erro = erro_inesperado(caplog)
+        assert isinstance(erro, OperationalError)
+        assert "eventos_de_auditoria" in str(erro)
+        db.rollback()
 
     assert db.get(Movimentacao, lancada["id"]) is not None
     assert db.get(Insumo, f.ureia) is not None

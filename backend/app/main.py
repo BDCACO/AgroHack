@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DataError, OperationalError, SQLAlchemyError
 from sqlalchemy.exc import TimeoutError as PoolSemConexao
 
-from app.api.protecoes import LimiteDoCorpo, RegistroDosPedidos
+from app.api.protecoes import LimiteDoCorpo, RegistroDosPedidos, id_da_requisicao
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.database import get_engine, problemas_do_papel
@@ -67,17 +67,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RegistroDosPedidos)
 
     @app.exception_handler(DataError)
-    async def dado_que_o_banco_recusa(_: Request, __: DataError) -> JSONResponse:
+    async def dado_que_o_banco_recusa(request: Request, _: DataError) -> JSONResponse:
         # Um id maior que o `integer` do PostgreSQL ou um texto com caractere nulo passam
         # pela validação (o SQLite dos testes os aceita) e o banco os recusa. É dado
         # inválido do pedido, não defeito do servidor: 422, e não 500 com traceback no log.
         return JSONResponse(
-            {"detail": "Algum valor do pedido está fora do que o sistema aceita."},
+            {
+                "detail": "Algum valor do pedido está fora do que o sistema aceita.",
+                "id_da_requisicao": id_da_requisicao(request),
+            },
             status_code=422,
         )
 
     @app.exception_handler(OperationalError)
-    async def banco_demorou(_: Request, erro: OperationalError) -> JSONResponse:
+    async def banco_demorou(request: Request, erro: OperationalError) -> JSONResponse:
         # 503 com Retry-After, e não 500 com traceback: não é defeito do servidor nem do
         # pedido, é espera que passa, e quem chamou (o site, a fila do app) tenta de novo.
         # Nem 409 (não há o que o produtor corrigir) nem 504 (a API não é um proxy).
@@ -87,12 +90,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise erro
         # Só o código: a consulta e os valores dela podem ter dado do produtor.
         logger.warning("Tempo-limite do banco estourado (SQLSTATE %s).", codigo)
-        return _tente_de_novo(TEMPO_LIMITE_DO_BANCO[codigo])
+        return _tente_de_novo(request, TEMPO_LIMITE_DO_BANCO[codigo])
 
     @app.exception_handler(PoolSemConexao)
-    async def sem_conexao_livre(_: Request, __: PoolSemConexao) -> JSONResponse:
+    async def sem_conexao_livre(request: Request, _: PoolSemConexao) -> JSONResponse:
         logger.warning("Nenhuma conexão livre no pool do banco a tempo.")
-        return _tente_de_novo("O sistema está ocupado agora. Tente de novo em alguns segundos.")
+        return _tente_de_novo(
+            request, "O sistema está ocupado agora. Tente de novo em alguns segundos."
+        )
 
     return app
 
@@ -127,9 +132,13 @@ def _conferir_o_papel_do_banco(settings: Settings) -> None:
         )
 
 
-def _tente_de_novo(frase: str) -> JSONResponse:
+def _tente_de_novo(request: Request, frase: str) -> JSONResponse:
+    # O id no corpo também, e não só no cabeçalho: é o que a tela mostra para o produtor
+    # informar ao suporte.
     return JSONResponse(
-        {"detail": frase}, status_code=503, headers={"Retry-After": TENTE_DE_NOVO_EM}
+        {"detail": frase, "id_da_requisicao": id_da_requisicao(request)},
+        status_code=503,
+        headers={"Retry-After": TENTE_DE_NOVO_EM},
     )
 
 

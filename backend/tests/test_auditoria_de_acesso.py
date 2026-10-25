@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app import usuarios as comando
 from app.core.relogio import agora
 from app.models import Sessao, Usuario
-from tests.conftest import SENHA, CriarUsuario, entrar
+from tests.conftest import SENHA, CriarUsuario, entrar, erro_inesperado
 from tests.test_auditoria_do_estoque import API, ok
 from tests.test_eventos_de_auditoria import eventos
 
@@ -159,15 +159,17 @@ def test_trocar_a_propria_senha(equipe: SimpleNamespace, db: Session) -> None:
 
 
 def test_a_recusa_entra_junto_com_a_contagem_de_falhas(
-    equipe: SimpleNamespace, db: Session
+    equipe: SimpleNamespace, db: Session, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Sem onde gravar o evento, a falha também não conta: a recusa e a contagem são uma
     transação só."""
     ze = cadastrar_ze(equipe)
     db.execute(text("DROP TABLE eventos_de_auditoria"))
 
-    with pytest.raises(OperationalError, match="eventos_de_auditoria"):
-        tentar(equipe.api, "ze", "chute-errado")
+    assert tentar(equipe.api, "ze", "chute-errado") == 500
+    erro = erro_inesperado(caplog)
+    assert isinstance(erro, OperationalError)
+    assert "eventos_de_auditoria" in str(erro)
 
     db.rollback()
     assert db.get(Usuario, ze["id"]).falhas_seguidas == 0
