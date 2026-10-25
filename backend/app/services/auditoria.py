@@ -45,6 +45,7 @@ ACOES = (
     "usuario.senha_trocada",
     "login.recusado",
     "login.bloqueado",
+    "login.limitado",  # um IP passou do limite de tentativas: uma vez por rodada
     # A fazenda de demonstração, que apaga e cria em massa.
     "demo.carregada",
     "demo.limpa",

@@ -14,6 +14,10 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 # de autenticação pedem a sua (`cliente_autenticado`). Um AUTENTICACAO=true no .env do
 # desenvolvedor não pode mudar o resultado da suíte.
 os.environ["AUTENTICACAO"] = "false"
+# Desligado pelo mesmo motivo: todo pedido do TestClient vem do mesmo "IP", e os testes que
+# montam o cenário pela API (120 movimentações num segundo) passariam do limite de
+# escritas, que é para gente. Os testes do limite o ligam (tests/test_limite_por_ip.py).
+os.environ["LIMITE_POR_IP"] = "false"
 
 from collections.abc import Callable, Iterator
 from functools import cache

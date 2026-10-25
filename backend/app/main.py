@@ -9,6 +9,7 @@ from sqlalchemy.exc import TimeoutError as PoolSemConexao
 
 from app.api.protecoes import (
     CabecalhosDeSeguranca,
+    LimiteDeEscritas,
     LimiteDoCorpo,
     RegistroDosPedidos,
     id_da_requisicao,
@@ -16,6 +17,7 @@ from app.api.protecoes import (
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.database import get_engine, problemas_do_papel
+from app.core.limite_de_taxa import Janela, LimiteEmMemoria
 
 # Folga sobre o maior pedido legítimo: a planilha de 5 MB vira uns 6,7 MB em base64.
 CORPO_MAXIMO = 8_000_000
@@ -67,9 +69,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # As proteções de todo pedido (app/api/protecoes.py). A última a entrar é a de fora; de
     # fora para dentro: os cabeçalhos de segurança (em toda resposta, até no 500), o
-    # registro (o id, a linha do log, inclusive do que as outras recusam, e o 500) e o
-    # limite do corpo, que recusa antes de a API ler o pedido.
+    # registro (o id, a linha do log, inclusive do que as outras recusam, e o 500), o limite
+    # de escritas por IP e o limite do corpo, os dois antes de a API ler o pedido.
     app.add_middleware(LimiteDoCorpo, maximo=CORPO_MAXIMO)
+    # Os limites por IP ficam no estado do app, e não em variável global: cada app (cada
+    # teste) começa a contar do zero.
+    app.state.limite_de_login = None
+    if settings.limite_por_ip:
+        app.state.limite_de_login = LimiteEmMemoria(
+            [
+                Janela(settings.limite_login_por_minuto, 60),
+                Janela(settings.limite_login_por_hora, 3600),
+            ]
+        )
+        app.add_middleware(
+            LimiteDeEscritas,
+            limite=LimiteEmMemoria([Janela(settings.limite_escritas_por_minuto, 60)]),
+            isentos=frozenset({f"{prefixo}/auth/entrar"}),
+        )
     app.add_middleware(RegistroDosPedidos)
     app.add_middleware(
         CabecalhosDeSeguranca,

@@ -8,6 +8,7 @@ import base64
 import hashlib
 import json
 import logging
+import math
 import re
 import time
 from uuid import uuid4
@@ -16,6 +17,8 @@ from starlette.datastructures import Headers, MutableHeaders
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from app.core.limite_de_taxa import LimiteDeTaxa
 
 logger_de_acesso = logging.getLogger("app.acesso")
 logger_de_erros = logging.getLogger("app.erro")
@@ -169,6 +172,51 @@ async def _corpo_grande_demais(scope: Scope, send: Send) -> None:
 
 async def _nada_a_receber() -> Message:
     return {"type": "http.disconnect"}
+
+
+_GRAVAM = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def frase_de_espera(inicio: str, espere: int) -> str:
+    """'<inicio>. Espere N minutos e tente de novo.', com os minutos para cima: o produtor
+    lê minutos, e o Retry-After leva os segundos exatos para o app."""
+    minutos = math.ceil(espere / 60)
+    return f"{inicio}. Espere {minutos} minuto{'s' if minutos > 1 else ''} e tente de novo."
+
+
+def muitos_pedidos(frase: str, espere: int) -> JSONResponse:
+    return JSONResponse({"detail": frase}, status_code=429, headers={"Retry-After": str(espere)})
+
+
+class LimiteDeEscritas:
+    """Limita os pedidos que gravam por IP (`limite`), com 429 e `Retry-After` antes de a API
+    ler o corpo. Leitura não conta (o Painel recarrega tudo a cada alteração), nem o login,
+    que tem o limite dele (app/api/routes/autenticacao.py) e não pode gastar o das escritas.
+
+    O IP é o que o uvicorn vê (`client`), como na auditoria; o `X-Forwarded-For` qualquer um
+    escreve, e trocá-lo a cada pedido zeraria a conta. Sem evento de auditoria: não é
+    tentativa de entrar à força, e cada 429 seria uma linha."""
+
+    def __init__(self, app: ASGIApp, limite: LimiteDeTaxa, isentos: frozenset[str]) -> None:
+        self.app = app
+        self.limite = limite
+        self.isentos = isentos
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if (
+            scope["type"] == "http"
+            and scope["method"] in _GRAVAM
+            and scope["path"] not in self.isentos
+        ):
+            cliente = scope.get("client")
+            recusa = self.limite.tentar(cliente[0] if cliente else "desconhecido")
+            if recusa is not None:
+                frase = frase_de_espera(
+                    "Muitos pedidos seguidos a partir desta rede", recusa.espere
+                )
+                await muitos_pedidos(frase, recusa.espere)(scope, _nada_a_receber, send)
+                return
+        await self.app(scope, receive, send)
 
 
 # Em toda resposta da API. Nenhuma é página para o navegador montar: são JSON e o Excel.
