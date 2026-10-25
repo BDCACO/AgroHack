@@ -89,10 +89,12 @@ def entrar(
     if senha.precisa_refazer(usuario.senha_hash):
         # O custo do hash subiu desde que esta senha foi gravada: aproveita que ela chegou.
         usuario.senha_hash = senha.gerar_hash(senha_digitada)
-    return abrir_sessao(db, usuario, dispositivo)
+    return abrir_sessao(db, usuario, dispositivo, ip)
 
 
-def abrir_sessao(db: Session, usuario: Usuario, dispositivo: str | None) -> tuple[str, Sessao]:
+def abrir_sessao(
+    db: Session, usuario: Usuario, dispositivo: str | None, ip: str | None = None
+) -> tuple[str, Sessao]:
     token = secrets.token_urlsafe(32)
     momento = agora()
     sessao = Sessao(
@@ -100,7 +102,9 @@ def abrir_sessao(db: Session, usuario: Usuario, dispositivo: str | None) -> tupl
         token_hash=_hash_do_token(token),
         criada_em=momento,
         expira_em=momento + VALIDADE_DA_SESSAO,
+        ultimo_uso_em=momento,
         dispositivo=dispositivo,
+        ip=ip,
     )
     db.add(sessao)
     db.commit()

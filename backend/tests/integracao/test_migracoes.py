@@ -490,3 +490,51 @@ def test_a_tabela_da_auditoria_nasce_somente_acrescentar(banco: Engine) -> None:
         )
     with pytest.raises(IntegrityError, match="só aceita acrescentar"), banco.begin() as conexao:
         conexao.execute(text("DELETE FROM eventos_de_auditoria"))
+
+
+def _colunas_de_sessoes(banco: Engine) -> set[str]:
+    with banco.connect() as conexao:
+        return set(
+            conexao.scalars(
+                text(
+                    "SELECT column_name FROM information_schema.columns"
+                    " WHERE table_name = 'sessoes'"
+                )
+            )
+        )
+
+
+def test_a_0013_comeca_o_ultimo_uso_no_login_e_desce_sem_pedir(banco: Engine) -> None:
+    """As sessões abertas antes da 0013 continuam valendo: o último uso começa no login (o
+    único uso que se sabe delas), e o IP fica vazio. O downgrade não pede confirmação: as
+    duas colunas são anotações sobre a sessão, e não dado do produtor."""
+    alembic("downgrade", "0012")
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE usuarios RESTART IDENTITY CASCADE"))
+        conexao.execute(
+            text(
+                "INSERT INTO usuarios (nome, login, senha_hash, papel)"
+                " VALUES ('Zé', 'ze', 'scrypt$x', 'funcionario')"
+            )
+        )
+        conexao.execute(
+            text(
+                "INSERT INTO sessoes (usuario_id, token_hash, criada_em, expira_em, dispositivo)"
+                " VALUES (1, repeat('a', 64), now() - interval '10 days',"
+                " now() + interval '20 days', 'Celular do Zé')"
+            )
+        )
+
+    alembic("upgrade", "head")
+    with banco.connect() as conexao:
+        sessao = conexao.execute(
+            text("SELECT ultimo_uso_em = criada_em, ip, dispositivo FROM sessoes")
+        ).one()
+    assert tuple(sessao) == (True, None, "Celular do Zé")
+
+    alembic("downgrade", "0012")
+    assert not {"ultimo_uso_em", "ip"} & _colunas_de_sessoes(banco)
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT dispositivo FROM sessoes")) == "Celular do Zé"
+    alembic("upgrade", "head")
+    assert {"ultimo_uso_em", "ip"} <= _colunas_de_sessoes(banco)

@@ -67,9 +67,17 @@ class Sessao(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     criada_em: Mapped[datetime] = mapped_column(DataHora)
     expira_em: Mapped[datetime] = mapped_column(DataHora)
-    # Sair, trocar a senha ou ser desativado encerram a sessão antes de expirar.
+    # Sair, trocar a senha, ser desativado ou o encerramento pela lista de sessões
+    # (o celular perdido) encerram a sessão antes de expirar.
     revogada_em: Mapped[datetime | None] = mapped_column(DataHora)
     # O que o aparelho disse ser ("Celular do Zé"), para o dono saber onde há login aberto.
     dispositivo: Mapped[str | None] = mapped_column(String(120))
+    # Quando a sessão foi usada pela última vez, anotado de tempos em tempos e não a cada
+    # pedido (app/services/autenticacao.py): mostra qual aparelho está em uso e renova a
+    # validade de quem usa.
+    ultimo_uso_em: Mapped[datetime] = mapped_column(DataHora)
+    # O IP do login, pelo critério da auditoria (o que o servidor viu, nunca o
+    # X-Forwarded-For). Vazio nas sessões abertas antes de existir a coluna.
+    ip: Mapped[str | None] = mapped_column(String(45))
 
     usuario: Mapped[Usuario] = relationship(lazy="joined")
