@@ -45,9 +45,10 @@ def listar_pedidos(
     situacao: Situacao | None = None,
     fornecedor_id: int | None = None,
     insumo_id: int | None = None,
-    limite: int = 200,
+    limite: int | None = 200,
 ) -> list[PedidoResposta]:
-    """Os mais recentes primeiro."""
+    """Os mais recentes primeiro. `limite=None` traz todos: o relatório em Excel não pode
+    deixar de fora os mais antigos, que são os mais atrasados."""
     consulta = select(Pedido).order_by(Pedido.feito_em.desc(), Pedido.id.desc())
     if situacao is not None:
         consulta = consulta.where(Pedido.situacao == situacao)

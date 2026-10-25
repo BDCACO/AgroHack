@@ -354,3 +354,42 @@ def test_relatorio_com_pedidos_e_copia_que_devolve_os_fornecedores(api: httpx.Cl
     # A mesma cópia de novo: tudo já está lá, com os mesmos fornecedores.
     de_novo = ok(api.post("/importacoes", json={"xlsx": xlsx}))
     assert (de_novo["ja_lancadas"], de_novo["fornecedores_novos"]) == (de_novo["linhas"], [])
+
+
+def test_aba_pedidos_com_mais_de_200_a_caminho(api: httpx.Client, banco: Engine) -> None:
+    # 201 pedidos abertos e 1 parcial, gravados direto no banco (pela API seriam 202
+    # pedidos HTTP só de preparo). A lista da tela para em 200 por situação; a planilha
+    # traz todos, e o mais antigo (o mais atrasado) também.
+    ureia = ok(api.post("/insumos", json={"nome": "Ureia", "unidade": "kg"}), 201)["id"]
+    with banco.begin() as conexao:
+        conexao.execute(
+            text(
+                "INSERT INTO pedidos (situacao, feito_em, previsto_para)"
+                " SELECT CASE WHEN n = 0 THEN 'parcial' ELSE 'aberto' END,"
+                " CURRENT_DATE - 400 + n, CURRENT_DATE - 300 + n"
+                " FROM generate_series(0, 201) AS n"
+            )
+        )
+        conexao.execute(
+            text(
+                "INSERT INTO itens_do_pedido (pedido_id, insumo_id, quantidade,"
+                " quantidade_recebida)"
+                " SELECT id, :ureia, 10, CASE WHEN situacao = 'parcial' THEN 4 ELSE 0 END"
+                " FROM pedidos"
+            ),
+            {"ureia": ureia},
+        )
+        mais_antigo = conexao.execute(
+            text("SELECT id FROM pedidos WHERE situacao = 'aberto' ORDER BY feito_em LIMIT 1")
+        ).scalar_one()
+    assert len(ok(api.get("/pedidos", params={"situacao": "aberto"}))) == 200
+
+    relatorio = api.get("/relatorio.xlsx")
+
+    assert relatorio.status_code == 200
+    linhas = list(
+        load_workbook(BytesIO(relatorio.content))["Pedidos"].iter_rows(min_row=2, values_only=True)
+    )
+    assert len(linhas) == 202
+    assert mais_antigo in {linha[0] for linha in linhas}
+    assert sorted(linha[8] for linha in linhas)[0] == 6  # o parcial: faltam 6 dos 10

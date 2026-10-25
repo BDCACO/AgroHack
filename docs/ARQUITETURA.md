@@ -248,8 +248,9 @@ Decisões:
   vazio traz de volta de quem foi cada compra sem cadastro à mão. A prévia lista
   `fornecedores_novos`, para conferir a grafia. `ja_lancadas` trata o fornecedor como o
   preço e o talhão. O relatório escreve o fornecedor de cada compra na aba Movimentações e
-  ganha a aba **Pedidos** (o que falta chegar dos abertos e parciais, com a previsão e o
-  atrasado em destaque), que não volta pela importação.
+  ganha a aba **Pedidos** (o que falta chegar de **todos** os abertos e parciais, sem o limite
+  de 200 da lista da tela, que deixaria de fora os mais antigos, os mais atrasados; com a
+  previsão e o atrasado em destaque), que não volta pela importação.
 - **Permissões**: ler fornecedores, pedidos e a sugestão, e **receber** a carga, é do
   funcionário (é ele quem confere no galpão o que chegou); cadastrar fornecedor e fazer,
   alterar ou cancelar pedido é do dono, que compra e paga. O preço pago a cada revenda não

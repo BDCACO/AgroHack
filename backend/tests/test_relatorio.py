@@ -7,10 +7,12 @@ from io import BytesIO
 import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook, load_workbook
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
 from app.demo import carregar
+from app.models import ItemDoPedido, Pedido
 from app.services import relatorio
 
 
@@ -258,3 +260,26 @@ def test_relatorio_monta_a_planilha_fora_da_transacao(
     relatorio.gerar(db)
 
     assert durante_a_montagem == [False]
+
+
+def test_aba_pedidos_traz_todos_os_pedidos_a_caminho(client: TestClient, db: Session) -> None:
+    # A lista da tela para em 200 por situação (os mais recentes); a planilha não pode,
+    # senão somem os mais antigos, justamente os mais atrasados.
+    ureia = client.post("/api/v1/insumos", json={"nome": "Ureia", "unidade": "kg"}).json()
+    inicio = hoje() - timedelta(days=400)
+    db.add_all(
+        Pedido(
+            situacao="aberto",
+            feito_em=inicio + timedelta(days=numero),
+            itens=[ItemDoPedido(insumo_id=ureia["id"], quantidade=10)],
+        )
+        for numero in range(201)
+    )
+    db.commit()
+    mais_antigo = db.scalar(select(Pedido.id).where(Pedido.feito_em == inicio))
+
+    _, livro = baixar(client)
+
+    linhas = list(livro["Pedidos"].iter_rows(min_row=2, values_only=True))
+    assert len(linhas) == 201
+    assert mais_antigo in {linha[0] for linha in linhas}

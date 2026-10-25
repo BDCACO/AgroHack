@@ -76,8 +76,11 @@ def gerar(db: Session) -> bytes:
     insumos = estoque.listar_insumos(db)
     referencia = hoje()
     numeros = resumo.resumir(db, insumos, referencia)
+    # Todos, sem o limite da lista da tela (200 por situação, os mais recentes).
     em_andamento = [
-        p for situacao in pedidos.EM_ANDAMENTO for p in pedidos.listar_pedidos(db, situacao)
+        p
+        for situacao in pedidos.EM_ANDAMENTO
+        for p in pedidos.listar_pedidos(db, situacao, limite=None)
     ]
     lista_de_talhoes = talhoes.listar_talhoes(db)
     # Os últimos 12 meses, como o GET /relatorios/periodo sem datas.
