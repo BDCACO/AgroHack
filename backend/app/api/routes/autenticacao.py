@@ -9,8 +9,15 @@ from app.core.database import get_db
 from app.core.limite_de_taxa import LimiteDeTaxa
 from app.core.relogio import agora
 from app.models import Sessao
-from app.schemas.usuario import Entrada, PedidoDeEntrada, TrocaDeSenha, UsuarioResumo
-from app.services import auditoria
+from app.schemas.usuario import (
+    Entrada,
+    PedidoDeEntrada,
+    SessaoResposta,
+    SessoesEncerradas,
+    TrocaDeSenha,
+    UsuarioResumo,
+)
+from app.services import auditoria, sessoes
 from app.services import autenticacao as servico
 from app.services.auditoria import Origem
 
@@ -110,3 +117,60 @@ def trocar_senha(
     except servico.SenhaAtualIncorreta:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A senha atual não confere.") from None
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def lista_de_sessoes(lista: list[Sessao], atual: Sessao | None) -> list[SessaoResposta]:
+    """As sessões na resposta, com `atual` marcando a deste pedido."""
+    atual_id = None if atual is None else atual.id
+    return [
+        SessaoResposta.model_validate(s).model_copy(update={"atual": s.id == atual_id})
+        for s in lista
+    ]
+
+
+SESSAO_INEXISTENTE = HTTPException(
+    status.HTTP_404_NOT_FOUND, "Sessão não encontrada: pode já ter sido encerrada ou vencido."
+)
+
+
+@router.get("/sessoes", response_model=list[SessaoResposta])
+def minhas_sessoes(
+    sessao: Sessao = Depends(exigir_sessao), db: Session = Depends(get_db)
+) -> list[SessaoResposta]:
+    """Onde há login aberto com o seu usuário: cada aparelho, o IP do login, o último uso
+    (anotado de 5 em 5 minutos) e até quando vale. `atual` é a deste pedido."""
+    return lista_de_sessoes(sessoes.ativas(db, sessao.usuario_id), sessao)
+
+
+@router.delete(
+    "/sessoes/{sessao_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Não há essa sessão ativa sua"}},
+)
+def encerrar_sessao(
+    sessao_id: int,
+    sessao: Sessao = Depends(exigir_sessao),
+    db: Session = Depends(get_db),
+    origem: Origem = Depends(origem_do_pedido),
+) -> Response:
+    """Encerra uma sessão sua (o celular perdido), e só ela: os outros aparelhos
+    continuam. A de outro usuário é `404`, como a que não existe. Encerrar a deste pedido
+    é o mesmo que sair."""
+    try:
+        sessoes.encerrar(db, sessao.usuario_id, sessao_id, sessao.id, origem)
+    except sessoes.SessaoInexistente:
+        raise SESSAO_INEXISTENTE from None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/sessoes/encerrar-outras", response_model=SessoesEncerradas)
+def encerrar_as_outras(
+    sessao: Sessao = Depends(exigir_sessao),
+    db: Session = Depends(get_db),
+    origem: Origem = Depends(origem_do_pedido),
+) -> SessoesEncerradas:
+    """Encerra todas as suas sessões menos a deste pedido, sem trocar a senha, e diz
+    quantas."""
+    return SessoesEncerradas(
+        encerradas=sessoes.encerrar_todas(db, sessao.usuario_id, sessao.id, origem)
+    )

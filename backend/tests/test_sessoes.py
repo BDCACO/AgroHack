@@ -10,11 +10,13 @@ from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from app.models import Sessao
-from app.services import autenticacao
+from app.services import autenticacao, sessoes
 from tests.conftest import SENHA, CriarUsuario, entrar
+from tests.test_eventos_de_auditoria import eventos
 
 ENTRAR = "/api/v1/auth/entrar"
 EU = "/api/v1/auth/eu"
+SESSOES = "/api/v1/auth/sessoes"
 
 
 def test_login_guarda_o_ip_e_o_ultimo_uso(
@@ -43,6 +45,7 @@ def relogio(monkeypatch: pytest.MonkeyPatch) -> Callable[..., datetime]:
     def ajustar(**depois: float) -> datetime:
         momento = inicio + timedelta(**depois)
         monkeypatch.setattr(autenticacao, "agora", lambda: momento)
+        monkeypatch.setattr(sessoes, "agora", lambda: momento)
         return momento
 
     ajustar()
@@ -128,3 +131,170 @@ def test_nem_quem_usa_passa_de_90_dias_sem_entrar_de_novo(
     resposta = cliente_autenticado.get(EU, headers=cabecalho)
     assert resposta.status_code == 401
     assert "expirou" in resposta.json()["detail"]
+
+
+def entrar_em(api: TestClient, login: str, dispositivo: str) -> dict[str, str]:
+    """O login de um aparelho, com o nome que ele diz ter."""
+    corpo = {"login": login, "senha": SENHA, "dispositivo": dispositivo}
+    resposta = api.post(ENTRAR, json=corpo)
+    assert resposta.status_code == 200, resposta.text
+    return {"Authorization": f"Bearer {resposta.json()['token']}"}
+
+
+def id_da_sessao(api: TestClient, cabecalho: dict[str, str], dispositivo: str) -> int:
+    lista = api.get(SESSOES, headers=cabecalho).json()
+    return next(s["id"] for s in lista if s["dispositivo"] == dispositivo)
+
+
+def test_minhas_sessoes_lista_so_as_ativas_e_marca_a_atual(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario, relogio: Callable[..., datetime]
+) -> None:
+    api = cliente_autenticado
+    criar_usuario("ze")
+    criar_usuario("maria", papel="dono")
+    celular = entrar_em(api, "ze", "Celular do Zé")
+    relogio(minutes=1)
+    notebook = entrar_em(api, "ze", "Notebook")
+    api.post("/api/v1/auth/sair", headers=entrar_em(api, "ze", "Tablet"))
+    entrar_em(api, "maria", "Computador do escritório")
+
+    resposta = api.get(SESSOES, headers=notebook)
+
+    assert resposta.status_code == 200, resposta.text
+    lista = resposta.json()
+    # A encerrada (o tablet) e as de outro usuário não aparecem; a usada por último vem
+    # primeiro, e `atual` é a deste pedido, para a tela não oferecer encerrar a si mesma.
+    assert [(s["dispositivo"], s["atual"]) for s in lista] == [
+        ("Notebook", True),
+        ("Celular do Zé", False),
+    ]
+    # Nunca o token nem o hash dele.
+    assert set(lista[0]) == {
+        "id",
+        "dispositivo",
+        "ip",
+        "criada_em",
+        "ultimo_uso_em",
+        "expira_em",
+        "atual",
+    }
+    assert lista[0]["ip"] == "testclient"
+    assert [s["atual"] for s in api.get(SESSOES, headers=celular).json()] == [False, True]
+
+
+def test_sessao_vencida_nao_aparece_na_lista(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario, relogio: Callable[..., datetime]
+) -> None:
+    api = cliente_autenticado
+    criar_usuario("ze")
+    entrar_em(api, "ze", "Celular antigo")
+    relogio(days=29)
+    novo = entrar_em(api, "ze", "Celular novo")
+
+    relogio(days=31)
+
+    assert [s["dispositivo"] for s in api.get(SESSOES, headers=novo).json()] == ["Celular novo"]
+
+
+def test_encerrar_outro_aparelho_meu_derruba_so_ele_e_fica_na_trilha(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario, db: Session
+) -> None:
+    api = cliente_autenticado
+    ze = criar_usuario("ze")
+    celular = entrar_em(api, "ze", "Celular do Zé")
+    notebook = entrar_em(api, "ze", "Notebook")
+    id_do_celular = id_da_sessao(api, notebook, "Celular do Zé")
+
+    resposta = api.delete(f"{SESSOES}/{id_do_celular}", headers=notebook)
+
+    assert resposta.status_code == 204, resposta.text
+    caiu = api.get(EU, headers=celular)
+    assert caiu.status_code == 401
+    assert "encerrada" in caiu.json()["detail"]
+    assert api.get(EU, headers=notebook).status_code == 200
+    # Quem tem a sessão roubada pode derrubar os outros aparelhos do dono dela: fica na
+    # trilha, com o aparelho que encerrou (o da origem) e o encerrado (nos dados).
+    [evento] = eventos(db)
+    assert (evento.acao, evento.usuario_id, evento.entidade, evento.entidade_id) == (
+        "sessao.encerrada",
+        ze.id,
+        "usuario",
+        ze.id,
+    )
+    assert evento.dispositivo == "Notebook"
+    assert evento.dados["login"] == "ze"
+    encerrada = evento.dados["sessao"]
+    assert (encerrada["id"], encerrada["dispositivo"]) == (id_do_celular, "Celular do Zé")
+    assert set(encerrada) == {"id", "dispositivo", "ip", "criada_em", "ultimo_uso_em"}
+    # Encerrada, não está mais lá para encerrar de novo.
+    assert api.delete(f"{SESSOES}/{id_do_celular}", headers=notebook).status_code == 404
+
+
+def test_encerrar_a_propria_sessao_pela_lista_e_como_sair(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario, db: Session
+) -> None:
+    api = cliente_autenticado
+    criar_usuario("ze")
+    celular = entrar_em(api, "ze", "Celular do Zé")
+    esta = id_da_sessao(api, celular, "Celular do Zé")
+
+    assert api.delete(f"{SESSOES}/{esta}", headers=celular).status_code == 204
+
+    assert api.get(EU, headers=celular).status_code == 401
+    assert eventos(db) == []  # como o sair, que não entra na trilha
+
+
+def test_sessao_de_outro_usuario_e_404_como_a_que_nao_existe(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario, db: Session
+) -> None:
+    # Nem o dono encerra a sessão de outro por aqui (é pela gestão de usuários), e a
+    # resposta não conta que aquele id existe.
+    api = cliente_autenticado
+    criar_usuario("ze")
+    criar_usuario("maria", papel="dono")
+    ze = entrar_em(api, "ze", "Celular do Zé")
+    maria = entrar_em(api, "maria", "Computador do escritório")
+    da_maria = id_da_sessao(api, maria, "Computador do escritório")
+    do_ze = id_da_sessao(api, ze, "Celular do Zé")
+
+    de_outro = api.delete(f"{SESSOES}/{da_maria}", headers=ze)
+    inexistente = api.delete(f"{SESSOES}/999", headers=ze)
+    do_dono = api.delete(f"{SESSOES}/{do_ze}", headers=maria)
+
+    assert de_outro.status_code == inexistente.status_code == do_dono.status_code == 404
+    assert de_outro.json() == inexistente.json() == do_dono.json()
+    assert api.get(EU, headers=maria).status_code == 200
+    assert api.get(EU, headers=ze).status_code == 200
+    assert eventos(db) == []
+
+
+def test_encerrar_as_outras_deixa_so_a_atual(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario, db: Session
+) -> None:
+    api = cliente_autenticado
+    ze = criar_usuario("ze")
+    criar_usuario("maria", papel="dono")
+    celular = entrar_em(api, "ze", "Celular do Zé")
+    tablet = entrar_em(api, "ze", "Tablet")
+    notebook = entrar_em(api, "ze", "Notebook")
+    maria = entrar_em(api, "maria", "Computador do escritório")
+
+    resposta = api.post(f"{SESSOES}/encerrar-outras", headers=notebook)
+
+    assert resposta.status_code == 200, resposta.text
+    assert resposta.json() == {"encerradas": 2}
+    assert [api.get(EU, headers=c).status_code for c in (celular, tablet)] == [401, 401]
+    assert api.get(EU, headers=notebook).status_code == 200
+    assert api.get(EU, headers=maria).status_code == 200  # as de outro usuário ficam
+    [evento] = eventos(db)
+    assert (evento.acao, evento.usuario_id, evento.entidade_id) == (
+        "sessao.encerradas",
+        ze.id,
+        ze.id,
+    )
+    assert evento.dados["login"] == "ze"
+    assert [s["dispositivo"] for s in evento.dados["sessoes"]] == ["Celular do Zé", "Tablet"]
+
+    # Sem outras, nada a encerrar e nada na trilha.
+    assert api.post(f"{SESSOES}/encerrar-outras", headers=notebook).json() == {"encerradas": 0}
+    assert len(eventos(db)) == 1

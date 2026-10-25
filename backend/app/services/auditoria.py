@@ -46,6 +46,10 @@ ACOES = (
     "login.recusado",
     "login.bloqueado",
     "login.limitado",  # um IP passou do limite de tentativas: uma vez por rodada
+    # Um aparelho derrubado sem desativar ninguém (o celular perdido). Encerrar a sessão
+    # que faz o pedido é sair, e não entra. Um grupo só, `sessao`, para o filtro.
+    "sessao.encerrada",
+    "sessao.encerradas",
     # A fazenda de demonstração, que apaga e cria em massa.
     "demo.carregada",
     "demo.limpa",
