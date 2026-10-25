@@ -91,7 +91,11 @@ class PedidoEntrada(BaseModel):
     def _coerente(self) -> Self:
         if self.feito_em > hoje():
             raise ValueError("a data do pedido não pode ser futura")
-        if self.previsto_para is not None and self.previsto_para < self.feito_em:
+        if (
+            self._comparar_a_previsao()
+            and self.previsto_para is not None
+            and self.previsto_para < self.feito_em
+        ):
             raise ValueError("a previsão de chegada não pode ser antes do pedido")
         insumos = [item.insumo_id for item in self.itens]
         if len(set(insumos)) < len(insumos):
@@ -101,6 +105,20 @@ class PedidoEntrada(BaseModel):
                 "numa linha só"
             )
         return self
+
+    def _comparar_a_previsao(self) -> bool:
+        # No pedido novo, a data dele é a do corpo ou hoje: sempre a que vai ser gravada.
+        return True
+
+
+class PedidoAlteracao(PedidoEntrada):
+    """O corpo do PUT /pedidos/{id}: o mesmo do pedido novo. Sem `feito_em` no corpo, a data
+    do pedido é a gravada, e não hoje (o padrão do campo): comparar a previsão com hoje
+    recusaria a previsão já passada de um pedido antigo. O serviço confere a previsão com a
+    data do pedido depois de aplicar o que veio."""
+
+    def _comparar_a_previsao(self) -> bool:
+        return "feito_em" in self.model_fields_set
 
 
 class ItemDoPedidoResposta(BaseModel):

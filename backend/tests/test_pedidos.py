@@ -485,3 +485,82 @@ def test_funcionario_recebe_e_o_dono_faz_o_pedido(
     assert resposta.status_code == 200, resposta.json()
     assert resposta.json()["movimentacoes"][0]["lancado_por"] == "Zé"
     assert client.post(f"/api/v1/pedidos/{feito['id']}/cancelar", headers=ze).status_code == 403
+
+
+def test_altera_pedido_antigo_sem_reenviar_a_data_do_pedido(client: TestClient) -> None:
+    # Sem `feito_em` no corpo, a data do pedido é a gravada, e não hoje: a previsão já
+    # passada de um pedido antigo (atrasado) continua valendo.
+    sal = criar(client, "/api/v1/insumos", {"nome": "Sal mineral", "unidade": "kg"})
+    antigo = pedido(
+        client,
+        feito_em=dia(-20),
+        previsto_para=dia(-10),
+        itens=[{"insumo_id": sal["id"], "quantidade": 100}],
+    )
+
+    resposta = client.put(
+        f"/api/v1/pedidos/{antigo['id']}",
+        json={"previsto_para": dia(-5), "itens": [{"insumo_id": sal["id"], "quantidade": 120}]},
+    )
+
+    assert resposta.status_code == 200, resposta.json()
+    assert (resposta.json()["feito_em"], resposta.json()["previsto_para"]) == (dia(-20), dia(-5))
+    # Antes da data gravada do pedido, continua recusada (pelo serviço, depois de aplicar).
+    antes = client.put(
+        f"/api/v1/pedidos/{antigo['id']}",
+        json={"previsto_para": dia(-21), "itens": [{"insumo_id": sal["id"], "quantidade": 1}]},
+    )
+    assert antes.status_code == 422
+    assert antes.json()["detail"] == "A previsão de chegada não pode ser antes do pedido."
+    # Com `feito_em` no corpo, o corpo é conferido como antes.
+    no_corpo = client.put(
+        f"/api/v1/pedidos/{antigo['id']}",
+        json={
+            "feito_em": dia(-3),
+            "previsto_para": dia(-4),
+            "itens": [{"insumo_id": sal["id"], "quantidade": 1}],
+        },
+    )
+    assert no_corpo.status_code == 422
+    # E o pedido novo, sem `feito_em`, é de hoje: a previsão no passado segue recusada.
+    novo = client.post(
+        "/api/v1/pedidos",
+        json={"previsto_para": dia(-1), "itens": [{"insumo_id": sal["id"], "quantidade": 1}]},
+    )
+    assert novo.status_code == 422
+    assert "a previsão de chegada não pode ser antes do pedido" in str(novo.json()["detail"])
+
+
+def test_altera_pedido_de_fornecedor_desativado_depois(client: TestClient) -> None:
+    # O site reenvia o pedido inteiro, com o mesmo fornecedor: desativá-lo depois do pedido
+    # não pode travar a mudança da previsão. Trocar PARA um desativado, sim, é recusado.
+    sal = criar(client, "/api/v1/insumos", {"nome": "Sal mineral", "unidade": "kg"})
+    loja = revenda(client)
+    outra = revenda(client, nome="Agropecuária Vale Verde")
+    feito = pedido(
+        client, fornecedor_id=loja["id"], itens=[{"insumo_id": sal["id"], "quantidade": 1}]
+    )
+    for desativada in (loja, outra):
+        desativar = client.put(
+            f"/api/v1/fornecedores/{desativada['id']}",
+            json={"nome": desativada["nome"], "ativo": False},
+        )
+        assert desativar.status_code == 200, desativar.json()
+
+    mesmo = client.put(
+        f"/api/v1/pedidos/{feito['id']}",
+        json={
+            "fornecedor_id": loja["id"],
+            "previsto_para": dia(4),
+            "itens": [{"insumo_id": sal["id"], "quantidade": 2}],
+        },
+    )
+    trocado = client.put(
+        f"/api/v1/pedidos/{feito['id']}",
+        json={"fornecedor_id": outra["id"], "itens": [{"insumo_id": sal["id"], "quantidade": 2}]},
+    )
+
+    assert mesmo.status_code == 200, mesmo.json()
+    assert (mesmo.json()["fornecedor_id"], mesmo.json()["previsto_para"]) == (loja["id"], dia(4))
+    assert trocado.status_code == 422
+    assert "Agropecuária Vale Verde está desativado" in trocado.json()["detail"]

@@ -15,6 +15,7 @@ from app.domain.estoque import quantidade_legivel
 from app.models import Fornecedor, Insumo, ItemDoPedido, Movimentacao, Pedido
 from app.schemas.compras import (
     ItemDoPedidoResposta,
+    PedidoAlteracao,
     PedidoEntrada,
     PedidoResposta,
     Recebimento,
@@ -82,7 +83,7 @@ def detalhar_pedido(db: Session, pedido_id: int) -> PedidoResposta:
 
 
 def atualizar_pedido(
-    db: Session, pedido_id: int, dados: PedidoEntrada, origem: auditoria.Origem
+    db: Session, pedido_id: int, dados: PedidoAlteracao, origem: auditoria.Origem
 ) -> PedidoResposta:
     """Só enquanto nada chegou: depois, as entradas já gravadas apontam para as linhas, e
     mudar o pedido as deixaria contando outra história. Muda os campos enviados e troca as
@@ -93,7 +94,7 @@ def atualizar_pedido(
             f"Este pedido está {_SITUACOES[pedido.situacao]}: só se altera o pedido aberto, "
             "antes de chegar qualquer coisa. Faça um pedido novo."
         )
-    _conferir(db, dados)
+    _conferir(db, dados, fornecedor_atual=pedido.fornecedor_id)
     antes = _combinado(pedido)
     for campo in ("fornecedor_id", "feito_em", "previsto_para", "observacao"):
         if campo in dados.model_fields_set:
@@ -309,12 +310,15 @@ def _combinado(pedido: Pedido) -> dict[str, object]:
     }
 
 
-def _conferir(db: Session, dados: PedidoEntrada) -> None:
+def _conferir(db: Session, dados: PedidoEntrada, fornecedor_atual: int | None = None) -> None:
+    """`fornecedor_atual`: o do pedido que se altera. Ativo, o fornecedor só precisa estar
+    quando muda: o site reenvia o pedido inteiro, e o fornecedor desativado depois do pedido
+    não pode travar a mudança da previsão ou das quantidades."""
     if dados.fornecedor_id is not None:
         fornecedor = db.get(Fornecedor, dados.fornecedor_id)
         if fornecedor is None:
             raise DadoInvalido("Fornecedor não encontrado.")
-        if not fornecedor.ativo:
+        if not fornecedor.ativo and fornecedor.id != fornecedor_atual:
             raise DadoInvalido(
                 f"{fornecedor.nome} está desativado: reative-o na tela de Fornecedores para "
                 "fazer um pedido a ele."

@@ -5,6 +5,7 @@ from app.api.permissoes import origem_do_pedido, usuario_atual
 from app.core.database import get_db
 from app.models import Usuario
 from app.schemas.compras import (
+    PedidoAlteracao,
     PedidoEntrada,
     PedidoResposta,
     Recebimento,
@@ -72,7 +73,7 @@ def detalhar_pedido(pedido_id: int, db: Session = Depends(get_db)) -> PedidoResp
 @gestao.put("/pedidos/{pedido_id}", response_model=PedidoResposta)
 def atualizar_pedido(
     pedido_id: int,
-    dados: PedidoEntrada,
+    dados: PedidoAlteracao,
     db: Session = Depends(get_db),
     origem: Origem = Depends(origem_do_pedido),
 ) -> PedidoResposta:
