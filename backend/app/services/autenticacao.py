@@ -9,22 +9,38 @@ ninguém os adivinha, e a conferência de cada pedido precisa ser rápida.
 
 import hashlib
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import cache
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core import senha
 from app.core.relogio import agora
 from app.models import Sessao, Usuario
 from app.services import auditoria
 
-# 30 dias, e não horas: o app fica dias no campo sem sinal, lançando na fila, e um login
-# vencido no meio da lida obrigaria o funcionário a achar sinal e lembrar a senha só para
-# continuar. O risco do prazo longo (celular perdido) se resolve pelo dono, que desativa o
-# usuário ou redefine a senha, e as sessões dele caem na hora.
+# 30 dias sem uso, e não horas: o app fica dias no campo sem sinal, lançando na fila, e
+# um login vencido no meio da lida obrigaria o funcionário a achar sinal e lembrar a senha
+# só para continuar. Renova a cada uso (validade deslizante): quem usa todo dia não é
+# derrubado no 30º, e o que vence é a sessão esquecida, do aparelho que ninguém mais abre.
+# O risco do prazo longo (celular perdido) se resolve encerrando aquela sessão pela lista
+# de sessões, sem derrubar os outros aparelhos (app/services/sessoes.py).
 VALIDADE_DA_SESSAO = timedelta(days=30)
+# O teto, desde o login, mesmo com uso: um token copiado (de um backup do celular, de um
+# computador emprestado) não vive para sempre só porque alguém o usa, e a senha é pedida
+# de novo de tempos em tempos, o que também a mantém na memória de quem a usa. 90 dias é
+# um login a cada três meses: pouco incômodo, e o app avisa antes (expira_em na lista).
+TETO_DA_SESSAO = timedelta(days=90)
+# O último uso é anotado no banco no máximo a cada 5 minutos, e não a cada pedido. O
+# Painel abre vários pedidos de uma vez e recarrega tudo a cada lançamento: gravar em cada
+# um seria um UPDATE (e o WAL dele) por leitura, e os pedidos paralelos do mesmo token
+# esperariam um pelo outro na trava da linha. 5 minutos ainda respondem "está em uso
+# agora?", que é o que o dono pergunta ao procurar o celular perdido, e somem diante dos
+# 30 dias da validade: renovar com até 5 minutos de atraso não muda nada para ninguém. No
+# pior caso, um aparelho usado sem parar grava 12 vezes por hora.
+ANOTAR_O_USO_A_CADA = timedelta(minutes=5)
 # Contra quem tenta adivinhar a senha: 5 erros seguidos bloqueiam o login por 15 minutos.
 # Quem errou digitando tem folga; quem testa senhas faz 20 por hora, e não milhares. Por
 # usuário, no banco: vale para todos os processos da API e sobrevive a reiniciar.
@@ -113,17 +129,53 @@ def abrir_sessao(
 
 def sessao_do_token(db: Session, token: str) -> Sessao:
     """A sessão que o token abre, conferida a cada pedido: existe, não foi encerrada, não
-    expirou e o usuário continua ativo."""
+    expirou e o usuário continua ativo. Anota o uso e renova a validade de tempos em
+    tempos (`ANOTAR_O_USO_A_CADA`)."""
+    momento = agora()
     sessao = db.scalar(select(Sessao).where(Sessao.token_hash == _hash_do_token(token)))
     if sessao is None:
         raise SessaoInvalida("Sessão inválida: entre de novo com o seu login e senha.")
     if sessao.revogada_em is not None:
         raise SessaoInvalida("Sessão encerrada: entre de novo com o seu login e senha.")
-    if sessao.expira_em <= agora():
+    if sessao.expira_em <= momento:
         raise SessaoInvalida("A sessão expirou: entre de novo com o seu login e senha.")
     if not sessao.usuario.ativo:
         raise SessaoInvalida("Usuário desativado: fale com o dono da fazenda.")
+    if momento - sessao.ultimo_uso_em >= ANOTAR_O_USO_A_CADA:
+        _anotar_o_uso(db, sessao, momento)
     return sessao
+
+
+def validade_renovada(sessao: Sessao, momento: datetime) -> datetime:
+    """Até quando a sessão vale, usada em `momento`: 30 dias a partir do uso, nunca além
+    de 90 dias desde o login."""
+    return min(momento + VALIDADE_DA_SESSAO, sessao.criada_em + TETO_DA_SESSAO)
+
+
+def _anotar_o_uso(db: Session, sessao: Sessao, momento: datetime) -> None:
+    """Grava o último uso e a validade renovada, e faz o commit na hora, antes de a rota
+    começar. Assim a trava da linha da sessão dura milissegundos: segurada até o fim do
+    pedido (um relatório de segundos), os outros pedidos do mesmo aparelho esperariam por
+    ela e cairiam no lock_timeout; e a transação não fica aberta além do que a rota já
+    abriria. A condição repetida no UPDATE resolve a corrida entre dois pedidos que viram
+    o uso velho ao mesmo tempo: o segundo espera o primeiro e não acha mais o que gravar.
+    Nem ressuscita a sessão encerrada nesse meio-tempo."""
+    expira_em = validade_renovada(sessao, momento)
+    resultado = db.execute(
+        update(Sessao)
+        .where(
+            Sessao.id == sessao.id,
+            Sessao.revogada_em.is_(None),
+            Sessao.ultimo_uso_em <= momento - ANOTAR_O_USO_A_CADA,
+        )
+        .values(ultimo_uso_em=momento, expira_em=expira_em)
+        .execution_options(synchronize_session=False)
+    )
+    db.commit()
+    if resultado.rowcount:
+        # O objeto acompanha o banco sem outra consulta e sem virar alteração pendente.
+        set_committed_value(sessao, "ultimo_uso_em", momento)
+        set_committed_value(sessao, "expira_em", expira_em)
 
 
 def sair(db: Session, sessao: Sessao) -> None:
