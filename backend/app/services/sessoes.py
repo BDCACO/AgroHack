@@ -37,6 +37,12 @@ def ativas(db: Session, usuario_id: int) -> list[Sessao]:
     )
 
 
+def ativas_de(db: Session, usuario_id: int) -> list[Sessao]:
+    """As sessões ativas de um usuário, para o dono; `UsuarioInexistente` se não há."""
+    _garantir_usuario(db, usuario_id)
+    return ativas(db, usuario_id)
+
+
 def encerrar(
     db: Session,
     usuario_id: int,
@@ -65,6 +71,18 @@ def encerrar(
             {"login": sessao.usuario.login, "sessao": _retrato(sessao)},
         )
     db.commit()
+
+
+def encerrar_de(
+    db: Session,
+    usuario_id: int,
+    sessao_id: int,
+    atual_id: int | None,
+    origem: auditoria.Origem,
+) -> None:
+    """O dono encerrando a sessão de alguém; `UsuarioInexistente` se não há o usuário."""
+    _garantir_usuario(db, usuario_id)
+    encerrar(db, usuario_id, sessao_id, atual_id, origem)
 
 
 def encerrar_todas(

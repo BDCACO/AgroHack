@@ -85,6 +85,10 @@ MATRIZ = {
     ("POST", "/api/v1/usuarios"): GESTAO,
     ("PUT", "/api/v1/usuarios/{usuario_id}"): GESTAO,
     ("PUT", "/api/v1/usuarios/{usuario_id}/senha"): GESTAO,
+    # Os aparelhos de cada um: onde há login aberto e o poder de derrubá-lo.
+    ("GET", "/api/v1/usuarios/{usuario_id}/sessoes"): GESTAO,
+    ("DELETE", "/api/v1/usuarios/{usuario_id}/sessoes/{sessao_id}"): GESTAO,
+    ("POST", "/api/v1/usuarios/{usuario_id}/sessoes/encerrar"): GESTAO,
     # A trilha diz quem tentou entrar e de onde: como os usuários, nunca aberta sem login.
     ("GET", "/api/v1/auditoria"): GESTAO,
 }

@@ -298,3 +298,144 @@ def test_encerrar_as_outras_deixa_so_a_atual(
     # Sem outras, nada a encerrar e nada na trilha.
     assert api.post(f"{SESSOES}/encerrar-outras", headers=notebook).json() == {"encerradas": 0}
     assert len(eventos(db)) == 1
+
+
+USUARIOS = "/api/v1/usuarios"
+
+
+def test_dono_ve_os_aparelhos_do_funcionario_e_encerra_so_o_celular(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario, db: Session
+) -> None:
+    api = cliente_autenticado
+    ze = criar_usuario("ze")
+    maria = criar_usuario("maria", papel="dono")
+    celular = entrar_em(api, "ze", "Celular do Zé")
+    notebook = entrar_em(api, "ze", "Notebook")
+    dono = entrar_em(api, "maria", "Computador do escritório")
+
+    lista = api.get(f"{USUARIOS}/{ze.id}/sessoes", headers=dono)
+
+    assert lista.status_code == 200, lista.text
+    aparelhos = {s["dispositivo"]: s for s in lista.json()}
+    assert set(aparelhos) == {"Celular do Zé", "Notebook"}
+    assert not any(s["atual"] for s in aparelhos.values())  # nenhuma é a do dono
+
+    id_do_celular = aparelhos["Celular do Zé"]["id"]
+    resposta = api.delete(f"{USUARIOS}/{ze.id}/sessoes/{id_do_celular}", headers=dono)
+
+    assert resposta.status_code == 204, resposta.text
+    assert api.get(EU, headers=celular).status_code == 401
+    assert api.get(EU, headers=notebook).status_code == 200
+    # O funcionário continua ativo e entra de novo quando achar o celular.
+    db.refresh(ze)
+    assert ze.ativo
+    entrar_em(api, "ze", "Celular do Zé")
+    [evento] = eventos(db)
+    assert (evento.acao, evento.usuario_id, evento.entidade, evento.entidade_id) == (
+        "sessao.encerrada",
+        maria.id,
+        "usuario",
+        ze.id,
+    )
+    assert evento.dispositivo == "Computador do escritório"
+    assert evento.dados["login"] == "ze"
+    assert evento.dados["sessao"]["dispositivo"] == "Celular do Zé"
+
+
+def test_dono_encerra_todas_as_sessoes_sem_desativar(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario, db: Session
+) -> None:
+    api = cliente_autenticado
+    ze = criar_usuario("ze")
+    maria = criar_usuario("maria", papel="dono")
+    aparelhos = [entrar_em(api, "ze", nome) for nome in ("Celular do Zé", "Notebook")]
+    dono = entrar_em(api, "maria", "Computador do escritório")
+
+    resposta = api.post(f"{USUARIOS}/{ze.id}/sessoes/encerrar", headers=dono)
+
+    assert resposta.status_code == 200, resposta.text
+    assert resposta.json() == {"encerradas": 2}
+    assert [api.get(EU, headers=c).status_code for c in aparelhos] == [401, 401]
+    assert api.get(f"{USUARIOS}/{ze.id}/sessoes", headers=dono).json() == []
+    db.refresh(ze)
+    assert ze.ativo
+    entrar_em(api, "ze", "Celular novo")
+    [evento] = eventos(db)
+    assert (evento.acao, evento.usuario_id, evento.entidade_id) == (
+        "sessao.encerradas",
+        maria.id,
+        ze.id,
+    )
+    assert [s["dispositivo"] for s in evento.dados["sessoes"]] == ["Celular do Zé", "Notebook"]
+
+
+def test_dono_sobre_si_mesmo_nao_derruba_o_proprio_pedido(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario
+) -> None:
+    # "Encerrar todas" de si mesmo pela gestão é encerrar as outras: o dono não se tranca
+    # fora sem querer.
+    api = cliente_autenticado
+    maria = criar_usuario("maria", papel="dono")
+    celular = entrar_em(api, "maria", "Celular da Maria")
+    escritorio = entrar_em(api, "maria", "Computador do escritório")
+
+    lista = api.get(f"{USUARIOS}/{maria.id}/sessoes", headers=escritorio).json()
+    assert [(s["dispositivo"], s["atual"]) for s in lista] == [
+        ("Computador do escritório", True),
+        ("Celular da Maria", False),
+    ]
+
+    resposta = api.post(f"{USUARIOS}/{maria.id}/sessoes/encerrar", headers=escritorio)
+
+    assert resposta.json() == {"encerradas": 1}
+    assert api.get(EU, headers=celular).status_code == 401
+    assert api.get(EU, headers=escritorio).status_code == 200
+
+
+def test_sessao_ou_usuario_que_nao_batem_sao_404(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario, db: Session
+) -> None:
+    api = cliente_autenticado
+    ze = criar_usuario("ze")
+    criar_usuario("joao")
+    criar_usuario("maria", papel="dono")
+    celular = entrar_em(api, "ze", "Celular do Zé")
+    dono = entrar_em(api, "maria", "Computador do escritório")
+    do_ze = id_da_sessao(api, celular, "Celular do Zé")
+    joao = 2
+
+    # A sessão do Zé pedida como se fosse do João: 404, e o Zé continua.
+    trocada = api.delete(f"{USUARIOS}/{joao}/sessoes/{do_ze}", headers=dono)
+    assert trocada.status_code == 404
+    assert trocada.json()["detail"].startswith("Sessão não encontrada")
+    assert api.get(EU, headers=celular).status_code == 200
+    for pedido in (
+        api.get(f"{USUARIOS}/999/sessoes", headers=dono),
+        api.delete(f"{USUARIOS}/999/sessoes/{do_ze}", headers=dono),
+        api.post(f"{USUARIOS}/999/sessoes/encerrar", headers=dono),
+    ):
+        assert pedido.status_code == 404
+        assert pedido.json()["detail"] == "Usuário não encontrado."
+    assert eventos(db) == []
+    assert ze.ativo
+
+
+def test_funcionario_nao_gerencia_os_aparelhos_de_ninguem(
+    cliente_autenticado: TestClient, criar_usuario: CriarUsuario
+) -> None:
+    api = cliente_autenticado
+    ze = criar_usuario("ze")
+    maria = criar_usuario("maria", papel="dono")
+    celular = entrar_em(api, "ze", "Celular do Zé")
+    dono = entrar_em(api, "maria", "Computador do escritório")
+    da_maria = id_da_sessao(api, dono, "Computador do escritório")
+
+    pedidos = [
+        api.get(f"{USUARIOS}/{ze.id}/sessoes", headers=celular),
+        api.get(f"{USUARIOS}/{maria.id}/sessoes", headers=celular),
+        api.delete(f"{USUARIOS}/{maria.id}/sessoes/{da_maria}", headers=celular),
+        api.post(f"{USUARIOS}/{maria.id}/sessoes/encerrar", headers=celular),
+    ]
+
+    assert [p.status_code for p in pedidos] == [403] * 4
+    assert api.get(EU, headers=dono).status_code == 200
