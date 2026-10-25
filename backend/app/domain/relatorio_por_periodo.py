@@ -15,6 +15,7 @@ devolve as somas. As regras que importam ao produtor estão aqui, testáveis sem
   GET /resumo.
 """
 
+from bisect import bisect_right
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -152,11 +153,18 @@ def relatorio(
     no_periodo = sorted(
         (lanc for lanc in lancamentos if desde <= lanc.data <= ate), key=lambda lanc: lanc.data
     )
-    por_periodo = []
-    for inicio, fim, rotulo in intervalos:
-        deste = [lanc for lanc in no_periodo if inicio <= lanc.data <= fim]
-        somas = _somar(deste, insumos)
-        por_periodo.append(Periodo(inicio=inicio, fim=fim, rotulo=rotulo, **vars(somas)))
+    # Cada lançamento vai para o seu período numa passada só: os intervalos são seguidos,
+    # sem buraco, e o dele é o último que começa até a data dele (busca binária nos
+    # inícios). Varrer todos os lançamentos para cada período seria 365 dias × 50 mil
+    # lançamentos, segundos por relatório. Na ordem da data, como antes.
+    inicios = [inicio for inicio, _, _ in intervalos]
+    grupos: list[list[Lancamento]] = [[] for _ in intervalos]
+    for lanc in no_periodo:
+        grupos[bisect_right(inicios, lanc.data) - 1].append(lanc)
+    por_periodo = [
+        Periodo(inicio=inicio, fim=fim, rotulo=rotulo, **vars(_somar(deste, insumos)))
+        for (inicio, fim, rotulo), deste in zip(intervalos, grupos, strict=True)
+    ]
     total = _somar(no_periodo, insumos)
     return RelatorioPorPeriodo(
         desde, ate, agrupar, por_periodo, total, _limitacoes(total, no_periodo, insumos)

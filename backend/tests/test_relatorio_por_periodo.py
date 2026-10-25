@@ -2,6 +2,8 @@
 categoria e por fornecedor. A agregação pura, sem banco; a rota está em
 test_relatorio_por_periodo_rota.py."""
 
+import random
+from dataclasses import fields
 from datetime import date
 
 import pytest
@@ -11,6 +13,7 @@ from app.domain.relatorio_por_periodo import (
     InsumoDoRelatorio,
     Lancamento,
     MuitosPeriodos,
+    Totais,
     periodos,
     relatorio,
 )
@@ -204,3 +207,97 @@ def test_quantidades_e_reais_arredondados() -> None:
     # 0,1 + 0,2 no float é 0,30000000000000004.
     assert r.total.consumo[0].quantidade == 0.3
     assert r.total.gasto == 0.03
+
+
+def _lancamentos_de_todo_tipo(desde: date, ate: date) -> list[Lancamento]:
+    """De tudo um pouco, em todos os dias de uma semana antes de `desde` a uma depois de
+    `ate` (as pontas e as viradas de mês e de semana entram), fora de ordem."""
+    sorteio = random.Random(7)  # noqa: S311 (fixo, para se repetir; não é segredo)
+    lancamentos = []
+    for dia in range(desde.toordinal() - 7, ate.toordinal() + 8):
+        data = date.fromordinal(dia)
+        for _ in range(sorteio.randint(0, 3)):
+            insumo = sorteio.choice((UREIA, GLIFOSATO, SAL))
+            quantidade = sorteio.randint(1, 500) / 10
+            lancamentos.append(
+                sorteio.choice(
+                    (
+                        retirada(data, insumo, quantidade),
+                        compra(data, insumo, quantidade, sorteio.choice((None, 2.5))),
+                        saida(data, insumo, quantidade, sorteio.choice(("descarte", "inventario"))),
+                    )
+                )
+            )
+    sorteio.shuffle(lancamentos)
+    return lancamentos
+
+
+@pytest.mark.parametrize(
+    ("desde", "ate", "agrupar"),
+    [
+        (date(2026, 1, 15), date(2026, 12, 3), "mes"),
+        (date(2026, 8, 1), date(2026, 8, 31), "mes"),
+        (date(2026, 2, 4), date(2026, 6, 30), "semana"),
+        (date(2026, 2, 2), date(2026, 3, 1), "semana"),  # de segunda a domingo, inteiras
+        (date(2025, 12, 20), date(2026, 3, 10), "dia"),
+    ],
+)
+def test_cada_periodo_soma_so_os_lancamentos_dele(desde: date, ate: date, agrupar: str) -> None:
+    # A conta de antes, um período por vez: cada um é o relatório só daquele intervalo.
+    lancamentos = _lancamentos_de_todo_tipo(desde, ate)
+
+    r = relatorio(lancamentos, INSUMOS, desde, ate, agrupar)
+
+    esperado = [
+        relatorio(lancamentos, INSUMOS, inicio, fim, agrupar).total
+        for inicio, fim, _ in periodos(desde, ate, agrupar)
+    ]
+    assert [Totais(**{c.name: getattr(p, c.name) for c in fields(Totais)}) for p in r.periodos] == (
+        esperado
+    )
+    assert sum(len(p.consumo) for p in r.periodos) > 0
+
+
+class _DataContada(date):
+    """Uma data que conta quantas vezes foi comparada."""
+
+    comparacoes = 0
+
+    def _contar(self) -> None:
+        _DataContada.comparacoes += 1
+
+    def __lt__(self, outra: object) -> bool:
+        self._contar()
+        return super().__lt__(outra)  # type: ignore[operator]
+
+    def __le__(self, outra: object) -> bool:
+        self._contar()
+        return super().__le__(outra)  # type: ignore[operator]
+
+    def __gt__(self, outra: object) -> bool:
+        self._contar()
+        return super().__gt__(outra)  # type: ignore[operator]
+
+    def __ge__(self, outra: object) -> bool:
+        self._contar()
+        return super().__ge__(outra)  # type: ignore[operator]
+
+
+def test_um_ano_por_dia_nao_compara_cada_lancamento_com_cada_dia() -> None:
+    # 365 dias com 20 lançamentos em cada. Comparar cada lançamento com cada dia seriam
+    # 365 × 7.300 × 2, 5 milhões de comparações, e com 50 mil lançamentos levava segundos.
+    # Conta as comparações das datas, e não o tempo, que varia com a máquina: separar cada
+    # lançamento no seu dia custa umas dezenas por lançamento (ordenar e achar o dia).
+    desde, ate = date(2025, 1, 1), date(2025, 12, 31)
+    lancamentos = [
+        retirada(_DataContada.fromordinal(dia), UREIA, 1)
+        for dia in range(desde.toordinal(), ate.toordinal() + 1)
+        for _ in range(20)
+    ]
+    _DataContada.comparacoes = 0
+
+    r = relatorio(lancamentos, INSUMOS, desde, ate, "dia")
+
+    assert len(r.periodos) == 365
+    assert r.total.consumo[0].quantidade == 7300
+    assert _DataContada.comparacoes < 50 * len(lancamentos)
