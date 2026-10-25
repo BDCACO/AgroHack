@@ -26,7 +26,9 @@ COPY --chown=app:app . .
 USER app
 EXPOSE 8000
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Sem o log de acesso do uvicorn: a API escreve o dela (app/api/protecoes.py), uma linha
+# por pedido com o X-Request-ID e o usuário, e sem a query string, que o do uvicorn leva.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--no-access-log"]
 
 
 FROM base AS prod
@@ -35,4 +37,4 @@ COPY --chown=app:app . .
 USER app
 EXPOSE 8000
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header", "--no-access-log"]
