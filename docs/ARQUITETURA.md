@@ -28,6 +28,8 @@ navegador ──► Vite (:5173) ──/api──► FastAPI (:8000) ──► P
 | `app/core/senha.py` | Hash Argon2id da senha (`argon2-cffi`), com o sal e os parâmetros gravados junto; confere também as senhas antigas em scrypt |
 | `app/api/router.py` | Agrega as rotas da v1 (`/api/v1`), cada grupo com o seu nível de permissão |
 | `app/api/permissoes.py` | As dependências de cada nível (sessão, funcionário, dono) e quem fez o pedido |
+| `app/api/protecoes.py` | Os middlewares de todo pedido: cabeçalhos de segurança, `X-Request-ID` e log de acesso, o 500 com id, o limite de escritas por IP e o de 8 MB do corpo (ver "Blindagem da API") |
+| `app/core/limite_de_taxa.py` | Contador de tentativas por janela de tempo (a interface e a versão em memória) |
 | `app/api/routes/` | Rotas HTTP, finas: validam entrada, chamam serviço, devolvem schema |
 | `app/schemas/` | Modelos Pydantic de entrada/saída da API |
 | `app/models/` | Modelos ORM (SQLAlchemy). Todo modelo novo é importado em `models/__init__.py` |
@@ -512,6 +514,7 @@ sensível ou destrutivo grava um evento em `eventos_de_auditoria` (`app/models/a
   | `usuario.criado` · `usuario.alterado` | Login, nome e papel; na alteração, o antes e o depois (virar dono, ser desativado) |
   | `usuario.senha_redefinida` · `usuario.senha_trocada` | O login (e, na redefinida, se desfez um bloqueio). Quem redefine a senha de alguém pode entrar como ele; a sessão roubada que troca a senha tranca o dono fora |
   | `login.recusado` · `login.bloqueado` | O login e o motivo (`senha_incorreta`, `bloqueado`, `usuario_desativado`, `senha_atual_incorreta`), que a resposta não conta a quem tentou; no bloqueio, até quando |
+  | `login.limitado` | Um IP passou do limite de tentativas de login (ver "Blindagem da API"): o `limite`, a janela (`janela_segundos`, 60 ou 3600) e `liberado_em`. Um evento por rodada, na primeira recusa, e não um por tentativa: quem insiste não enche a trilha. Sem usuário nem login (o IP vai na coluna `ip`) |
   | `demo.carregada` · `demo.limpa` | Quanto saiu e quanto entrou (a demonstração apaga e cria em massa) |
 
 - **O que não entra, de propósito.** A leitura (o relatório inclusive). O lançamento comum
@@ -575,8 +578,8 @@ sensível ou destrutivo grava um evento em `eventos_de_auditoria` (`app/models/a
 - **Sem retenção, por ora.** A tabela só cresce, devagar, porque as ações são raras; o que pode
   crescer rápido é `login.recusado` de um ataque a um login que existe (cada tentativa
   durante o bloqueio também grava, para o dono ver que continuam). Cada tentativa gasta o hash
-  lento da senha, o que limita o ritmo, mas não há limite por IP: é a próxima decisão se a API
-  for exposta à internet.
+  lento da senha, e o limite por IP (ver "Blindagem da API") segura o ritmo: no máximo 20
+  tentativas por hora de cada IP chegam a ser conferidas e gravadas.
 
 ### Importação de planilha
 
@@ -596,8 +599,9 @@ resumo. Os dois formatos viram cabeçalho + linhas de células e passam pelas me
   ponto, e o produtor não precisa converter nada. Lê a aba **Movimentações** (a do modelo e a
   do relatório) ou, se não houver, a primeira; o número da linha nos erros é o do Excel.
 - **Upload é entrada hostil.** Um `.xlsx` é um zip de XML: pequeno compactado, pode ser enorme
-  aberto. Por isso, em camadas: pedido acima de 8 MB recusado com `413` antes de ler o corpo
-  (`app/main.py`; pelo proxy do Vite essa recusa antecipada chega como `502`, porque o proxy
+  aberto. Por isso, em camadas: pedido acima de 8 MB recusado com `413` sem ler o resto do
+  corpo, contando os bytes que chegam, e não só o `Content-Length` (`app/api/protecoes.py`,
+  ver "Blindagem da API"; pelo proxy do Vite essa recusa antecipada chega como `502`, porque o proxy
   ainda estava enviando; a tela já barra arquivo acima de 5 MB antes de enviar, e em produção
   o proxy reverso deve ter o próprio limite, como o `client_max_body_size` do nginx); arquivo
   de até 5 MB; conteúdo descompactado de até 50 MB (conferido no
@@ -713,12 +717,102 @@ conexão e as travas para sempre, e a API ficava pendurada. Decisões:
   já foi gravado fica (um item, uma transação), e o reenvio, que o app faz sozinho, devolve-o
   como `ja_existia`.
 
+### Blindagem da API
+
+O que vale para **todo pedido**, antes de qualquer rota: middlewares ASGI puros em
+`app/api/protecoes.py` (e não o `@app.middleware("http")` do Starlette, que não deixa embrulhar o
+`receive`), mais o limite do login na própria rota. De fora para dentro: cabeçalhos de
+segurança, registro do pedido, limite de escritas por IP, limite do corpo. Decisões:
+
+- **Limite de tentativas de login por IP** (`POST /auth/entrar`): **10 por minuto e 20 por
+  hora**. O bloqueio por usuário (5 erros, 15 minutos) protege cada login; este protege a
+  fazenda de quem testa senhas em muitos logins, ou tranca todos de propósito, e enche a
+  trilha. Os números: a fazenda inteira costuma sair pelo mesmo IP, e quem erra a senha 3
+  vezes, ou dois funcionários entrando juntos, cabem com folga no minuto; a sessão dura 30
+  dias, ninguém entra 20 vezes numa hora, e quem testa senhas fica em 480 por dia, e não 14
+  mil. O `429` vem **antes** de conferir a senha: não gasta o hash lento, **não conta como erro
+  do usuário** (senão quem passa do limite ainda bloquearia o login de alguém com tentativas
+  que nem foram conferidas) e não grava `login.recusado`. Só a primeira recusa de cada rodada
+  vira o evento `login.limitado`. As sessões já abertas não sentem nada: o limite é de quem
+  tenta entrar.
+- **Limite de escritas por IP:** **120 por minuto** nos `POST`, `PUT`, `PATCH` e `DELETE` (fora
+  o login, que tem o dele e não gasta este), num middleware, antes de ler o corpo. A leitura
+  não tem limite: o Painel recarrega tudo a cada alteração. 120 por minuto (2 por segundo, sem
+  parar) é mais do que um escritório lança à mão; a fila do app vai num pedido só
+  (`/movimentacoes/lote`, até 500 itens) e a planilha também. Segura o script que grava sem
+  parar, sem atrapalhar ninguém. Sem evento de auditoria: não é tentativa de entrar à força.
+- **Estourou, `429`** com `Retry-After` (os segundos exatos até caber de novo) e a frase com os
+  minutos para cima: "Muitas tentativas de entrar a partir desta rede. Espere 1 minuto e tente
+  de novo." / "Muitos pedidos seguidos a partir desta rede. ...". Quem insiste durante a recusa
+  não conta nem empurra o fim dela. Janela deslizante exata (o instante de cada tentativa).
+- **Qual IP:** o do `request.client.host`, o mesmo da auditoria. O `X-Forwarded-For` **não** é
+  lido: qualquer um o escreve, e trocá-lo a cada tentativa zeraria a conta. Consequência: atrás
+  de um proxy, conta o IP do proxy, e todos que passam por ele dividem a mesma cota. No
+  desenvolvimento, o site passa pelo proxy do Vite (e as chamadas do host, pelo gateway do
+  Docker): todos os usuários do site somam juntos, o que nos números acima ainda sobra para uma
+  fazenda. Em produção atrás de um proxy reverso, o uvicorn tem de confiar nele
+  (`--forwarded-allow-ips` com o IP do proxy) para ver o do cliente, ou o proxy limita por si.
+- **Em memória do processo** (`LimiteEmMemoria`, em `app/core/limite_de_taxa.py`): basta com o
+  uvicorn de um processo do compose. Com vários processos ou réplicas, cada um contaria à parte
+  (o limite real seria o número deles vezes o configurado); reiniciar a API zera a conta. A
+  interface (`LimiteDeTaxa.tentar(chave)`) é pequena para trocar por uma no PostgreSQL (uma
+  tabela de tentativas e um `DELETE` das velhas) ou num Redis, sem mexer no resto. A memória tem
+  teto (50 mil IPs; o que ficou mais tempo sem pedir sai primeiro), contra um ataque de muitos
+  IPs; esquecer um IP só lhe devolve a cota, e o bloqueio por usuário no banco continua.
+- **Configurável** em `config.py`: `LIMITE_POR_IP` (ligado por padrão; desligar é decisão
+  explícita), `LIMITE_LOGIN_POR_MINUTO`, `LIMITE_LOGIN_POR_HORA` (não menor que o do minuto) e
+  `LIMITE_ESCRITAS_POR_MINUTO`, todos maiores que zero. A suíte de testes o desliga, como faz
+  com a autenticação (todo pedido do `TestClient` vem do mesmo "IP", e os cenários montados pela
+  API gravam 120 movimentações num segundo); os testes do limite o ligam.
+- **Limite real de 8 MB do corpo.** O de antes confiava no `Content-Length`: um pedido
+  `Transfer-Encoding: chunked` não o traz e ia inteiro para a memória (o FastAPI lê o corpo
+  todo antes de validar). Agora o `receive` é embrulhado e soma os bytes que chegam; ao passar
+  de 8 MB, responde `413` ("Arquivo grande demais: o máximo é 5 MB.") e diz à API que o cliente
+  se foi: ela para de ler, e o uvicorn fecha a conexão sem ler o resto. O `Content-Length`
+  acima do limite continua recusado antes de ler um byte. A planilha de 5 MB (uns 6,7 MB em
+  base64) continua cabendo.
+- **Cabeçalhos de segurança em toda resposta** (inclusive erros, `413`, `429`, `500` e o
+  Excel): `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy:
+  no-referrer`, `Cross-Origin-Resource-Policy: same-origin` (o site é a mesma origem e o app não
+  é navegador: nenhum dos dois sente) e `Cache-Control: no-store`. O `no-store` vai em **toda**
+  resposta, e não só em `/auth`, `/usuarios` e `/auditoria`: quase tudo aqui é dado da fazenda
+  (preços, estoque), nada é estático, e uma regra só não deixa rota nova escapar.
+- **CSP:** nas respostas da API, a mais fechada (`default-src 'none'; frame-ancestors 'none';
+  base-uri 'none'; form-action 'none'`): JSON e Excel não carregam nada, e se um dia uma
+  resposta for aberta como página, nada roda dali. Não atinge o site, cuja página vem do Vite.
+  O **Swagger** (`/api/v1/docs`, fora de produção) é página e tem a sua: o JS e o CSS do CDN
+  que o FastAPI usa (`cdn.jsdelivr.net`), o ícone, `connect-src 'self'` para o "Try it out", e
+  o script de dentro da página liberado **pelo hash**, calculado da página que sai (muda com a
+  URL do schema e com a versão do FastAPI), e não por `'unsafe-inline'`, que deixaria rodar
+  qualquer script injetado. O estilo em linha fica liberado (o Swagger escreve atributos
+  `style`; estilo não roda código). Conferido no Edge headless: as operações aparecem, sem
+  violação de CSP no console.
+- **HSTS desligado no desenvolvimento** (`HSTS_SEGUNDOS=0`, o padrão): em `http://localhost`,
+  ligado, o navegador recusaria o http de todos os projetos até o prazo vencer. Com HTTPS na
+  frente, `HSTS_SEGUNDOS=31536000` (um ano) liga o `Strict-Transport-Security`.
+- **`X-Request-ID` em toda resposta.** O do cliente (o app pode mandar o seu) é aceito só se
+  tiver formato seguro: letras sem acento, números, hífen e sublinhado, até 64. Qualquer outra
+  coisa (espaço, quebra de linha, acento) poderia forjar linhas no log ou cabeçalhos; vira um
+  UUID novo.
+- **Log de acesso estruturado:** uma linha JSON por pedido (logger `app.acesso`, nível INFO):
+  `id`, `metodo`, `caminho` **sem a query string** (pode levar o que se buscou), `status`,
+  `duracao_ms`, `usuario_id` (quando há login) e `ip`. Nunca corpo, cabeçalhos, token nem senha.
+  O log de acesso do próprio uvicorn fica desligado na imagem (`--no-access-log` no
+  `Dockerfile`): ele leva a query string, não tem o id nem o usuário, e cada pedido sairia em
+  duas linhas.
+- **Erro inesperado: `500` com frase e id.** O traceback vai para o log (logger `app.erro`, com
+  o id, o método e o caminho); a resposta leva só "Algo deu errado no servidor. Tente de novo;
+  se continuar, informe ao suporte o código do pedido." e `id_da_requisicao`, nunca o traceback.
+  Pego no middleware do registro, e não num `exception_handler(Exception)`: o do Starlette roda
+  por fora de todos os middlewares, e o `500` sairia sem o id e sem os cabeçalhos. O `503` dos
+  tempos-limite do banco e o `422` do `DataError` também levam `id_da_requisicao` no corpo.
+
 ### Endpoints atuais
 
 | Rota | O que faz |
 |---|---|
 | `GET /api/v1/health` | Liveness: o processo está no ar. Não toca o banco |
-| `POST /api/v1/auth/entrar` | `{login, senha, dispositivo?}` → `{token, expira_em, usuario: {id, nome, login, papel}}`. O token vem uma vez só e vale 30 dias. Recusa sempre com o mesmo `401` |
+| `POST /api/v1/auth/entrar` | `{login, senha, dispositivo?}` → `{token, expira_em, usuario: {id, nome, login, papel}}`. O token vem uma vez só e vale 30 dias. Recusa sempre com o mesmo `401`; tentativas demais do mesmo IP, `429` com `Retry-After` |
 | `POST /api/v1/auth/sair` · `GET /api/v1/auth/eu` | Encerra a sessão deste token (`204`) / quem está logado |
 | `PUT /api/v1/auth/senha` | `{senha_atual, senha_nova}` (mínimo 8): troca a própria senha e encerra as sessões dos outros aparelhos (`204`); senha atual errada é `400` |
 | `GET /api/v1/usuarios` · `POST /api/v1/usuarios` | Usuários com `ativo` e `bloqueado_ate` / cadastra (`nome`, `login`, `senha`, `papel`); login repetido `409` |
@@ -975,7 +1069,8 @@ tecnologias que não se aplicam.
 | openapi-fetch + TanStack Query | Axios + Pinia | Stack definida para o projeto |
 | Tipos TS gerados do OpenAPI | Escritos à mão (por ora) | Poucos recursos; geração entra quando a API crescer |
 | Dois stacks compose + rede `edge` | Um compose só | Sem serviços internos (MinIO, Redis, worker) a isolar |
-| MinIO, Redis, worker, ClamAV, rate-limit por IP | Não entrou | Nenhum requisito do CampoCerto pede, por ora. Contra adivinhação de senha, há o bloqueio por usuário, no banco |
+| MinIO, Redis, worker, ClamAV | Não entrou | Nenhum requisito do CampoCerto pede, por ora |
+| Rate-limit por IP | Na memória do processo (login e escritas), com a interface pronta para trocar | Um uvicorn só no compose; sem Redis no stack |
 | Auth com sessão em Redis, papéis por tenant | Sessão no PostgreSQL (token opaco, SHA-256), dois papéis fixos | Sem Redis no stack; uma fazenda, dono e funcionário bastam |
 | mypy strict, import-linter, dependency-cruiser, cobertura 90% | ruff + vue-tsc + eslint | Proporcional ao tamanho; os gates entram se as regras de camada começarem a ser violadas |
 
@@ -1021,6 +1116,13 @@ tecnologias que não se aplicam.
    consumo e perdas em reais), as tabelas por categoria e por fornecedor e as `limitacoes`. O app
    precisa, no mínimo, da busca e do filtro por categoria na lista de insumos; nada muda na fila
    offline. Sem isso, nada quebra: sem os parâmetros novos, as respostas são as de antes.
+8. **O `429` e o código do pedido nas telas.** A API limita tentativas de login e escritas por
+   IP e põe `X-Request-ID` em toda resposta (seção 2, "Blindagem da API"). O `ApiError` do site
+   e o do app já mostram o `detail` quando é frase, e o `429`, o `500` e o `503` agora trazem
+   uma: nada quebra. Falta: a fila do app não reenviar antes do `Retry-After` quando receber
+   `429`, e as telas mostrarem o `id_da_requisicao` do `500` e do `503` ("informe ao suporte o
+   código ..."). O app pode mandar o próprio `X-Request-ID` (o uuid do envio) para o mesmo
+   código aparecer no celular e no log do servidor.
 
 Decididas desde a versão anterior deste documento: a autenticação existe (dono e funcionário,
 obrigatória em produção, seção 2); a importação de planilha existe (Excel e
