@@ -2,12 +2,20 @@
 criam é o mesmo dos modelos (o autogenerate não acha nada a fazer)."""
 
 import subprocess
+import sys
+from collections.abc import Iterator
 
 import pytest
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, make_url, text
 from sqlalchemy.exc import IntegrityError
 
-from tests.integracao.conftest import PAPEL_DA_APP, alembic
+from tests.integracao.conftest import (
+    BACKEND,
+    PAPEL_DA_APP,
+    URL_DO_BANCO,
+    alembic,
+    ambiente_do_entrypoint,
+)
 
 
 def test_migrations_descem_e_sobem_e_batem_com_os_modelos(banco: Engine) -> None:
@@ -538,3 +546,65 @@ def test_a_0013_comeca_o_ultimo_uso_no_login_e_desce_sem_pedir(banco: Engine) ->
         assert conexao.scalar(text("SELECT dispositivo FROM sessoes")) == "Celular do Zé"
     alembic("upgrade", "head")
     assert {"ultimo_uso_em", "ip"} <= _colunas_de_sessoes(banco)
+
+
+# A senha do dono com o que o configparser do Alembic entende como interpolação ("%",
+# "%(x)s") e com "@", que na URL vira "%40": todas chegam à URL codificadas, com "%".
+SENHA_COM_PORCENTO = "Segr@do%Dono%(x)s 100%"
+PAPEL_COM_PORCENTO = "dono_com_porcento_teste"
+
+
+@pytest.fixture
+def dono_com_porcento(banco: Engine) -> Iterator[None]:
+    with banco.begin() as conexao:
+        conexao.execute(text(f"DROP ROLE IF EXISTS {PAPEL_COM_PORCENTO}"))
+        senha = SENHA_COM_PORCENTO.replace("'", "''")
+        conexao.execute(
+            text(f"CREATE ROLE {PAPEL_COM_PORCENTO} LOGIN SUPERUSER PASSWORD '{senha}'")
+        )
+    yield
+    with banco.begin() as conexao:
+        conexao.execute(text(f"DROP ROLE IF EXISTS {PAPEL_COM_PORCENTO}"))
+
+
+def _url_do_dono(senha: str) -> str:
+    return (
+        make_url(URL_DO_BANCO)
+        .set(username=PAPEL_COM_PORCENTO, password=senha)
+        .render_as_string(hide_password=False)
+    )
+
+
+def _alembic_sem_conferir(url: str, *argumentos: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 (comando fixo)
+        [sys.executable, "-m", "alembic", *argumentos],
+        cwd=BACKEND,
+        env=ambiente_do_entrypoint(MIGRATIONS_DATABASE_URL=url),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_senha_do_dono_com_porcento_funciona_e_nao_vai_para_o_log(
+    dono_com_porcento: None,
+) -> None:
+    url = _url_do_dono(SENHA_COM_PORCENTO)
+    assert "%25" in url
+    assert "%40" in url
+
+    for argumentos in (("upgrade", "head"), ("current",), ("upgrade", "head", "--sql")):
+        rodou = _alembic_sem_conferir(url, *argumentos)
+        assert rodou.returncode == 0, rodou.stderr
+        assert SENHA_COM_PORCENTO not in rodou.stdout + rodou.stderr
+        assert url not in rodou.stdout + rodou.stderr
+
+    # Com a senha errada, o Alembic cai, mas a senha não aparece na saída.
+    errada = "Errada%40%Tamb@m"
+    url_errada = _url_do_dono(errada)
+    caiu = _alembic_sem_conferir(url_errada, "upgrade", "head")
+    assert caiu.returncode != 0
+    saida = caiu.stdout + caiu.stderr
+    assert "password authentication failed" in saida
+    for segredo in (errada, url_errada, make_url(url_errada).password):
+        assert str(segredo) not in saida

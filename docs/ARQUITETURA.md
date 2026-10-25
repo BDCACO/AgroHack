@@ -724,7 +724,10 @@ conexão e as travas para sempre, e a API ficava pendurada. Decisões:
 - **A API não carrega a senha do dono:** o entrypoint tira a `MIGRATIONS_DATABASE_URL` do
   ambiente antes do `uvicorn`. Os outros comandos do container (alembic, demonstração) seguem
   com ela. Em produção, o melhor é ir além: migrations num job à parte, e o container da API
-  só com a `DATABASE_URL`.
+  só com a `DATABASE_URL`. O `migrations/env.py` passa a URL do dono direto ao engine, e não
+  pela configuração do Alembic: o configparser dele lê "%" como interpolação, e a senha com
+  "%" ou "@" (codificados na URL como `%25` e `%40`) derrubava o `alembic upgrade` com um erro
+  que imprimia a URL inteira, com a senha.
 - **Desenvolvimento simples.** Sem `MIGRATIONS_DATABASE_URL`, as migrations usam a
   `DATABASE_URL` (quem roda tudo no host com um papel só não configura nada a mais), e o
   comando não tem papel a garantir. A API sobe assim, avisando no log que está com poderes de
