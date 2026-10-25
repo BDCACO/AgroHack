@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.relogio import hoje
 from app.models import Insumo, Movimentacao, Usuario
 from app.services import autenticacao
-from tests.conftest import CriarUsuario, erro_inesperado
+from tests.conftest import IP_DO_TESTE, CriarUsuario, erro_inesperado
 from tests.test_eventos_de_auditoria import eventos
 
 HOJE = hoje()
@@ -99,7 +99,7 @@ def test_movimentacao_removida_guarda_o_suficiente_para_relancar(
     )
     assert (evento.origem, evento.ip, evento.dispositivo) == (
         "api",
-        "testclient",
+        IP_DO_TESTE,
         "Computador do escritório",
     )
     assert evento.dados == {

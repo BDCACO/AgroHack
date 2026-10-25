@@ -13,7 +13,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.api.protecoes import anotar_o_usuario
+from app.api.protecoes import anotar_o_usuario, ip_do_cliente
 from app.core.database import get_db
 from app.models import Sessao, Usuario
 from app.services import autenticacao
@@ -55,10 +55,10 @@ def origem_do_pedido(request: Request, sessao: Sessao | None = Depends(sessao_at
 
 
 def ip_do_pedido(request: Request) -> str | None:
-    """O endereço que o uvicorn viu: atrás de um proxy, o do proxy, a não ser que o
-    uvicorn confie nele (`--forwarded-allow-ips`) e troque pelo do cliente. O
-    `X-Forwarded-For` não é lido aqui: qualquer um o escreve."""
-    return None if request.client is None else request.client.host
+    """O endereço que o uvicorn viu (`ip_do_cliente`): atrás de um proxy, o do proxy, a não
+    ser que o uvicorn suba confiando nele (`--forwarded-allow-ips`) e troque pelo do
+    cliente. O `X-Forwarded-For` não é lido aqui: qualquer um o escreve."""
+    return ip_do_cliente(request.scope)
 
 
 def exigir_sessao(sessao: Sessao | None = Depends(sessao_atual)) -> Sessao:

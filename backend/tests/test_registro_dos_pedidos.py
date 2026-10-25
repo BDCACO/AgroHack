@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import DataError
 from sqlalchemy.exc import TimeoutError as PoolSemConexao
 
-from tests.conftest import SENHA, CriarUsuario, entrar
+from tests.conftest import IP_DO_TESTE, SENHA, CriarUsuario, entrar
 
 
 def linhas_de_acesso(caplog: pytest.LogCaptureFixture) -> list[dict]:
@@ -74,7 +74,7 @@ def test_log_de_acesso_uma_linha_por_pedido_sem_a_query_string(
         "status": 200,
         "duracao_ms": linha["duracao_ms"],
         "usuario_id": None,
-        "ip": "testclient",
+        "ip": IP_DO_TESTE,
     }
     assert isinstance(linha["duracao_ms"], float)
     assert linha["duracao_ms"] >= 0

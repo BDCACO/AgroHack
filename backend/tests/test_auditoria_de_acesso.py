@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app import usuarios as comando
 from app.core.relogio import agora
 from app.models import Sessao, Usuario
-from tests.conftest import SENHA, CriarUsuario, entrar, erro_inesperado
+from tests.conftest import IP_DO_TESTE, SENHA, CriarUsuario, entrar, erro_inesperado
 from tests.test_auditoria_do_estoque import API, ok
 from tests.test_eventos_de_auditoria import eventos
 
@@ -102,7 +102,7 @@ def test_senha_errada_bloqueio_e_tentativa_durante_o_bloqueio(
             "usuario",
             ze["id"],
         )
-        assert (evento.ip, evento.dispositivo) == ("testclient", "Celular estranho")
+        assert (evento.ip, evento.dispositivo) == (IP_DO_TESTE, "Celular estranho")
     [bloqueio] = eventos(db, "login.bloqueado")
     assert bloqueio.entidade_id == ze["id"]
     assert bloqueio.dados["login"] == "ze"

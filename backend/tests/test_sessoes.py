@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Sessao
 from app.services import autenticacao, sessoes
-from tests.conftest import SENHA, CriarUsuario, entrar
+from tests.conftest import IP_DO_TESTE, SENHA, CriarUsuario, entrar
 from tests.test_eventos_de_auditoria import eventos
 
 ENTRAR = "/api/v1/auth/entrar"
@@ -30,9 +30,9 @@ def test_login_guarda_o_ip_e_o_ultimo_uso(
 
     assert resposta.status_code == 200, resposta.text
     sessao = db.scalar(select(Sessao))
-    # O mesmo critério da auditoria: o endereço que o servidor viu (o TestClient se chama
-    # "testclient"), e nunca o X-Forwarded-For, que qualquer um escreve.
-    assert sessao.ip == "testclient"
+    # O mesmo critério da auditoria: o endereço que o servidor viu, e nunca o
+    # X-Forwarded-For, que qualquer um escreve.
+    assert sessao.ip == IP_DO_TESTE
     assert sessao.ultimo_uso_em == sessao.criada_em
 
 
@@ -178,7 +178,7 @@ def test_minhas_sessoes_lista_so_as_ativas_e_marca_a_atual(
         "expira_em",
         "atual",
     }
-    assert lista[0]["ip"] == "testclient"
+    assert lista[0]["ip"] == IP_DO_TESTE
     assert [s["atual"] for s in api.get(SESSOES, headers=celular).json()] == [False, True]
 
 

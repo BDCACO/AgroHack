@@ -28,7 +28,11 @@ EXPOSE 8000
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
 # Sem o log de acesso do uvicorn: a API escreve o dela (app/api/protecoes.py), uma linha
 # por pedido com o X-Request-ID e o usuário, e sem a query string, que o do uvicorn leva.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--no-access-log"]
+# Sem os cabeçalhos de proxy: por padrão o uvicorn confia no X-Forwarded-For de quem vem de
+# 127.0.0.1 e troca o IP do cliente pelo texto dele, que qualquer um escreve (os limites por
+# IP, a trilha e a sessão veriam o IP forjado). Atrás de um proxy reverso, ver "Qual IP" em
+# docs/ARQUITETURA.md. Vale para os dois alvos.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--no-access-log", "--no-proxy-headers"]
 
 
 FROM base AS prod
@@ -37,4 +41,4 @@ COPY --chown=app:app . .
 USER app
 EXPOSE 8000
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header", "--no-access-log"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-server-header", "--no-access-log", "--no-proxy-headers"]

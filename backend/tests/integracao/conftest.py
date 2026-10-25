@@ -129,7 +129,17 @@ def subir_uvicorn(**variaveis: str) -> Iterator[str]:
     # Como no container (o entrypoint a tira antes do uvicorn): a API não tem a do dono.
     ambiente.pop("MIGRATIONS_DATABASE_URL", None)
     processo = subprocess.Popen(  # noqa: S603 — comando fixo
-        [sys.executable, "-m", "uvicorn", "app.main:app", "--port", str(porta)],
+        # Como no Dockerfile: sem os cabeçalhos de proxy. Os testes vêm de 127.0.0.1, de
+        # quem o uvicorn confiaria no X-Forwarded-For por padrão.
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "app.main:app",
+            "--port",
+            str(porta),
+            "--no-proxy-headers",
+        ],
         cwd=BACKEND,
         env=ambiente,
     )

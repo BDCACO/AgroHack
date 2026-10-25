@@ -118,7 +118,9 @@ export DATABASE_URL=postgresql+psycopg://campocerto_app:SENHA_DA_APP@127.0.0.1:5
 export MIGRATIONS_DATABASE_URL=postgresql+psycopg://campocerto:SENHA@127.0.0.1:5433/campocerto
 uv run alembic upgrade head
 uv run python -m app.papel_da_aplicacao     # cria ou acerta o papel da aplicação
-uv run uvicorn app.main:app --reload
+# --no-proxy-headers: senão o uvicorn confia no X-Forwarded-For de quem vem de 127.0.0.1
+# (o proxy do Vite, um curl na própria máquina) e o IP dos limites e da trilha vira o texto dele.
+uv run uvicorn app.main:app --reload --no-proxy-headers
 # Só a DATABASE_URL, com o dono? Também sobe (as migrations usam a mesma), avisando no log
 # que a API está com poderes de dono; em produção, ela não sobe assim.
 

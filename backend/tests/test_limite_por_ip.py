@@ -247,3 +247,29 @@ def test_teto_da_hora_menor_que_o_do_minuto_e_recusado() -> None:
 def test_limite_zero_e_recusado() -> None:
     with pytest.raises(ValueError, match="limite_escritas_por_minuto"):
         Settings(environment="test", database_url="sqlite://", limite_escritas_por_minuto=0)
+
+
+def test_texto_que_nao_e_ip_nao_abre_conta_nova_nem_entra_na_trilha(db: Session) -> None:
+    # Se o uvicorn subisse sem --no-proxy-headers, o `client` seria o texto do
+    # X-Forwarded-For. Cada texto não pode abrir uma conta nova, nem ir para a trilha.
+    app = criar_api(db)
+    respostas = [tentar(cliente(app, f"forjado-{numero}\nlinha")) for numero in range(11)]
+
+    assert respostas == [401] * 10 + [429]
+    [evento] = (
+        db.execute(select(EventoDeAuditoria).where(EventoDeAuditoria.acao == "login.limitado"))
+        .scalars()
+        .all()
+    )
+    assert evento.ip is None
+
+
+def test_o_ip_vai_na_forma_canonica(db: Session) -> None:
+    # O mesmo IPv6 escrito de dois jeitos é a mesma conta.
+    app = criar_api(db)
+    for _ in range(5):
+        tentar(cliente(app, "2001:db8::1"))
+    for _ in range(5):
+        tentar(cliente(app, "2001:0db8:0:0:0:0:0:1"))
+
+    assert tentar(cliente(app, "2001:db8::1")) == 429

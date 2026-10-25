@@ -6,6 +6,7 @@ A ordem, de fora para dentro, está em `app/main.py`.
 
 import base64
 import hashlib
+import ipaddress
 import json
 import logging
 import math
@@ -39,6 +40,26 @@ _ID_SEGURO = re.compile(r"[A-Za-z0-9_-]{1,64}")
 def id_da_requisicao(request: Request) -> str | None:
     """O id deste pedido, o mesmo do cabeçalho `X-Request-ID` e da linha do log."""
     return getattr(request.state, "id_da_requisicao", None)
+
+
+def ip_do_cliente(scope: Scope) -> str | None:
+    """O IP de quem fez o pedido, como o uvicorn o viu (`client`): o mesmo nos limites por
+    IP, na trilha, na sessão e no log. O `X-Forwarded-For` não é lido aqui, e o uvicorn sobe
+    com `--no-proxy-headers` para não trocar o `client` pelo texto dele (ver "Qual IP" em
+    docs/ARQUITETURA.md).
+
+    Só um IP de verdade passa, na forma canônica. Se um dia o uvicorn subir sem a opção, o
+    que alguém escreveu no cabeçalho ("evil", uma quebra de linha, 300 letras) não chega à
+    trilha nem às colunas de 45 letras (seria um 500 no login), e todos esses textos caem na
+    mesma conta dos limites, em vez de cada um abrir uma nova. Um IP forjado ainda passaria:
+    contra ele, só a opção do uvicorn."""
+    cliente = scope.get("client")
+    if not cliente:
+        return None
+    try:
+        return str(ipaddress.ip_address(cliente[0]))
+    except ValueError:
+        return None
 
 
 def anotar_o_usuario(request: Request, usuario_id: int) -> None:
@@ -91,7 +112,6 @@ class RegistroDosPedidos:
                 )
                 await resposta(scope, receive, enviar)
         finally:
-            cliente = scope.get("client")
             linha = {
                 "id": id_,
                 "metodo": scope["method"],
@@ -100,7 +120,7 @@ class RegistroDosPedidos:
                 "status": status_enviado or 500,
                 "duracao_ms": round((time.perf_counter() - inicio) * 1000, 1),
                 "usuario_id": estado.get("usuario_id"),
-                "ip": cliente[0] if cliente else None,
+                "ip": ip_do_cliente(scope),
             }
             logger_de_acesso.info(json.dumps(linha, ensure_ascii=False))
 
@@ -193,8 +213,8 @@ class LimiteDeEscritas:
     ler o corpo. Leitura não conta (o Painel recarrega tudo a cada alteração), nem o login,
     que tem o limite dele (app/api/routes/autenticacao.py) e não pode gastar o das escritas.
 
-    O IP é o que o uvicorn vê (`client`), como na auditoria; o `X-Forwarded-For` qualquer um
-    escreve, e trocá-lo a cada pedido zeraria a conta. Sem evento de auditoria: não é
+    O IP é o que o uvicorn vê (`ip_do_cliente`), como na auditoria; o `X-Forwarded-For`
+    qualquer um escreve, e trocá-lo a cada pedido zeraria a conta. Sem evento de auditoria: não é
     tentativa de entrar à força, e cada 429 seria uma linha."""
 
     def __init__(self, app: ASGIApp, limite: LimiteDeTaxa, isentos: frozenset[str]) -> None:
@@ -208,8 +228,7 @@ class LimiteDeEscritas:
             and scope["method"] in _GRAVAM
             and scope["path"] not in self.isentos
         ):
-            cliente = scope.get("client")
-            recusa = self.limite.tentar(cliente[0] if cliente else "desconhecido")
+            recusa = self.limite.tentar(ip_do_cliente(scope) or "desconhecido")
             if recusa is not None:
                 frase = frase_de_espera(
                     "Muitos pedidos seguidos a partir desta rede", recusa.espere

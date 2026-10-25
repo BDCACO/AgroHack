@@ -288,3 +288,60 @@ def test_swagger_abre_em_desenvolvimento(blindada: httpx.Client) -> None:
     assert docs.headers["x-frame-options"] == "DENY"
     assert esquema.status_code == 200
     assert esquema.json()["info"]["title"] == "CampoCerto API"
+
+
+def test_x_forwarded_for_forjado_nao_troca_o_ip(blindada: httpx.Client, banco: Engine) -> None:
+    # O uvicorn, vindo de 127.0.0.1, confiaria no X-Forwarded-For e trocaria o IP do cliente
+    # pelo texto do cabeçalho, se não subisse com --no-proxy-headers: trocá-lo a cada pedido
+    # zeraria os limites e forjaria o IP na trilha e na sessão.
+    api = blindada
+
+    def forjado(numero: int) -> dict[str, str]:
+        return {"X-Forwarded-For": f"203.0.113.{numero}"}
+
+    entrou = api.post(
+        "/auth/entrar", json={"login": "maria", "senha": SENHA_DO_DONO}, headers=forjado(1)
+    )
+    assert entrou.status_code == 200, entrou.text
+    dono = {"Authorization": f"Bearer {entrou.json()['token']}"}
+    errou = api.post(
+        "/auth/entrar", json={"login": "maria", "senha": "senha-errada"}, headers=forjado(2)
+    )
+    assert errou.status_code == 401
+    tentativas = [
+        api.post(
+            "/auth/entrar",
+            json={"login": "fulano", "senha": "senha-errada"},
+            headers=forjado(numero),
+        ).status_code
+        for numero in range(3, 12)
+    ]
+    # Nem texto que não é IP (uma quebra de linha forjaria uma linha no log) passa.
+    texto = api.post(
+        "/auth/entrar",
+        json={"login": "fulano", "senha": "senha-errada"},
+        headers={"X-Forwarded-For": "evil, nao-e-ip"},
+    )
+
+    assert tentativas == [401] * 8 + [429]
+    assert texto.status_code == 429
+    [(ip, _)] = eventos(banco, "login.limitado")
+    assert ip == "127.0.0.1"
+    [(ip, _)] = eventos(banco, "login.recusado")
+    assert ip == "127.0.0.1"
+    with banco.connect() as conexao:
+        ips_das_sessoes = set(conexao.execute(text("SELECT ip FROM sessoes")).scalars())
+    assert ips_das_sessoes == {"127.0.0.1"}
+
+    # As escritas: a categoria criada e removida com o cabeçalho forjado, e o resto da cota.
+    criada = api.post("/categorias", json={"nome": "Adubo"}, headers=dono | forjado(50))
+    assert criada.status_code == 201, criada.text
+    removida = api.delete(f"/categorias/{criada.json()['id']}", headers=dono | forjado(51))
+    assert removida.status_code == 204, removida.text
+    [(ip, _)] = eventos(banco, "categoria.removida")
+    assert ip == "127.0.0.1"
+    escritas = [
+        api.delete("/movimentacoes/999999", headers=dono | forjado(numero % 250)).status_code
+        for numero in range(119)
+    ]
+    assert escritas == [404] * 118 + [429]

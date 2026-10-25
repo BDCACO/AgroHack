@@ -465,7 +465,7 @@ dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Dec
   do aparelho cairiam no `lock_timeout`), e nenhuma transação fica aberta além do que a rota
   já abriria (`idle_in_transaction_session_timeout`). O papel da aplicação já tem `UPDATE`
   em `sessoes`. Junto, `sessoes.ip`: o IP do login, pelo critério da auditoria
-  (`request.client.host`, nunca o `X-Forwarded-For`).
+  (`ip_do_cliente`, nunca o `X-Forwarded-For`).
 - **Sessões de cada um (o celular perdido).** Antes, a sessão do celular perdido só caía
   desativando o usuário ou redefinindo a senha, e com ela todos os outros aparelhos. Agora
   cada um vê onde tem login aberto (`GET /auth/sessoes`: aparelho, IP do login, criada,
@@ -575,9 +575,9 @@ sensível ou destrutivo grava um evento em `eventos_de_auditoria` (`app/models/a
 - **Quem e de onde.** `usuario_id` de quem está logado (vazio com a autenticação desligada, num
   comando no servidor e no login recusado, em que quem tentou não é conhecido: o alvo vai em
   `entidade_id`). `origem`: `api` ou `terminal` (a demonstração e o `criar-dono`). `ip`: o que
-  o uvicorn viu (`request.client.host`). O `X-Forwarded-For` **não** é lido: qualquer um o
-  escreve, e um IP forjado na trilha é pior que nenhum. Atrás de um proxy, o IP é o do proxy,
-  a não ser que o uvicorn confie nele (`--forwarded-allow-ips`) e troque pelo do cliente.
+  o uvicorn viu (`ip_do_cliente`, em `app/api/protecoes.py`). O `X-Forwarded-For` **não** é
+  lido pela API, e o uvicorn sobe com `--no-proxy-headers` para também não o ler (ver "Qual
+  IP", no limite por IP): qualquer um o escreve, e um IP forjado na trilha é pior que nenhum.
   `dispositivo`: o que o aparelho disse ser no login ("Celular do Zé"), declarado, não prova.
   `ocorrido_em`: o relógio do servidor, nunca o do pedido.
 - **Atômico.** `registrar` põe o evento na sessão do serviço e **não faz commit**: ele vai junto
@@ -789,13 +789,34 @@ segurança, registro do pedido, limite de escritas por IP, limite do corpo. Deci
   minutos para cima: "Muitas tentativas de entrar a partir desta rede. Espere 1 minuto e tente
   de novo." / "Muitos pedidos seguidos a partir desta rede. ...". Quem insiste durante a recusa
   não conta nem empurra o fim dela. Janela deslizante exata (o instante de cada tentativa).
-- **Qual IP:** o do `request.client.host`, o mesmo da auditoria. O `X-Forwarded-For` **não** é
-  lido: qualquer um o escreve, e trocá-lo a cada tentativa zeraria a conta. Consequência: atrás
-  de um proxy, conta o IP do proxy, e todos que passam por ele dividem a mesma cota. No
-  desenvolvimento, o site passa pelo proxy do Vite (e as chamadas do host, pelo gateway do
-  Docker): todos os usuários do site somam juntos, o que nos números acima ainda sobra para uma
-  fazenda. Em produção atrás de um proxy reverso, o uvicorn tem de confiar nele
-  (`--forwarded-allow-ips` com o IP do proxy) para ver o do cliente, ou o proxy limita por si.
+- **Qual IP:** o do `client` do pedido, como o uvicorn o viu (`ip_do_cliente`, em
+  `app/api/protecoes.py`), o mesmo da auditoria, da sessão (`sessoes.ip`) e do log. O
+  `X-Forwarded-For` **não** é lido: qualquer um o escreve, e trocá-lo a cada tentativa zeraria
+  a conta. A API não o lê, mas o uvicorn lia: por padrão ele vem com `proxy_headers` ligado e
+  confia em quem chega de `127.0.0.1` e `::1` (`FORWARDED_ALLOW_IPS`), trocando o `client` pelo
+  texto do cabeçalho antes de a API ver o pedido. Vindo da própria máquina (o uvicorn no host,
+  um proxy local como o do Vite, a suíte de integração), um `X-Forwarded-For` diferente a cada
+  pedido abria uma conta nova a cada vez e punha o IP inventado na trilha e na sessão. Por isso
+  o uvicorn sobe sempre com **`--no-proxy-headers`** (os dois alvos do `backend/Dockerfile`, o
+  README fora do Docker e a suíte de integração, que o prova contra o uvicorn de verdade). De
+  reforço, `ip_do_cliente` só aceita um IP de verdade, na forma canônica: o texto que não é IP
+  ("evil", uma quebra de linha, mais de 45 letras, que estouraria a coluna) vira vazio na
+  trilha e cai numa conta só (`desconhecido`) nos limites. Um IP forjado bem escrito, porém,
+  só a opção do uvicorn barra. Consequência: atrás de um proxy, conta o IP do proxy, e todos
+  que passam por ele dividem a mesma cota. No desenvolvimento, o site passa pelo proxy do Vite
+  (e as chamadas do host, pelo gateway do Docker): todos os usuários do site somam juntos, o
+  que nos números acima ainda sobra para uma fazenda.
+- **Atrás de um proxy reverso** (produção com HTTPS na frente): para ver o IP do cliente, o
+  uvicorn tem de confiar **só no proxy**. Troque, no comando do container, o
+  `--no-proxy-headers` por `--forwarded-allow-ips=<ip do proxy>` (ou tire a opção e defina
+  `FORWARDED_ALLOW_IPS=<ip do proxy>` no ambiente; com `--no-proxy-headers` a variável é
+  ignorada). Nunca `*` nem uma faixa onde caibam clientes. E o proxy tem de **sobrescrever** o
+  `X-Forwarded-For` com o IP de quem se conectou a ele (no nginx,
+  `proxy_set_header X-Forwarded-For $remote_addr;`, e não `$proxy_add_x_forwarded_for`, que
+  acrescenta ao que o cliente mandou): o uvicorn lê o cabeçalho da direita para a esquerda e
+  fica com o primeiro endereço em que não confia, então o que o cliente escreveu à esquerda
+  não passa, mas um cabeçalho repassado sem limpeza é convite a erro de configuração. Sem
+  isso, o proxy limita por si.
 - **Em memória do processo** (`LimiteEmMemoria`, em `app/core/limite_de_taxa.py`): basta com o
   uvicorn de um processo do compose. Com vários processos ou réplicas, cada um contaria à parte
   (o limite real seria o número deles vezes o configurado); reiniciar a API zera a conta. A

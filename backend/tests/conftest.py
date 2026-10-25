@@ -36,6 +36,10 @@ from app.models import Base, Usuario
 
 # Senha de todos os usuários criados pelos testes.
 SENHA = "senha-do-teste"
+# O IP de onde vêm os pedidos do `client` e do `cliente_autenticado` (um da faixa reservada
+# para documentação). O padrão do TestClient, "testclient", não é IP, e a API só guarda IP
+# (`ip_do_cliente`, em app/api/protecoes.py).
+IP_DO_TESTE = "192.0.2.10"
 
 
 @pytest.fixture
@@ -56,7 +60,7 @@ def db() -> Iterator[Session]:
 def client(db: Session) -> Iterator[TestClient]:
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
-    with TestClient(app) as c:
+    with TestClient(app, client=(IP_DO_TESTE, 50000)) as c:
         yield c
 
 
@@ -66,7 +70,7 @@ def cliente_autenticado(db: Session) -> Iterator[TestClient]:
     settings = Settings(environment="test", database_url="sqlite://", autenticacao=True)
     app = create_app(settings)
     app.dependency_overrides[get_db] = lambda: db
-    with TestClient(app) as c:
+    with TestClient(app, client=(IP_DO_TESTE, 50000)) as c:
         yield c
 
 
