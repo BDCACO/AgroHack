@@ -5,8 +5,11 @@ from datetime import timedelta
 from typing import Any
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
+from app.models import Insumo, ItemDoPedido, Pedido
+from app.services import auditoria, estoque
 from tests.conftest import CriarUsuario, entrar
 
 
@@ -634,3 +637,26 @@ def test_remover_insumo_recalcula_a_situacao_do_pedido_que_fica(client: TestClie
     )
     assert alterado.status_code == 200, alterado.json()
     assert client.get(f"/api/v1/pedidos/{cancelado['id']}").json()["situacao"] == "cancelado"
+
+
+def test_recalcula_com_o_pedido_ja_lido_na_mesma_sessao(db: Session) -> None:
+    # O pedido lido antes, na mesma sessão, ainda lista a linha que o banco apagou pelo
+    # CASCADE: a situação tem de vir do que o banco tem, e não da lista velha.
+    adubo, sal = Insumo(nome="Adubo", unidade="kg"), Insumo(nome="Sal mineral", unidade="kg")
+    db.add_all([adubo, sal])
+    db.flush()
+    feito = Pedido(
+        situacao="parcial",
+        feito_em=hoje(),
+        itens=[
+            ItemDoPedido(insumo_id=adubo.id, quantidade=10, quantidade_recebida=10),
+            ItemDoPedido(insumo_id=sal.id, quantidade=10),
+        ],
+    )
+    db.add(feito)
+    db.commit()
+    assert len(feito.itens) == 2
+
+    estoque.remover_insumo(db, sal.id, auditoria.TERMINAL)
+
+    assert (feito.situacao, len(feito.itens)) == ("recebido", 1)
