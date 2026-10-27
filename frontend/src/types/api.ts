@@ -393,3 +393,17 @@ export interface FiltroDoRelatorio {
   insumo_id?: number | ''
   fornecedor_id?: number | ''
 }
+
+export interface Categoria {
+  id: number
+  nome: string
+  insumos: number // com algum, ela não se remove
+}
+
+/** Os filtros de GET /movimentacoes que a tela usa. Vazio = sem filtro. */
+export interface FiltroDeMovimentacoes {
+  busca?: string // no nome do insumo, sem diferenciar maiúsculas nem acentos
+  tipo?: 'entrada' | 'saida' | ''
+  desde?: string
+  ate?: string
+}

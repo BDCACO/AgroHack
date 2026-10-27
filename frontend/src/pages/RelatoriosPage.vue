@@ -5,6 +5,7 @@ import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import GraficoPorPeriodo from '@/components/GraficoPorPeriodo.vue'
 import { dataBr, reais } from '@/formatos'
 import { buscarRelatorioPorPeriodo } from '@/services/relatorios'
+import { useCategoriasStore } from '@/stores/categorias'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import { useFornecedoresStore } from '@/stores/fornecedores'
 import type { Agrupamento, FiltroDoRelatorio, RelatorioPorPeriodo } from '@/types/api'
@@ -12,6 +13,7 @@ import type { Agrupamento, FiltroDoRelatorio, RelatorioPorPeriodo } from '@/type
 // Só exibe: cada soma vem da API, com as mesmas regras do custo médio e do Excel.
 const estoque = useEstoqueStore()
 const fornecedores = useFornecedoresStore()
+const categorias = useCategoriasStore()
 
 const filtro = reactive<Required<FiltroDoRelatorio>>({
   desde: '',
@@ -40,7 +42,7 @@ async function carregar() {
     if (este === pedido) carregando.value = false
   }
 }
-onMounted(() => Promise.all([carregar(), fornecedores.carregar()]))
+onMounted(() => Promise.all([carregar(), fornecedores.carregar(), categorias.carregar()]))
 watch(filtro, carregar)
 
 const agrupamentos: { valor: Agrupamento; rotulo: string }[] = [
@@ -58,7 +60,7 @@ const consumoPorInsumo = computed(() =>
     .filter((item) => item.quantidade > 0)
     .sort((a, b) => (b.valor ?? -1) - (a.valor ?? -1)),
 )
-const categorias = computed(() =>
+const porCategoria = computed(() =>
   (relatorio.value?.total.por_categoria ?? []).filter((c) => c.gasto || c.consumo || c.perdas),
 )
 const porFornecedor = computed(() => (relatorio.value?.total.por_fornecedor ?? []).filter((f) => f.compras))
@@ -74,7 +76,7 @@ const plural = (n: number, um: string, varios: string) => (n === 1 ? `1 ${um}` :
   />
 
   <form
-    class="cartao mb-6 grid animate-surgir gap-4 p-5 sm:grid-cols-2 lg:grid-cols-5"
+    class="cartao mb-6 grid animate-surgir gap-4 p-5 sm:grid-cols-3 lg:grid-cols-6"
     aria-label="Filtros do relatório"
     @submit.prevent
   >
@@ -113,6 +115,25 @@ const plural = (n: number, um: string, varios: string) => (n === 1 ? `1 ${um}` :
         </option>
       </select>
       <span class="rotulo">Agrupar</span>
+    </label>
+    <label class="flutuante">
+      <select
+        v-model.number="filtro.categoria_id"
+        class="campo"
+        data-teste="filtro-categoria"
+      >
+        <option value="">
+          Todas
+        </option>
+        <option
+          v-for="categoria in categorias.categorias"
+          :key="categoria.id"
+          :value="categoria.id"
+        >
+          {{ categoria.nome }}
+        </option>
+      </select>
+      <span class="rotulo">Categoria</span>
     </label>
     <label class="flutuante">
       <select
@@ -272,7 +293,7 @@ const plural = (n: number, um: string, varios: string) => (n === 1 ? `1 ${um}` :
           Por categoria
         </h2>
         <p
-          v-if="!categorias.length"
+          v-if="!porCategoria.length"
           class="mt-2 text-sm text-stone-500"
         >
           Nada no período.
@@ -299,7 +320,7 @@ const plural = (n: number, um: string, varios: string) => (n === 1 ? `1 ${um}` :
           </thead>
           <tbody class="divide-y divide-stone-100">
             <tr
-              v-for="categoria in categorias"
+              v-for="categoria in porCategoria"
               :key="categoria.categoria_id ?? 'sem'"
               data-teste="categoria"
             >

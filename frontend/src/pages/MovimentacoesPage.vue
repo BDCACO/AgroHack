@@ -8,11 +8,12 @@ import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import ConfirmarRemocao from '@/components/ConfirmarRemocao.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import { reais } from '@/formatos'
+import { buscarMovimentacoes } from '@/services/estoque'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import { useFornecedoresStore } from '@/stores/fornecedores'
 import { useSessaoStore } from '@/stores/sessao'
 import { useTalhoesStore } from '@/stores/talhoes'
-import type { Movimentacao, MovimentacaoEntrada } from '@/types/api'
+import type { FiltroDeMovimentacoes, Movimentacao, MovimentacaoEntrada } from '@/types/api'
 
 const estoque = useEstoqueStore()
 const sessao = useSessaoStore()
@@ -80,6 +81,7 @@ async function lancar() {
       fornecedor_id: form.fornecedorId === '' ? null : form.fornecedorId,
     })
     destacada.value = criada.id
+    await buscar()
     const insumo = estoque.insumoPorId.get(criada.insumo_id)
     const preco = criada.valor_unitario ? `, a ${precoPor(criada.valor_unitario, insumo?.unidade)}` : ''
     const talhao = criada.talhao_id ? ` no ${nomeDoTalhao(criada.talhao_id)}` : ''
@@ -95,6 +97,51 @@ async function lancar() {
   } finally {
     salvando.value = false
   }
+}
+
+// Sem filtro, a lista é a das últimas que o estoque já carregou. Com filtro, a API busca
+// uma página por vez e diz quantas há ao todo (X-Total-Count).
+const POR_PAGINA = 50
+const filtro = reactive<Required<FiltroDeMovimentacoes>>({ busca: '', tipo: '', desde: '', ate: '' })
+const filtrando = computed(() => Object.values(filtro).some(Boolean))
+const filtradas = ref<Movimentacao[]>([])
+const total = ref(0)
+const buscando = ref(false)
+const erroDoFiltro = ref<string | null>(null)
+const lista = computed(() => (filtrando.value ? filtradas.value : estoque.movimentacoes))
+
+let pedido = 0
+async function buscar(acrescentar = false) {
+  if (!filtrando.value) return
+  const este = ++pedido
+  buscando.value = true
+  erroDoFiltro.value = null
+  try {
+    const pagina = await buscarMovimentacoes({ ...filtro }, POR_PAGINA, acrescentar ? filtradas.value.length : 0)
+    if (este !== pedido) return
+    filtradas.value = acrescentar ? [...filtradas.value, ...pagina.movimentacoes] : pagina.movimentacoes
+    total.value = pagina.total
+  } catch (erro) {
+    if (este === pedido) erroDoFiltro.value = mensagemDeErro(erro)
+  } finally {
+    if (este === pedido) buscando.value = false
+  }
+}
+// A busca espera a pessoa parar de digitar; tipo e datas vão na hora.
+let espera: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => filtro.busca,
+  () => {
+    clearTimeout(espera)
+    espera = setTimeout(() => buscar(), 300)
+  },
+)
+watch(() => [filtro.tipo, filtro.desde, filtro.ate], () => buscar())
+const limparFiltros = () => Object.assign(filtro, { busca: '', tipo: '', desde: '', ate: '' })
+
+async function removerEAtualizar(id: number) {
+  await estoque.removerMovimentacao(id)
+  await buscar()
 }
 
 // A que está para sair, esperando o "Remover" da janela de confirmação.
@@ -129,7 +176,7 @@ function rotuloDoDia(data: string) {
 }
 const porDia = computed(() => {
   const dias: { data: string; rotulo: string; movimentacoes: Movimentacao[] }[] = []
-  for (const mov of estoque.movimentacoes) {
+  for (const mov of lista.value) {
     const dia = dias.at(-1)
     if (dia?.data === mov.data) dia.movimentacoes.push(mov)
     else dias.push({ data: mov.data, rotulo: rotuloDoDia(mov.data), movimentacoes: [mov] })
@@ -353,6 +400,94 @@ const porDia = computed(() => {
       entrada, com a data de hoje.
     </p>
     <template v-else>
+      <div
+        class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]"
+        role="search"
+        aria-label="Filtrar movimentações"
+      >
+        <label class="flutuante">
+          <input
+            v-model="filtro.busca"
+            type="search"
+            placeholder="ureia"
+            class="campo"
+            data-teste="filtro-busca"
+          >
+          <span class="rotulo">Buscar pelo insumo</span>
+        </label>
+        <label class="flutuante">
+          <select
+            v-model="filtro.tipo"
+            class="campo"
+            data-teste="filtro-tipo"
+          >
+            <option value="">
+              Entradas e saídas
+            </option>
+            <option value="entrada">
+              Só entradas
+            </option>
+            <option value="saida">
+              Só saídas
+            </option>
+          </select>
+          <span class="rotulo">Tipo</span>
+        </label>
+        <label class="flutuante">
+          <input
+            v-model="filtro.desde"
+            type="date"
+            :max="filtro.ate || undefined"
+            class="campo"
+            data-teste="filtro-desde"
+          >
+          <span class="rotulo">De</span>
+        </label>
+        <label class="flutuante">
+          <input
+            v-model="filtro.ate"
+            type="date"
+            :min="filtro.desde || undefined"
+            class="campo"
+            data-teste="filtro-ate"
+          >
+          <span class="rotulo">Até</span>
+        </label>
+      </div>
+      <p
+        v-if="erroDoFiltro"
+        role="alert"
+        class="mt-3 text-sm text-red-700"
+      >
+        {{ erroDoFiltro }}
+      </p>
+      <p
+        v-else-if="filtrando"
+        class="mt-3 flex flex-wrap items-center gap-2 text-sm text-stone-600"
+        role="status"
+        data-teste="contagem"
+      >
+        <template v-if="buscando && !filtradas.length">
+          Buscando…
+        </template>
+        <template v-else>
+          {{ total === 1 ? '1 movimentação' : `${total} movimentações` }}
+        </template>
+        <button
+          type="button"
+          class="botao-texto px-2 py-0.5"
+          @click="limparFiltros"
+        >
+          Limpar filtros
+        </button>
+      </p>
+      <p
+        v-else-if="estoque.movimentacoes.length >= 200"
+        class="mt-3 text-sm text-stone-500"
+      >
+        Aqui estão as 200 mais recentes. Para as mais antigas, filtre pelo período.
+      </p>
+
       <!-- No celular, um extrato por dia no lugar da tabela, que não cabe sem rolar para o
            lado. O dia fica preso no alto enquanto se rola por ele. -->
       <div class="mt-6 animate-surgir space-y-5 [animation-delay:80ms] md:hidden">
@@ -462,7 +597,7 @@ const porDia = computed(() => {
           </thead>
           <tbody class="divide-y divide-stone-100">
             <tr
-              v-for="mov in estoque.movimentacoes"
+              v-for="mov in lista"
               :key="mov.id"
               class="transition-colors hover:bg-stone-50/70"
               :class="mov.id === destacada ? 'animate-destaque' : ''"
@@ -519,6 +654,19 @@ const porDia = computed(() => {
           </tbody>
         </table>
       </div>
+      <div
+        v-if="filtrando && filtradas.length < total"
+        class="mt-4 flex justify-center"
+      >
+        <button
+          type="button"
+          class="botao-secundario"
+          :disabled="buscando"
+          @click="buscar(true)"
+        >
+          {{ buscando ? 'Carregando…' : `Carregar mais (${total - filtradas.length})` }}
+        </button>
+      </div>
     </template>
   </template>
 
@@ -526,7 +674,7 @@ const porDia = computed(() => {
     v-if="emRemocao"
     titulo="Remover movimentação"
     :texto="textoDaRemocao(emRemocao)"
-    :remover="() => estoque.removerMovimentacao(emRemocao!.id)"
+    :remover="() => removerEAtualizar(emRemocao!.id)"
     @fechar="emRemocao = null"
   />
 </template>
