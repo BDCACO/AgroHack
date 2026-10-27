@@ -64,26 +64,27 @@ describe('navegação', () => {
     expect(links.map((link) => link.text())).toEqual(itensDeMenu.map((item) => item.rotulo))
   })
 
-  it('no celular, a barra de baixo tem as mesmas telas, com rótulos que cabem nela', async () => {
+  it('no celular, a barra de baixo tem as telas do dia a dia, com rótulos que cabem nela', async () => {
     const { wrapper } = await montarEm('/movimentacoes')
 
     const abas = wrapper.findAll('[data-teste="aba"]')
-    expect(abas.map((aba) => aba.text())).toEqual([
-      'Painel',
-      'Insumos',
-      'Movimentos',
-      'Talhões',
-      'Importar',
-      'Sistema',
-    ])
-    expect(abas.map((aba) => aba.attributes('aria-current'))).toEqual([
-      undefined,
-      undefined,
-      'page',
-      undefined,
-      undefined,
-      undefined,
-    ])
+    expect(abas.map((aba) => aba.text())).toEqual(
+      itensDeMenu.filter((item) => item.barra).map((item) => item.rotuloCurto),
+    )
+    expect(abas.map((aba) => aba.text())).toContain('Movimentos')
+    expect(abas.map((aba) => aba.attributes('aria-current'))).toContain('page')
+    expect(wrapper.find('[data-teste="aba-mais"]').text()).toBe('Mais')
+  })
+
+  it('o "Mais" do celular abre as outras telas, e acende quando se está numa delas', async () => {
+    const { wrapper } = await montarEm('/sistema', { attachTo: document.body })
+    expect(wrapper.find('[data-teste="aba-mais"]').classes()).toContain('text-white')
+
+    await wrapper.find('[data-teste="aba-mais"]').trigger('click')
+    const outras = [...document.querySelectorAll('[data-teste="menu-mais"] a')].map((a) => a.textContent?.trim())
+    expect(outras).toEqual(itensDeMenu.filter((item) => !item.barra && !item.comLogin).map((item) => item.rotulo))
+    expect(outras).toContain('Sistema')
+    wrapper.unmount()
   })
 
   it('a aba do Painel mostra quantos alertas urgentes há', async () => {

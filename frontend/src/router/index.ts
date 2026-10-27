@@ -13,13 +13,16 @@ import { useSessaoStore } from '@/stores/sessao'
 declare module 'vue-router' {
   interface RouteMeta {
     titulo?: string
-    /** Presente = a rota aparece no menu lateral e na barra de baixo do celular, com este
-     * ícone. `curto` é o rótulo da barra de baixo, onde cabem uns 10 caracteres. */
-    menu?: { icone: NomeIcone; curto?: string }
+    /** Presente = a rota aparece no menu lateral, com este ícone. `barra`: também na barra de
+     * baixo do celular, que só tem lugar para as do dia a dia; as outras ficam em "Mais".
+     * `curto` é o rótulo da barra e do "Mais", onde cabem uns 10 caracteres. */
+    menu?: { icone: NomeIcone; curto?: string; barra?: boolean }
     /** Tela fora do menu que acende um item dele (o detalhe acende "Insumos"). */
     secao?: string
     /** Só para o dono: some do menu do funcionário, e o endereço digitado leva ao Painel. */
     soDono?: boolean
+    /** Só existe com login (usuários, auditoria): com a autenticação desligada, some do menu. */
+    comLogin?: boolean
   }
 }
 
@@ -50,25 +53,25 @@ const telas: RouteRecordRaw[] = [
     path: '',
     name: 'painel',
     component: PainelPage,
-    meta: { titulo: 'Painel', menu: { icone: 'painel' } },
+    meta: { titulo: 'Painel', menu: { icone: 'painel', barra: true } },
   },
   {
     path: 'insumos',
     name: 'insumos',
     component: InsumosPage,
-    meta: { titulo: 'Insumos', menu: { icone: 'insumos' } },
+    meta: { titulo: 'Insumos', menu: { icone: 'insumos', barra: true } },
   },
   {
     path: 'movimentacoes',
     name: 'movimentacoes',
     component: MovimentacoesPage,
-    meta: { titulo: 'Movimentações', menu: { icone: 'movimentacoes', curto: 'Movimentos' } },
+    meta: { titulo: 'Movimentações', menu: { icone: 'movimentacoes', curto: 'Movimentos', barra: true } },
   },
   {
     path: 'talhoes',
     name: 'talhoes',
     component: TalhoesPage,
-    meta: { titulo: 'Talhões', menu: { icone: 'talhoes' } },
+    meta: { titulo: 'Talhões', menu: { icone: 'talhoes', barra: true } },
   },
   {
     path: 'importar',
@@ -92,6 +95,8 @@ const telas: RouteRecordRaw[] = [
 export interface ItemDeMenu {
   nome: string
   soDono: boolean
+  comLogin: boolean
+  barra: boolean
   rotulo: string
   rotuloCurto: string
   icone: NomeIcone
@@ -103,6 +108,8 @@ export const itensDeMenu: ItemDeMenu[] = telas.flatMap((tela) =>
         {
           nome: tela.name,
           soDono: Boolean(tela.meta.soDono),
+          comLogin: Boolean(tela.meta.comLogin),
+          barra: Boolean(tela.meta.menu.barra),
           rotulo: tela.meta.titulo ?? tela.name,
           rotuloCurto: tela.meta.menu.curto ?? tela.meta.titulo ?? tela.name,
           icone: tela.meta.menu.icone,
