@@ -44,6 +44,7 @@ describe('navegação', () => {
       'Relatórios',
       'Importar dados',
       'Usuários',
+      'Auditoria',
       'Sistema',
     ])
   })

@@ -407,3 +407,25 @@ export interface FiltroDeMovimentacoes {
   desde?: string
   ate?: string
 }
+
+/** Um registro da trilha de auditoria: só se acrescenta, nunca se apaga. */
+export interface EventoDeAuditoria {
+  id: number
+  ocorrido_em: string
+  usuario_id: number | null // null: sem login, comando no servidor ou login recusado
+  feito_por: string | null
+  acao: string // "usuario.criado", "login.recusado"...
+  entidade: string | null
+  entidade_id: number | null
+  dados: Record<string, unknown> // o que foi apagado, o antes e o depois, ou o resumo
+  origem: 'api' | 'terminal'
+  ip: string | null
+  dispositivo: string | null
+}
+
+export interface FiltroDeAuditoria {
+  acao?: string // o código ou o grupo ("usuario")
+  usuario_id?: number | ''
+  desde?: string
+  ate?: string
+}

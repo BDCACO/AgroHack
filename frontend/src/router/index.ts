@@ -40,6 +40,7 @@ const RelatoriosPage = () => import('@/pages/RelatoriosPage.vue')
 const FornecedoresPage = () => import('@/pages/FornecedoresPage.vue')
 const FornecedorPage = () => import('@/pages/FornecedorPage.vue')
 const UsuariosPage = () => import('@/pages/UsuariosPage.vue')
+const AuditoriaPage = () => import('@/pages/AuditoriaPage.vue')
 const ContaPage = () => import('@/pages/ContaPage.vue')
 const NaoEncontradoPage = () => import('@/pages/NaoEncontradoPage.vue')
 const EntrarPage = () => import('@/pages/EntrarPage.vue')
@@ -115,6 +116,13 @@ const telas: RouteRecordRaw[] = [
     component: UsuariosPage,
     beforeEnter: [comLogin, soDono],
     meta: { titulo: 'Usuários', menu: { icone: 'usuarios' }, soDono: true, comLogin: true },
+  },
+  {
+    path: 'auditoria',
+    name: 'auditoria',
+    component: AuditoriaPage,
+    beforeEnter: [comLogin, soDono],
+    meta: { titulo: 'Auditoria', menu: { icone: 'auditoria' }, soDono: true, comLogin: true },
   },
   {
     path: 'sistema',
