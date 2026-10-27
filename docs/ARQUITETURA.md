@@ -947,16 +947,16 @@ segurança, registro do pedido, limite de escritas por IP, limite do corpo. Deci
 | Caminho | Responsabilidade |
 |---|---|
 | `src/main.ts` | Instala Pinia e Router, importa o CSS |
-| `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só |
-| `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, barra de baixo no celular e no tablet, quem está logado e "Sair", resumo de status |
-| `src/pages/` | Uma página por rota: Painel (alertas, talhões em carência à parte, estoque em reais do `GET /resumo`, reposição com o custo e a lista de compras para o WhatsApp, limitações), Insumos (cadastro, com embalagem, pedido mínimo e carência, e o valor em estoque), página do insumo (`/insumos/:id`: resumo com custo médio e valor em estoque, gráfico, alertas, movimentações, remover), Movimentações (entradas, com o preço da compra, e saídas, com o talhão onde foi aplicado), Talhões (cadastro, carência e custo por hectare), página do talhão (`/talhoes/:id`: carência, consumo por insumo, aplicações, recorte por período), Importar dados (Excel ou CSV, com prévia), Sistema |
-| `src/components/` | Reutilizáveis, sem chamada à API (o `BotaoDeDownload` recebe a função que baixa): `BotaoDeDownload`, `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `EstadoVazio`, `GraficoDeEstoque`, `IconeSvg`, `IndicadorDeStatus`, `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
-| `src/stores/` | Pinia: estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração; `sessao` guarda quem está logado e decide `podeGerir` |
+| `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só. `menu.barra` põe a tela na barra de baixo do celular; `soDono` e `comLogin` a escondem do funcionário e do site sem login |
+| `src/layouts/` | `AppLayout`: menu lateral fixo no desktop, barra de baixo no celular e no tablet (as telas do dia a dia e o "Mais", com as outras e "Minha conta"), quem está logado (o nome leva a Minha conta) e "Sair", resumo de status |
+| `src/pages/` | Uma página por rota: Painel (alertas, talhões em carência à parte, estoque em reais do `GET /resumo`, reposição com o custo e a lista de compras para o WhatsApp, limitações), Insumos (cadastro, com embalagem, pedido mínimo, carência e categoria; busca e filtros; o que está a caminho; Categorias, do dono), página do insumo (`/insumos/:id`: resumo com custo médio e valor em estoque, gráfico, alertas, movimentações, remover), Movimentações (entradas, com o preço e o fornecedor da compra, e saídas, com o talhão onde foi aplicado; filtros na API, com o total e "Carregar mais"), Compras (sugestão por revenda que vira pedido, pedidos por situação, receber a carga, cancelar), Fornecedores (`/compras/fornecedores`) e a página de cada um (preço médio pago por insumo, últimas compras), Talhões (cadastro, carência e custo por hectare), página do talhão (`/talhoes/:id`: carência, consumo por insumo, aplicações, recorte por período), Relatórios (gasto, consumo e perdas em reais por mês, semana ou dia; por categoria e por fornecedor), Importar dados (Excel ou CSV, com prévia), Usuários e Auditoria (do dono, com login), Minha conta (`/conta`: trocar a senha, aparelhos conectados), Sistema |
+| `src/components/` | Reutilizáveis (o `BotaoDeDownload` recebe a função que baixa): `BotaoDeDownload`, `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `ConfirmarRemocao`, `EstadoVazio`, `FormularioDePedido` e `ReceberPedido` (de Compras), `GerenciarCategorias`, `GraficoDeEstoque`, `GraficoPorPeriodo`, `IconeSvg`, `IndicadorDeStatus`, `JanelaModal`, `ListaDeSessoes` (Minha conta e Usuários), `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
+| `src/stores/` | Pinia: estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração; `sessao` guarda quem está logado e decide `podeGerir`; `talhoes`, `fornecedores` e `categorias` servem às escolhas de várias telas |
 | `src/services/http.ts` | **Cliente HTTP único** (Axios). Põe o token em todo pedido, avisa o App no `401` e normaliza erro em `ApiError` |
 | `src/services/token.ts` | O token da sessão no `localStorage` (na memória, se o navegador não deixar guardar) |
 | `src/services/*.ts` | Uma função por endpoint |
 | `src/types/` | Tipos TypeScript dos contratos da API |
-| `src/styles/main.css` | Tailwind v4: tokens da marca e de movimento (`@theme`), componentes base (`.cartao`, `.botao-*`, `.campo`, `.esqueleto`) e as transições (ver "Design e movimento") |
+| `src/styles/main.css` | Tailwind v4: tokens da marca e de movimento (`@theme`), componentes base (`.cartao`, `.botao-*`, `.campo` e o rótulo flutuante `.flutuante`/`.rotulo`, `.esqueleto`) e as transições (ver "Design e movimento") |
 | `public/modelo-movimentacoes.csv` | Modelo alternativo em CSV, servido como arquivo estático (com BOM, para o Excel abrir os acentos); o principal é o `.xlsx` gerado pela API |
 | `tests/unit/` | Vitest + Vue Test Utils |
 
@@ -983,26 +983,21 @@ segurança, registro do pedido, limite de escritas por IP, limite do corpo. Deci
 - **Quem lançou:** `lancado_por` em cada movimentação ("por Zé do Campo").
 - **Sair** chama `POST /auth/sair` e apaga o token, mesmo se a API não responder.
 
-Falta: a tela de Usuários para o dono e "Trocar senha" para todos (a API já tem).
+**Usuários, conta e trilha** (seção 2, "Autenticação e papéis" e "Trilha de auditoria"). As três
+só existem com login (`meta.comLogin`): com a autenticação desligada, somem do menu e o endereço
+leva ao Painel.
 
-**Para as sessões** (seção 2, "Autenticação e papéis"), o site precisa: uma tela "Onde estou
-conectado" para todos (`GET /auth/sessoes`: o aparelho, o último uso em palavras, "agora" se
-foi há menos de 5 minutos, e o IP; a `atual` marcada como "este aparelho", sem o botão de
-encerrar, ou com ele dizendo que é sair), com "Encerrar" em cada outra (`DELETE
-/auth/sessoes/{id}`) e "Encerrar todas as outras" (`POST /auth/sessoes/encerrar-outras`); e,
-na tela de Usuários do dono, os aparelhos de cada um, com "Encerrar" e "Encerrar todas"
-(`/usuarios/{id}/sessoes`), deixando claro que o usuário continua ativo. O `404` ao
-encerrar é "essa sessão já não existe": recarregar a lista. A trilha ganha os códigos
-`sessao.encerrada` e `sessao.encerradas` para traduzir. Nada quebra sem isso: o login, o
-sair e o resto não mudaram.
-
-**Para a trilha de auditoria** (seção 2, "Trilha de auditoria"), uma tela só do dono, escondida
-do funcionário: a lista de `GET /auditoria` com quando, quem (`feito_por`; vazio é "sistema" ou
-"login recusado"), a ação traduzida pelo código, o aparelho e o IP, com o filtro por grupo de
-ação, por usuário e por período, e as páginas pelo `X-Total-Count`. Ao abrir um evento, mostrar
-`dados`: o conteúdo do que foi apagado (na movimentação removida, um botão "lançar de novo"
-pode preencher o formulário com ele) ou o antes e o depois. O app não precisa de nada: o que o
-funcionário faz no campo não entra na trilha, e ele não a lê.
+- **Usuários** (só do dono): cadastrar com login e senha inicial, alterar nome e papel,
+  desativar (com confirmação; a recusa do último dono vem da API), reativar, definir senha nova
+  (derruba as sessões dele e desfaz o bloqueio) e os aparelhos de cada um, com "Encerrar" e
+  "Encerrar todos", sem desativá-lo.
+- **Minha conta** (todos): trocar a senha (a repetição se confere no navegador; os outros
+  aparelhos saem) e "Onde você está conectado", com o aparelho, o último uso em palavras e o IP;
+  este aparelho vem marcado e sem "Encerrar" (para ele, é "Sair").
+- **Auditoria** (só do dono): a lista de `GET /auditoria`, com a ação em palavras, sobre o quê,
+  quem (ou "Comando no servidor", ou "Sem login" no login recusado), o aparelho e o IP, e, aberto,
+  o que foi guardado em `dados`. Filtros por grupo de ação, por pessoa e por período, uma página
+  por vez pelo `X-Total-Count`. Falta o "lançar de novo" da movimentação removida.
 
 Regras: componente `.vue` **não chama axios** (passa por `services/`) e **não decide** regra de
 negócio: mostra o que a API calculou.
@@ -1049,8 +1044,10 @@ diz que o dedo pegou.
 O produtor usa o CampoCerto no galpão, com o celular na mão, muitas vezes um Android de
 entrada (360 px de largura). Abaixo de 1024 px:
 
-- **Barra de baixo** no lugar do menu lateral: as cinco telas ao alcance do polegar, com o
-  número de urgentes no Painel. O rótulo curto vem da rota (`meta.menu.curto`). Tocar de novo
+- **Barra de baixo** no lugar do menu lateral: as telas do dia a dia (Painel, Insumos,
+  Movimentações e Compras, `meta.menu.barra`) ao alcance do polegar, com o número de urgentes
+  no Painel, e o "Mais", que sobe do pé da tela com as outras e Minha conta, e acende quando se
+  está numa delas. O rótulo curto vem da rota (`meta.menu.curto`). Tocar de novo
   na aba da tela atual sobe para o topo; trocar de tela começa do topo, e o "voltar" do
   celular devolve a rolagem. Com o teclado aberto num campo de texto, a barra some para não
   cobrir o campo.
@@ -1072,9 +1069,10 @@ Quem pede **menos movimento** ao sistema operacional (`prefers-reduced-motion`) 
 animação nenhuma: a regra global em `main.css` zera as durações e toda tela aparece já no estado
 final, números inclusive.
 
-**Gráficos: Apache ECharts**, importado peça por peça (`echarts/core` + linha, grade, tooltip,
-linhas de referência e o renderizador SVG), na página do insumo, que é carregada sob demanda,
-então o Painel não paga o peso. O gráfico do estoque mostra o saldo em degraus (o saldo vale até
+**Gráficos: Apache ECharts**, importado peça por peça (`echarts/core` + linha ou barras, grade,
+tooltip, legenda, linhas de referência e o renderizador SVG), na página do insumo e em
+Relatórios (barras de gasto, consumo e perdas por período), carregadas sob demanda, então o
+Painel não paga o peso. O gráfico do estoque mostra o saldo em degraus (o saldo vale até
 a próxima movimentação), a projeção tracejada no ritmo de consumo que a API calculou (até zerar,
 no máximo 90 dias à frente) e a linha do mínimo. Texto digitado pelo usuário que vai para o
 tooltip (HTML) é escapado; a tabela de movimentações ao lado é a versão acessível do gráfico.
@@ -1201,9 +1199,9 @@ tecnologias que não se aplicam.
 
 ## 7. Próximas decisões (pendentes)
 
-1. **Login no app, e Usuários no site.** O site já tem o login com papéis (seção 3); faltam lá
-   a tela de Usuários e "Trocar senha", e o app ainda não tem a tela de login nem manda o token
-   (seção 4), por isso a autenticação fica desligada no desenvolvimento. Com ela desligada,
+1. **Login no app.** O site já tem o login com papéis, Usuários, Minha conta e Auditoria
+   (seção 3); o app ainda não tem a tela de login nem manda o token (seção 4), por isso a
+   autenticação fica desligada no desenvolvimento. Com ela desligada,
    qualquer um que alcance a tela lê e altera tudo (as portas da API e do banco ficam só em
    127.0.0.1; a do front fica aberta na rede).
 2. **Geração de tipos TS a partir do OpenAPI** (`openapi-typescript`) quando a API crescer. Com o
@@ -1216,28 +1214,16 @@ tecnologias que não se aplicam.
 5. **Talhões no app.** O site já tem a tela de Talhões (cadastro, carência e custo por hectare),
    a página de cada talhão com o período, a carência no cadastro do insumo, o talhão ao lançar
    uma retirada e os talhões em carência no Painel; o app ainda não.
-6. **Compras nas telas.** A API já tem fornecedores, pedidos, a sugestão de pedido, o
-   recebimento e o `em_pedido` de cada insumo (seção 2, "Fornecedores e pedidos de
-   compra"); o site e o app ainda não têm a tela. O site precisa de: Fornecedores
-   (cadastro, desativar, o preço pago por insumo); o campo fornecedor ao lançar uma compra;
-   "Fazer pedido" a partir da sugestão (`GET /pedidos/sugestao`, confirmar e
-   `POST /pedidos`, no lugar ou ao lado da lista do WhatsApp); a lista de pedidos com
-   cancelar; mostrar `em_pedido` e `chegada_prevista` no insumo e `precos_por_fornecedor` na
-   página dele. O app precisa, no mínimo, de "Receber pedido": a lista dos abertos e
-   parciais, a quantidade que chegou por linha (com validade), e `POST
-   /pedidos/{id}/receber` com os `avisos` na tela. O recebimento não está na fila offline:
-   precisa de sinal (o servidor trava o pedido e confere o que já chegou). Enquanto isso, o
-   relatório (aba Pedidos) e o `/docs` mostram tudo.
-
-7. **Categorias, filtros e relatório nas telas.** A API já tem as categorias, os filtros, a busca
-   e a paginação das listas e o relatório por período (seção 2, "Categorias, filtros e relatório
-   por período"); o site e o app ainda não os usam. O site precisa de: a escolha da categoria no
-   cadastro do insumo (`GET /categorias`) e uma tela simples de Categorias para o dono; os filtros
-   e a caixa de busca nas listas de Insumos e Movimentações (os parâmetros acima), com a
-   paginação lendo `X-Total-Count`; e uma tela de Relatório com o gráfico mês a mês (gasto,
-   consumo e perdas em reais), as tabelas por categoria e por fornecedor e as `limitacoes`. O app
-   precisa, no mínimo, da busca e do filtro por categoria na lista de insumos; nada muda na fila
-   offline. Sem isso, nada quebra: sem os parâmetros novos, as respostas são as de antes.
+6. **Compras no app.** O site já tem Compras e Fornecedores (seção 3). O app precisa, no
+   mínimo, de "Receber pedido": a lista dos abertos e parciais, a quantidade que chegou por
+   linha (com validade), e `POST /pedidos/{id}/receber` com os `avisos` na tela. O recebimento
+   não está na fila offline: precisa de sinal (o servidor trava o pedido e confere o que já
+   chegou). No site, falta o preço por fornecedor (`precos_por_fornecedor`) na página do
+   insumo; está na página de cada fornecedor.
+7. **Categorias e filtros no app.** O site já tem a categoria no cadastro, Categorias para o
+   dono, a busca e os filtros de Insumos e Movimentações e Relatórios (seção 3). O app
+   precisa, no mínimo, da busca e do filtro por categoria na lista de insumos; nada muda na
+   fila offline.
 8. **O `429` e o código do pedido nas telas.** A API limita tentativas de login e escritas por
    IP e põe `X-Request-ID` em toda resposta (seção 2, "Blindagem da API"). O `ApiError` do site
    e o do app já mostram o `detail` quando é frase, e o `429`, o `500` e o `503` agora trazem
@@ -1245,10 +1231,9 @@ tecnologias que não se aplicam.
    `429`, e as telas mostrarem o `id_da_requisicao` do `500` e do `503` ("informe ao suporte o
    código ..."). O app pode mandar o próprio `X-Request-ID` (o uuid do envio) para o mesmo
    código aparecer no celular e no log do servidor.
-9. **Sessões nas telas.** A API já lista e encerra as sessões de cada um e, para o dono, as
-   dos outros (seção 2, "Autenticação e papéis"); o site e o app ainda não têm a tela "Onde
-   estou conectado" nem os aparelhos na tela de Usuários (seções 3 e 4). Enquanto isso, o
-   celular perdido se resolve pelo `/docs` ou, como antes, desativando o usuário.
+9. **Sessões no app.** O site já tem "Onde você está conectado" em Minha conta e os aparelhos
+   de cada um em Usuários (seção 3); o app, quando tiver login, precisa ao menos de "Sair" que
+   encerre a sessão no servidor.
 
 Decididas desde a versão anterior deste documento: a autenticação existe (dono e funcionário,
 obrigatória em produção, seção 2); a importação de planilha existe (Excel e
