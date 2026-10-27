@@ -33,5 +33,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['tests/**/*.spec.ts'],
+    // O primeiro teste de cada arquivo compila as telas que monta; com os workers em paralelo
+    // no volume do Docker no Windows, passa dos 5 s padrão sem nada de errado.
+    testTimeout: 15_000,
   },
 })

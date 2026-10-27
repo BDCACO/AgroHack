@@ -9,6 +9,8 @@ import { listarInsumos } from '@/services/estoque'
 import type { Insumo } from '@/types/api'
 
 // O layout verifica a API ao montar; aqui a API não existe.
+// Movimentações carrega os fornecedores para a compra.
+vi.mock('@/services/compras', () => ({ listarFornecedores: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/services/health', () => ({
   buscarHealth: vi.fn().mockResolvedValue({ status: 'ok' }),
   buscarReadiness: vi.fn().mockResolvedValue({ status: 'pronto', database: 'ok' }),
@@ -37,6 +39,7 @@ describe('navegação', () => {
       'Painel',
       'Insumos',
       'Movimentações',
+      'Compras',
       'Talhões',
       'Importar dados',
       'Usuários',

@@ -9,6 +9,8 @@ import * as api from '@/services/estoque'
 import { ApiError } from '@/services/http'
 import type { Insumo, Movimentacao } from '@/types/api'
 
+// Movimentações carrega os fornecedores para a compra.
+vi.mock('@/services/compras', () => ({ listarFornecedores: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/services/health', () => ({
   buscarHealth: vi.fn().mockResolvedValue({ status: 'ok' }),
   buscarReadiness: vi.fn().mockResolvedValue({ status: 'pronto', database: 'ok' }),

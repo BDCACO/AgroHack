@@ -9,6 +9,7 @@ import ConfirmarRemocao from '@/components/ConfirmarRemocao.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import { reais } from '@/formatos'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
+import { useFornecedoresStore } from '@/stores/fornecedores'
 import { useSessaoStore } from '@/stores/sessao'
 import { useTalhoesStore } from '@/stores/talhoes'
 import type { Movimentacao, MovimentacaoEntrada } from '@/types/api'
@@ -16,7 +17,8 @@ import type { Movimentacao, MovimentacaoEntrada } from '@/types/api'
 const estoque = useEstoqueStore()
 const sessao = useSessaoStore()
 const talhoes = useTalhoesStore()
-onMounted(() => Promise.all([estoque.carregar(), talhoes.carregar()]))
+const fornecedores = useFornecedoresStore()
+onMounted(() => Promise.all([estoque.carregar(), talhoes.carregar(), fornecedores.carregar()]))
 
 // AAAA-MM-DD no fuso do navegador (o do produtor); 'sv-SE' formata exatamente assim.
 const hoje = () => new Date().toLocaleDateString('sv-SE')
@@ -33,6 +35,8 @@ const form = reactive({
   preco: '' as number | '',
   // Onde a retirada foi aplicada: dá a carência e o custo por talhão.
   talhaoId: '' as number | '',
+  // De quem se comprou: guarda o preço pago a cada revenda e separa a sugestão de pedido.
+  fornecedorId: '' as number | '',
 })
 const salvando = ref(false)
 // A linha recém-lançada acende na tabela e volta ao normal: mostra onde ela entrou.
@@ -49,6 +53,7 @@ watch(
     if (tipo === 'saida') {
       form.validade = ''
       form.preco = ''
+      form.fornecedorId = ''
     } else {
       form.talhaoId = ''
     }
@@ -72,6 +77,7 @@ async function lancar() {
       validade: form.validade || null,
       valor_unitario: form.preco === '' ? null : form.preco,
       talhao_id: form.talhaoId === '' ? null : form.talhaoId,
+      fornecedor_id: form.fornecedorId === '' ? null : form.fornecedorId,
     })
     destacada.value = criada.id
     const insumo = estoque.insumoPorId.get(criada.insumo_id)
@@ -263,6 +269,28 @@ const porDia = computed(() => {
           class="campo"
         >
         <span class="rotulo">Validade do lote <span class="font-normal text-stone-500">(se tiver)</span></span>
+      </label>
+      <label
+        v-if="form.tipo === 'entrada' && fornecedores.ativos.length"
+        class="flutuante lg:col-span-2"
+      >
+        <select
+          v-model.number="form.fornecedorId"
+          class="campo"
+          data-teste="fornecedor"
+        >
+          <option value="">
+            Não informar
+          </option>
+          <option
+            v-for="fornecedor in fornecedores.ativos"
+            :key="fornecedor.id"
+            :value="fornecedor.id"
+          >
+            {{ fornecedor.nome }}
+          </option>
+        </select>
+        <span class="rotulo">Comprado de <span class="font-normal text-stone-500">(fornecedor)</span></span>
       </label>
       <label
         v-if="form.tipo === 'saida' && talhoes.talhoes.length"

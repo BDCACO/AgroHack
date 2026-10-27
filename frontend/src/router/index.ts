@@ -35,6 +35,9 @@ const TalhoesPage = () => import('@/pages/TalhoesPage.vue')
 const TalhaoPage = () => import('@/pages/TalhaoPage.vue')
 const ImportarPage = () => import('@/pages/ImportarPage.vue')
 const SistemaPage = () => import('@/pages/SistemaPage.vue')
+const ComprasPage = () => import('@/pages/ComprasPage.vue')
+const FornecedoresPage = () => import('@/pages/FornecedoresPage.vue')
+const FornecedorPage = () => import('@/pages/FornecedorPage.vue')
 const UsuariosPage = () => import('@/pages/UsuariosPage.vue')
 const ContaPage = () => import('@/pages/ContaPage.vue')
 const NaoEncontradoPage = () => import('@/pages/NaoEncontradoPage.vue')
@@ -77,10 +80,16 @@ const telas: RouteRecordRaw[] = [
     meta: { titulo: 'Movimentações', menu: { icone: 'movimentacoes', curto: 'Movimentos', barra: true } },
   },
   {
+    path: 'compras',
+    name: 'compras',
+    component: ComprasPage,
+    meta: { titulo: 'Compras', menu: { icone: 'compras', barra: true } },
+  },
+  {
     path: 'talhoes',
     name: 'talhoes',
     component: TalhoesPage,
-    meta: { titulo: 'Talhões', menu: { icone: 'talhoes', barra: true } },
+    meta: { titulo: 'Talhões', menu: { icone: 'talhoes' } },
   },
   {
     path: 'importar',
@@ -155,6 +164,19 @@ export const routes: RouteRecordRaw[] = [
         component: TalhaoPage,
         props: (rota) => ({ id: Number(rota.params.id) }),
         meta: { titulo: 'Talhão', secao: 'talhoes' },
+      },
+      {
+        path: 'compras/fornecedores',
+        name: 'fornecedores',
+        component: FornecedoresPage,
+        meta: { titulo: 'Fornecedores', secao: 'compras' },
+      },
+      {
+        path: 'compras/fornecedores/:id(\\d+)',
+        name: 'fornecedor',
+        component: FornecedorPage,
+        props: (rota) => ({ id: Number(rota.params.id) }),
+        meta: { titulo: 'Fornecedor', secao: 'compras' },
       },
       {
         path: 'conta',

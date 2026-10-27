@@ -11,6 +11,8 @@ import * as api from '@/services/talhoes'
 import { useSessaoStore } from '@/stores/sessao'
 import type { Insumo, Talhao, TalhaoDetalhe } from '@/types/api'
 
+// Movimentações carrega os fornecedores para a compra.
+vi.mock('@/services/compras', () => ({ listarFornecedores: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/services/health', () => ({
   buscarHealth: vi.fn().mockResolvedValue({ status: 'ok' }),
   buscarReadiness: vi.fn().mockResolvedValue({ status: 'pronto', database: 'ok' }),

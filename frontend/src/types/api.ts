@@ -55,6 +55,8 @@ export interface InsumoCadastro {
   pedido_minimo: number | null
   // Dias entre aplicar e poder colher ou abater; 0 = não tem carência; null = não informada.
   carencia_dias: number | null
+  // GET /categorias. Fora do envio, a API mantém a gravada.
+  categoria_id?: number | null
 }
 
 export interface Insumo extends InsumoCadastro {
@@ -63,6 +65,9 @@ export interface Insumo extends InsumoCadastro {
   estoque_atual: number
   custo_medio: number | null // R$ por unidade, das compras com preço
   valor_em_estoque: number | null // estoque atual (se positivo) × custo médio
+  categoria?: string | null // o nome da categoria
+  em_pedido?: number // pedido à revenda e ainda não chegou: a reposição já desconta
+  chegada_prevista?: string | null // AAAA-MM-DD, a mais distante desses pedidos
   analise: Analise
 }
 
@@ -74,6 +79,7 @@ export interface MovimentacaoEntrada {
   validade: string | null
   valor_unitario?: number | null // R$ por unidade, só numa entrada (o preço da compra)
   talhao_id?: number | null // onde foi aplicado, só numa saída (retirada para uso)
+  fornecedor_id?: number | null // de quem se comprou, só numa entrada
 }
 
 export interface Movimentacao extends MovimentacaoEntrada {
@@ -214,4 +220,115 @@ export interface Sessao {
   ultimo_uso_em: string // anotado de 5 em 5 minutos
   expira_em: string
   atual: boolean // a deste navegador
+}
+
+export interface FornecedorCadastro {
+  nome: string
+  contato: string | null // com quem falar
+  telefone: string | null // o WhatsApp da revenda
+  cidade: string | null
+  observacao: string | null
+  ativo: boolean // desativado sai das escolhas; as compras ficam
+}
+
+export interface Fornecedor extends FornecedorCadastro {
+  id: number
+  demonstracao: boolean
+}
+
+/** O que se pagou a um fornecedor por um insumo: é o que compara revendas. */
+export interface PrecoPago {
+  insumo_id: number
+  insumo: string
+  unidade: string
+  fornecedor_id: number
+  fornecedor: string
+  compras: number
+  quantidade: number
+  preco_medio: number | null // ponderado pela quantidade; null sem preço nas compras
+}
+
+export interface FornecedorDetalhe extends Fornecedor {
+  compras: Movimentacao[] // as mais recentes primeiro, até 20
+  precos: PrecoPago[]
+}
+
+export type SituacaoDoPedido = 'aberto' | 'parcial' | 'recebido' | 'cancelado'
+
+export interface ItemDoPedido {
+  id: number // o que o recebimento informa
+  insumo_id: number
+  insumo: string
+  unidade: string
+  quantidade: number
+  valor_unitario: number | null // o combinado com a revenda
+  quantidade_recebida: number // pode passar da pedida: veio a mais
+  falta_receber: number
+}
+
+export interface Pedido {
+  id: number
+  fornecedor_id: number | null
+  fornecedor: string | null
+  situacao: SituacaoDoPedido
+  feito_em: string // AAAA-MM-DD
+  previsto_para: string | null
+  observacao: string | null
+  usuario_id: number | null
+  feito_por: string | null
+  atrasado: boolean // a previsão passou e ainda falta chegar
+  custo_estimado: number | null
+  itens: ItemDoPedido[]
+}
+
+export interface PedidoEntrada {
+  fornecedor_id: number | null
+  feito_em?: string
+  previsto_para: string | null
+  observacao: string | null
+  itens: { insumo_id: number; quantidade: number; valor_unitario: number | null }[]
+}
+
+/** O que chegou da carga: cada linha vira uma entrada no estoque. */
+export interface Recebimento {
+  data: string
+  itens: {
+    item_id: number
+    quantidade: number
+    validade: string | null
+    valor_unitario: number | null // só se a nota veio com outro preço
+  }[]
+}
+
+export interface ResultadoDoRecebimento {
+  pedido: Pedido
+  movimentacoes: Movimentacao[]
+  avisos: string[] // não impedem nada: pedem para conferir
+}
+
+export interface ItemSugerido {
+  insumo_id: number
+  insumo: string
+  unidade: string
+  quantidade: number // em embalagens fechadas, já descontado o que está a caminho
+  valor_unitario: number | null
+  custo_estimado: number | null
+  pedir_em: string
+  pedir_hoje: boolean
+  justificativa: string
+}
+
+/** Um pedido por revenda: a da última compra de cada insumo. */
+export interface GrupoSugerido {
+  fornecedor_id: number | null
+  fornecedor: string | null
+  itens: ItemSugerido[]
+  custo_estimado: number | null
+}
+
+export interface SugestaoDePedido {
+  referencia: string
+  dias: number
+  grupos: GrupoSugerido[]
+  limitacoes: string[]
 }
