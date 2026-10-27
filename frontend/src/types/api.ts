@@ -183,3 +183,35 @@ export interface Periodo {
   desde?: string
   ate?: string
 }
+
+/** `GET /usuarios`: o usuário como o dono o vê. */
+export interface UsuarioCompleto extends Usuario {
+  ativo: boolean
+  criado_em: string
+  bloqueado_ate: string | null // senhas erradas seguidas; null: não está bloqueado
+}
+
+export interface UsuarioCadastro {
+  nome: string
+  login: string // minúsculas, números, ponto, hífen e sublinhado
+  senha: string // a inicial, de 8 ou mais; o funcionário troca depois
+  papel: Papel
+}
+
+/** O que vier muda; o que não vier fica. */
+export interface UsuarioAlteracao {
+  nome?: string
+  papel?: Papel
+  ativo?: boolean
+}
+
+/** Um aparelho com login aberto. Nunca o token. */
+export interface Sessao {
+  id: number
+  dispositivo: string | null // o que o aparelho disse ser no login: declarado, não prova
+  ip: string | null
+  criada_em: string
+  ultimo_uso_em: string // anotado de 5 em 5 minutos
+  expira_em: string
+  atual: boolean // a deste navegador
+}

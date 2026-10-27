@@ -39,6 +39,7 @@ describe('navegação', () => {
       'Movimentações',
       'Talhões',
       'Importar dados',
+      'Usuários',
       'Sistema',
     ])
   })
@@ -61,7 +62,10 @@ describe('navegação', () => {
     const { wrapper } = await montarEm('/')
 
     const links = wrapper.findAll('aside nav a')
-    expect(links.map((link) => link.text())).toEqual(itensDeMenu.map((item) => item.rotulo))
+    // Sem login, as telas que dependem dele (Usuários) ficam fora.
+    expect(links.map((link) => link.text())).toEqual(
+      itensDeMenu.filter((item) => !item.comLogin).map((item) => item.rotulo),
+    )
   })
 
   it('no celular, a barra de baixo tem as telas do dia a dia, com rótulos que cabem nela', async () => {

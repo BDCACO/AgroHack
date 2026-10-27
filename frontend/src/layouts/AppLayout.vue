@@ -177,14 +177,20 @@ onMounted(() => {
         class="mx-3 mb-2 flex items-center gap-2 px-3 py-1"
         data-teste="sessao"
       >
-        <div class="min-w-0 flex-1">
+        <RouterLink
+          :to="{ name: 'conta' }"
+          class="-mx-2 min-w-0 flex-1 rounded-md px-2 py-1 transition-colors hover:bg-white/10"
+          :class="rota.name === 'conta' ? 'bg-white/15' : ''"
+          :aria-current="rota.name === 'conta' ? 'page' : undefined"
+          title="Minha conta: senha e aparelhos"
+        >
           <p class="truncate text-sm font-medium text-white">
             {{ sessao.usuario.nome }}
           </p>
           <p class="text-xs text-campo-100/70">
             {{ rotuloDoPapel[sessao.usuario.papel] }}
           </p>
-        </div>
+        </RouterLink>
         <button
           type="button"
           class="rounded-md px-2 py-1 text-xs font-semibold text-campo-100 transition-colors hover:bg-white/10 hover:text-white"
@@ -358,6 +364,20 @@ onMounted(() => {
               class="h-5 w-5 shrink-0 text-campo-700"
             />
             {{ item.rotulo }}
+          </RouterLink>
+        </li>
+        <li v-if="sessao.usuario">
+          <RouterLink
+            :to="{ name: 'conta' }"
+            class="flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium text-stone-700 active:bg-stone-100"
+            :class="rota.name === 'conta' ? 'bg-campo-50 text-campo-800' : ''"
+          >
+            <IconeSvg
+              nome="conta"
+              class="h-5 w-5 shrink-0 text-campo-700"
+            />
+            Minha conta
+            <span class="ml-auto truncate text-xs font-normal text-stone-500">{{ sessao.usuario.nome }}</span>
           </RouterLink>
         </li>
       </ul>

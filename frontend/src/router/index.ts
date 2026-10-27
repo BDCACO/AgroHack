@@ -35,6 +35,8 @@ const TalhoesPage = () => import('@/pages/TalhoesPage.vue')
 const TalhaoPage = () => import('@/pages/TalhaoPage.vue')
 const ImportarPage = () => import('@/pages/ImportarPage.vue')
 const SistemaPage = () => import('@/pages/SistemaPage.vue')
+const UsuariosPage = () => import('@/pages/UsuariosPage.vue')
+const ContaPage = () => import('@/pages/ContaPage.vue')
 const NaoEncontradoPage = () => import('@/pages/NaoEncontradoPage.vue')
 const EntrarPage = () => import('@/pages/EntrarPage.vue')
 
@@ -44,6 +46,13 @@ const soDono: NavigationGuard = async () => {
   const sessao = useSessaoStore()
   await sessao.iniciar()
   return sessao.podeGerir ? true : { name: 'painel' }
+}
+
+// Usuários, conta e auditoria só existem com login: sem ele, quem digita o endereço volta.
+const comLogin: NavigationGuard = async () => {
+  const sessao = useSessaoStore()
+  await sessao.iniciar()
+  return sessao.usuario ? true : { name: 'painel' }
 }
 
 // As telas do menu. A ORDEM aqui é a ordem do menu — o menu é derivado desta
@@ -83,6 +92,13 @@ const telas: RouteRecordRaw[] = [
       menu: { icone: 'importar', curto: 'Importar' },
       soDono: true,
     },
+  },
+  {
+    path: 'usuarios',
+    name: 'usuarios',
+    component: UsuariosPage,
+    beforeEnter: [comLogin, soDono],
+    meta: { titulo: 'Usuários', menu: { icone: 'usuarios' }, soDono: true, comLogin: true },
   },
   {
     path: 'sistema',
@@ -139,6 +155,13 @@ export const routes: RouteRecordRaw[] = [
         component: TalhaoPage,
         props: (rota) => ({ id: Number(rota.params.id) }),
         meta: { titulo: 'Talhão', secao: 'talhoes' },
+      },
+      {
+        path: 'conta',
+        name: 'conta',
+        component: ContaPage,
+        beforeEnter: comLogin,
+        meta: { titulo: 'Minha conta' },
       },
       {
         path: ':caminho(.*)*',
