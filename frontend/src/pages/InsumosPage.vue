@@ -110,8 +110,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
     >
       {{ editandoId === undefined ? 'Novo insumo' : 'Alterar insumo' }}
     </h2>
-    <label class="text-sm font-medium text-stone-700">
-      Nome
+    <label class="flutuante">
       <input
         v-model="form.nome"
         required
@@ -119,9 +118,9 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         placeholder="Ureia agrícola"
         class="campo"
       >
+      <span class="rotulo">Nome</span>
     </label>
-    <label class="text-sm font-medium text-stone-700">
-      Unidade
+    <label class="flutuante">
       <input
         v-model="form.unidade"
         required
@@ -130,6 +129,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         placeholder="kg"
         class="campo"
       >
+      <span class="rotulo">Unidade</span>
       <datalist id="unidades">
         <option value="kg" />
         <option value="L" />
@@ -139,29 +139,30 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         <option value="un" />
       </datalist>
     </label>
-    <label class="text-sm font-medium text-stone-700">
-      Estoque mínimo <span class="font-normal text-stone-500">(opcional)</span>
+    <label class="flutuante">
       <input
         v-model.number="form.estoque_minimo"
         type="number"
         min="0"
         step="any"
+        placeholder=" "
         class="campo"
       >
+      <span class="rotulo">Estoque mínimo <span class="font-normal text-stone-500">(opcional)</span></span>
     </label>
-    <label class="text-sm font-medium text-stone-700">
-      Prazo de entrega, em dias <span class="font-normal text-stone-500">(opcional)</span>
+    <label class="flutuante">
       <input
         v-model.number="form.prazo"
         type="number"
         min="0"
         max="365"
         step="1"
+        placeholder=" "
         class="campo"
       >
+      <span class="rotulo">Prazo de entrega, em dias <span class="font-normal text-stone-500">(opcional)</span></span>
     </label>
-    <label class="text-sm font-medium text-stone-700">
-      Embalagem, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span>
+    <label class="flutuante">
       <input
         v-model.number="form.embalagem"
         type="number"
@@ -170,27 +171,30 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         placeholder="50"
         class="campo"
       >
+      <span class="rotulo">Embalagem, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span></span>
     </label>
-    <label class="text-sm font-medium text-stone-700">
-      Pedido mínimo, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span>
+    <label class="flutuante">
       <input
         v-model.number="form.pedido_minimo"
         type="number"
         min="0"
         step="any"
+        placeholder=" "
         class="campo"
       >
+      <span class="rotulo">Pedido mínimo, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span></span>
     </label>
-    <label class="text-sm font-medium text-stone-700">
-      Carência, em dias <span class="font-normal text-stone-500">(defensivos)</span>
+    <label class="flutuante">
       <input
         v-model.number="form.carencia"
         type="number"
         min="0"
         max="365"
         step="1"
+        placeholder=" "
         class="campo"
       >
+      <span class="rotulo">Carência, em dias <span class="font-normal text-stone-500">(defensivos)</span></span>
     </label>
     <p class="text-xs text-stone-500 sm:col-span-2 lg:col-span-4">
       O mínimo dispara o alerta de estoque baixo e vira margem de segurança na reposição. O prazo

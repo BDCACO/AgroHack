@@ -193,8 +193,7 @@ const porDia = computed(() => {
           </label>
         </div>
       </fieldset>
-      <label class="text-sm font-medium text-stone-700 lg:col-span-2">
-        Insumo
+      <label class="flutuante lg:col-span-2">
         <select
           v-model.number="form.insumoId"
           required
@@ -214,9 +213,9 @@ const porDia = computed(() => {
             {{ insumo.nome }} ({{ insumo.unidade }})
           </option>
         </select>
+        <span class="rotulo">Insumo</span>
       </label>
-      <label class="text-sm font-medium text-stone-700">
-        Data
+      <label class="flutuante">
         <input
           v-model="form.data"
           type="date"
@@ -224,49 +223,51 @@ const porDia = computed(() => {
           :max="hoje()"
           class="campo"
         >
+        <span class="rotulo">Data</span>
       </label>
-      <label class="text-sm font-medium text-stone-700">
-        Quantidade
+      <label class="flutuante">
         <input
           v-model.number="form.quantidade"
           type="number"
           required
           min="0.001"
           step="any"
+          placeholder=" "
           class="campo"
         >
+        <span class="rotulo">Quantidade</span>
       </label>
       <label
         v-if="form.tipo === 'entrada'"
-        class="text-sm font-medium text-stone-700"
+        class="flutuante"
       >
-        Preço (R$/{{ unidadeEscolhida ?? 'un.' }}) <span class="font-normal text-stone-500">(se souber)</span>
         <input
           v-model.number="form.preco"
           type="number"
           min="0.0001"
           step="any"
           inputmode="decimal"
+          placeholder=" "
           class="campo"
           data-teste="preco"
         >
+        <span class="rotulo">Preço (R$/{{ unidadeEscolhida ?? 'un.' }}) <span class="font-normal text-stone-500">(se souber)</span></span>
       </label>
       <label
         v-if="form.tipo === 'entrada'"
-        class="text-sm font-medium text-stone-700"
+        class="flutuante"
       >
-        Validade do lote <span class="font-normal text-stone-500">(se tiver)</span>
         <input
           v-model="form.validade"
           type="date"
           class="campo"
         >
+        <span class="rotulo">Validade do lote <span class="font-normal text-stone-500">(se tiver)</span></span>
       </label>
       <label
         v-if="form.tipo === 'saida' && talhoes.talhoes.length"
-        class="text-sm font-medium text-stone-700 lg:col-span-2"
+        class="flutuante lg:col-span-2"
       >
-        Aplicado no talhão <span class="font-normal text-stone-500">(se foi para a lavoura)</span>
         <select
           v-model.number="form.talhaoId"
           class="campo"
@@ -283,6 +284,7 @@ const porDia = computed(() => {
             {{ talhao.nome }}
           </option>
         </select>
+        <span class="rotulo">Aplicado no talhão <span class="font-normal text-stone-500">(se foi para a lavoura)</span></span>
       </label>
       <p
         v-if="erroDoForm"
