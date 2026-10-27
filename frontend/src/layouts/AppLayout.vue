@@ -1,16 +1,28 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, useTemplateRef, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import IconeSvg from '@/components/IconeSvg.vue'
 import LogoCampoCerto from '@/components/LogoCampoCerto.vue'
 import { itensDeMenu } from '@/router'
 import { useEstoqueStore } from '@/stores/estoque'
+import { useSessaoStore } from '@/stores/sessao'
 import { useStatusSistemaStore } from '@/stores/statusSistema'
 
 const status = useStatusSistemaStore()
 const estoque = useEstoqueStore()
+const sessao = useSessaoStore()
 const rota = useRoute()
+const router = useRouter()
+
+// O funcionário não vê o que é só do dono (importar planilha): menos telas que dão "peça ao dono".
+const menu = computed(() => itensDeMenu.filter((item) => !item.soDono || sessao.podeGerir))
+const rotuloDoPapel = { dono: 'Dono', funcionario: 'Funcionário' } as const
+
+async function sair() {
+  await sessao.sair()
+  await router.replace({ name: 'entrar' })
+}
 
 const conteudo = useTemplateRef<HTMLElement>('conteudo')
 
@@ -25,7 +37,7 @@ watch(
 )
 
 const ativo = (nome: string) => nome === (rota.meta.secao ?? rota.name)
-const indiceAtivo = computed(() => itensDeMenu.findIndex((item) => ativo(item.nome)))
+const indiceAtivo = computed(() => menu.value.findIndex((item) => ativo(item.nome)))
 
 // Tocar de novo na aba da tela em que já se está sobe para o topo, como nos apps.
 function tocarNaAba(nome: string, navegar: (evento: MouseEvent) => void, evento: MouseEvent) {
@@ -73,6 +85,15 @@ onMounted(() => {
       >
         <LogoCampoCerto com-nome />
       </RouterLink>
+      <button
+        v-if="sessao.usuario"
+        type="button"
+        class="ml-auto min-h-11 rounded-lg px-3 text-sm font-medium text-campo-100 active:bg-white/10"
+        :aria-label="`Sair (${sessao.usuario.nome})`"
+        @click="sair"
+      >
+        Sair
+      </button>
     </header>
 
     <!-- Menu lateral: só no desktop. -->
@@ -103,7 +124,7 @@ onMounted(() => {
           <span class="absolute inset-y-2 left-0 w-1 rounded-r-full bg-campo-300" />
         </span>
         <RouterLink
-          v-for="item in itensDeMenu"
+          v-for="item in menu"
           :key="item.nome"
           v-slot="{ href, navigate }"
           :to="{ name: item.nome }"
@@ -132,6 +153,36 @@ onMounted(() => {
         </RouterLink>
       </nav>
 
+      <!-- Quem está usando. Sem login (API de desenvolvimento com a autenticação desligada),
+           o caminho para entrar. -->
+      <div
+        v-if="sessao.usuario"
+        class="mx-3 mb-2 flex items-center gap-2 px-3 py-1"
+        data-teste="sessao"
+      >
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-sm font-medium text-white">
+            {{ sessao.usuario.nome }}
+          </p>
+          <p class="text-xs text-campo-100/70">
+            {{ rotuloDoPapel[sessao.usuario.papel] }}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="rounded-md px-2 py-1 text-xs font-semibold text-campo-100 transition-colors hover:bg-white/10 hover:text-white"
+          @click="sair"
+        >
+          Sair
+        </button>
+      </div>
+      <RouterLink
+        v-else
+        :to="{ name: 'entrar' }"
+        class="mx-3 mb-2 px-3 py-1 text-xs font-medium text-campo-100/70 hover:text-white"
+      >
+        Entrar com login
+      </RouterLink>
       <RouterLink
         :to="{ name: 'sistema' }"
         class="mx-3 mb-4 flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-campo-100/80 transition-colors hover:bg-white/5 hover:text-white"
@@ -191,18 +242,21 @@ onMounted(() => {
       class="barra-inferior fixed inset-x-0 bottom-0 z-40 bg-campo-900 pb-[env(safe-area-inset-bottom)] text-campo-100/75 shadow-[0_-1px_0_rgb(0_0_0/0.15)] lg:hidden"
       aria-label="Principal"
     >
-      <div class="relative mx-auto grid max-w-xl grid-cols-5">
+      <div
+        class="relative mx-auto grid max-w-xl"
+        :style="{ gridTemplateColumns: `repeat(${menu.length}, minmax(0, 1fr))` }"
+      >
         <!-- Como no menu lateral: um destaque só, que desliza até a aba nova. -->
         <span
-          class="pointer-events-none absolute top-2 left-0 flex w-1/5 justify-center transition-[translate,opacity] duration-300 ease-movimento"
+          class="pointer-events-none absolute top-2 left-0 flex justify-center transition-[translate,opacity] duration-300 ease-movimento"
           :class="indiceAtivo < 0 ? 'opacity-0' : ''"
-          :style="{ translate: `calc(${Math.max(indiceAtivo, 0)} * 100%) 0` }"
+          :style="{ width: `${100 / menu.length}%`, translate: `calc(${Math.max(indiceAtivo, 0)} * 100%) 0` }"
           aria-hidden="true"
         >
           <span class="h-8 w-14 rounded-full bg-white/15" />
         </span>
         <RouterLink
-          v-for="item in itensDeMenu"
+          v-for="item in menu"
           :key="item.nome"
           v-slot="{ href, navigate }"
           :to="{ name: item.nome }"

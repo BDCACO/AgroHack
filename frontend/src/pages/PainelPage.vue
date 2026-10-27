@@ -7,13 +7,19 @@ import CoberturaDoEstoque from '@/components/CoberturaDoEstoque.vue'
 import NumeroRolante from '@/components/NumeroRolante.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import IconeSvg, { type NomeIcone } from '@/components/IconeSvg.vue'
-import { URL_DO_RELATORIO } from '@/services/estoque'
+import BotaoDeDownload from '@/components/BotaoDeDownload.vue'
+import { reais } from '@/formatos'
+import { baixarRelatorio } from '@/services/estoque'
 import { useEstoqueStore } from '@/stores/estoque'
+import { useSessaoStore } from '@/stores/sessao'
+import { useTalhoesStore } from '@/stores/talhoes'
 import type { Gravidade, Reposicao } from '@/types/api'
 
 // Só exibe: quem decide alerta, justificativa, reposição e limitação é o backend.
 const estoque = useEstoqueStore()
-onMounted(() => estoque.carregar())
+const sessao = useSessaoStore()
+const talhoes = useTalhoesStore()
+onMounted(() => Promise.all([estoque.carregar(), estoque.carregarResumo(), talhoes.carregar()]))
 
 const hoje = new Date()
 const dataDeHoje = hoje.toLocaleDateString('pt-BR', {
@@ -91,6 +97,39 @@ const reposicoes = computed(() =>
     .sort((a, b) => a.pedir_em.localeCompare(b.pedir_em)),
 )
 
+// O estoque em reais, do GET /resumo. Um número só por cartão, e embaixo o que ele quer
+// dizer; sem preço nenhum, o cartão diz o que falta em vez de mostrar R$ 0,00.
+const cartoesEmReais = computed(() => {
+  const resumo = estoque.resumo
+  if (!resumo) return []
+  const { compras_sugeridas: compras, perdas } = resumo
+  const pedidos = compras.pedidos === 1 ? '1 pedido' : `${compras.pedidos} pedidos`
+  return [
+    {
+      titulo: 'Valor em estoque',
+      valor: resumo.valor_em_estoque === null ? '—' : reais(resumo.valor_em_estoque),
+      nota:
+        resumo.valor_em_estoque === null
+          ? 'lance o preço nas compras'
+          : 'pelo custo médio das compras',
+    },
+    {
+      titulo: 'Compras, próximos 30 dias',
+      valor: compras.valor === null ? '—' : reais(compras.valor),
+      nota: !compras.pedidos
+        ? 'nada a pedir'
+        : compras.pedir_hoje
+          ? `${pedidos}, ${compras.pedir_hoje} para hoje`
+          : pedidos,
+    },
+    {
+      titulo: 'Perdas, últimos 30 dias',
+      valor: reais(perdas.ultimos_30_dias),
+      nota: `descartes e faltas · ${reais(perdas.total)} no total`,
+    },
+  ]
+})
+
 const dataBr = (data: string) => data.split('-').reverse().join('/')
 const quando = (r: Reposicao) => (r.pedir_hoje ? 'pedir hoje' : `pedir até ${dataBr(r.pedir_em)}`)
 
@@ -133,23 +172,17 @@ async function copiar() {
     :sobretitulo="dataDeHoje"
     :descricao="estoque.insumos.length ? resumoDoDia : 'Alertas sobre o estoque de insumos, com a justificativa de cada um.'"
   >
+    <!-- O relatório leva todos os preços e é a cópia de segurança: só o dono baixa. -->
     <template
-      v-if="estoque.insumos.length"
+      v-if="estoque.insumos.length && sessao.podeGerir"
       #acoes
     >
-      <!-- Link de download comum: o arquivo vem pronto da API. -->
-      <a
-        :href="URL_DO_RELATORIO"
-        download
+      <BotaoDeDownload
+        rotulo="Baixar relatório (Excel)"
+        :baixar="baixarRelatorio"
         class="botao-secundario"
         data-teste="relatorio"
-      >
-        <IconeSvg
-          nome="baixar"
-          class="h-4 w-4"
-        />
-        Baixar relatório (Excel)
-      </a>
+      />
     </template>
   </CabecalhoDePagina>
 
@@ -186,20 +219,24 @@ async function copiar() {
     v-else-if="!estoque.insumos.length"
     icone="folha"
     titulo="Nenhum insumo cadastrado ainda"
-    texto="Cadastre os insumos e lance as compras e retiradas: os alertas aparecem aqui, cada um com a conta que o justifica."
+    :texto="sessao.podeGerir
+      ? 'Cadastre os insumos e lance as compras e retiradas: os alertas aparecem aqui, cada um com a conta que o justifica.'
+      : 'Quando o dono da fazenda cadastrar os insumos, os alertas aparecem aqui.'"
   >
-    <RouterLink
-      :to="{ name: 'insumos' }"
-      class="botao-primario"
-    >
-      Cadastrar insumos
-    </RouterLink>
-    <RouterLink
-      :to="{ name: 'importar' }"
-      class="botao-texto"
-    >
-      ou importar uma planilha
-    </RouterLink>
+    <template v-if="sessao.podeGerir">
+      <RouterLink
+        :to="{ name: 'insumos' }"
+        class="botao-primario"
+      >
+        Cadastrar insumos
+      </RouterLink>
+      <RouterLink
+        :to="{ name: 'importar' }"
+        class="botao-texto"
+      >
+        ou importar uma planilha
+      </RouterLink>
+    </template>
   </EstadoVazio>
 
   <template v-else>
@@ -250,10 +287,83 @@ async function copiar() {
       </button>
     </div>
 
+    <section
+      v-if="estoque.resumo"
+      aria-label="O estoque em reais"
+      class="mt-3 animate-surgir [animation-delay:100ms]"
+      data-teste="em-reais"
+    >
+      <dl class="grid gap-3 sm:grid-cols-3">
+        <div
+          v-for="cartao in cartoesEmReais"
+          :key="cartao.titulo"
+          class="cartao px-4 py-3"
+        >
+          <dt class="text-xs font-semibold text-stone-500">
+            {{ cartao.titulo }}
+          </dt>
+          <dd class="mt-1 text-xl font-bold text-stone-900 tabular-nums">
+            {{ cartao.valor }}
+          </dd>
+          <dd class="text-xs text-stone-500">
+            {{ cartao.nota }}
+          </dd>
+        </div>
+      </dl>
+      <!-- O que os números em reais não contam (insumo sem preço, por exemplo). -->
+      <p
+        v-for="limitacao in estoque.resumo.limitacoes"
+        :key="limitacao"
+        class="mt-2 text-xs text-stone-500"
+      >
+        {{ limitacao }}
+      </p>
+    </section>
+
     <CoberturaDoEstoque
       :insumos="estoque.insumos"
       class="mt-6 animate-surgir [animation-delay:150ms]"
     />
+
+    <!-- À parte dos alertas dos insumos (e fora dos cartões de gravidade), como a API os
+         conta: colher num talhão em carência é proibido, e não tem conserto. -->
+    <section
+      v-if="talhoes.emCarencia.length"
+      aria-labelledby="titulo-carencia"
+      class="mt-8"
+      data-teste="talhoes-em-carencia"
+    >
+      <h2
+        id="titulo-carencia"
+        class="text-base font-semibold text-stone-900"
+      >
+        Não colher
+        <span class="ml-1 text-sm font-normal text-stone-500 tabular-nums">{{ talhoes.emCarencia.length }}</span>
+      </h2>
+      <ul class="mt-3 space-y-2">
+        <li
+          v-for="talhao in talhoes.emCarencia"
+          :key="talhao.id"
+          class="cartao flex gap-3 border-red-200 bg-red-50/60 p-4 text-sm"
+        >
+          <IconeSvg
+            nome="talhoes"
+            class="mt-0.5 h-5 w-5 shrink-0 text-red-600"
+          />
+          <div>
+            <RouterLink
+              :to="{ name: 'talhao', params: { id: talhao.id } }"
+              class="font-semibold text-red-800 hover:underline"
+            >
+              {{ talhao.nome }} em carência
+            </RouterLink>
+            <p class="mt-0.5 text-red-900/80">
+              {{ talhao.alertas[0]?.justificativa }}
+            </p>
+          </div>
+        </li>
+      </ul>
+    </section>
 
     <section
       aria-labelledby="titulo-alertas"
@@ -369,6 +479,12 @@ async function copiar() {
             <p class="text-2xl font-bold text-stone-900 tabular-nums">
               {{ item.quantidade.toLocaleString('pt-BR') }}
               <span class="text-base font-medium text-stone-500">{{ item.insumo.unidade }}</span>
+            </p>
+            <p
+              v-if="item.custo_estimado !== null"
+              class="text-sm text-stone-600 tabular-nums"
+            >
+              cerca de {{ reais(item.custo_estimado) }}
             </p>
           </div>
           <div class="min-w-0 flex-1">
