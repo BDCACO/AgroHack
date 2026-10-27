@@ -86,3 +86,26 @@ class UsuarioResposta(UsuarioResumo):
     criado_em: datetime
     # Até quando o login está bloqueado por senhas erradas seguidas (None: não está).
     bloqueado_ate: datetime | None
+
+
+class SessaoResposta(BaseModel):
+    """Uma sessão aberta, para cada um ver onde há login. Nunca o token nem o hash dele."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    # O que o aparelho disse ser no login ("Celular do Zé"): declarado, não prova.
+    dispositivo: str | None
+    # O IP do login (vazio nas sessões abertas antes de existir o registro).
+    ip: str | None
+    criada_em: datetime
+    # Anotado de 5 em 5 minutos, e não a cada pedido: "em uso agora" é dos últimos minutos.
+    ultimo_uso_em: datetime
+    # Renova com o uso (30 dias depois do último), até 90 dias depois do login.
+    expira_em: datetime
+    # A sessão deste pedido: encerrá-la é sair. Quem monta a resposta é que sabe.
+    atual: bool = False
+
+
+class SessoesEncerradas(BaseModel):
+    encerradas: int

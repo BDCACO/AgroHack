@@ -4,6 +4,7 @@ Puras: sem I/O, sem banco, sem relógio. A data de referência entra como parâm
 para que a mesma entrada dê sempre o mesmo resultado — e o teste não dependa do dia.
 """
 
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
@@ -69,6 +70,17 @@ class Entrada:
     # R$ por unidade do insumo, o preço pago na compra. Opcional: sem ele, a análise
     # funciona igual, só não fala em reais.
     valor_unitario: float | None = None
+
+
+@dataclass(frozen=True)
+class Encomenda:
+    """O que já foi pedido à revenda e ainda não chegou: a parte que falta receber de um
+    item de pedido de compra."""
+
+    quantidade: float
+    # Sem data, a reposição o desconta igual, mas o alerta de falta não sabe se ele chega
+    # antes de o estoque acabar, e a análise diz isso.
+    previsto_para: date | None = None
 
 
 @dataclass(frozen=True)
@@ -208,3 +220,18 @@ def dinheiro_legivel(valor: float) -> str:
 def dias_legivel(dias: float) -> str:
     inteiro = round(dias)
     return "1 dia" if inteiro == 1 else f"{inteiro} dias"
+
+
+def como_se_busca(texto: str) -> str:
+    """O nome como a busca o compara e a ordem por nome o ordena: sem diferenciar
+    maiúsculas nem acentos ("Uréia" e "ureia" são o mesmo)."""
+    # NFKD separa a letra do acento ("é" vira "e" + acento), e o acento sai; casefold é o
+    # lower() que também iguala letras como o "ß".
+    decomposto = unicodedata.normalize("NFKD", texto.strip())
+    return "".join(c for c in decomposto if not unicodedata.combining(c)).casefold()
+
+
+def pelo_nome(nome: str) -> tuple[str, str]:
+    """Chave de `sorted` para nomes: como a busca e, no empate ("Adubo" e "adubo"), o
+    próprio nome, para a ordem não depender da ordem de chegada."""
+    return como_se_busca(nome), nome

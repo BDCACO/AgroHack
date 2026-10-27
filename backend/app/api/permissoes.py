@@ -13,15 +13,18 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.api.protecoes import anotar_o_usuario, ip_do_cliente
 from app.core.database import get_db
 from app.models import Sessao, Usuario
 from app.services import autenticacao
+from app.services.auditoria import Origem
 
 # auto_error=False: a falta do token é decidida aqui (pode ser permitida), não pelo FastAPI.
 _bearer = HTTPBearer(auto_error=False, description="O token devolvido por POST /auth/entrar.")
 
 
 def sessao_atual(
+    request: Request,
     credencial: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: Session = Depends(get_db),
 ) -> Sessao | None:
@@ -30,14 +33,32 @@ def sessao_atual(
     if credencial is None:
         return None
     try:
-        return autenticacao.sessao_do_token(db, credencial.credentials)
+        sessao = autenticacao.sessao_do_token(db, credencial.credentials)
     except autenticacao.SessaoInvalida as erro:
         raise _nao_autenticado(str(erro)) from None
+    anotar_o_usuario(request, sessao.usuario_id)
+    return sessao
 
 
 def usuario_atual(sessao: Sessao | None = Depends(sessao_atual)) -> Usuario | None:
     """Quem fez o pedido (para a auditoria), ou None sem login."""
     return None if sessao is None else sessao.usuario
+
+
+def origem_do_pedido(request: Request, sessao: Sessao | None = Depends(sessao_atual)) -> Origem:
+    """Quem fez e de onde, para a trilha de auditoria: o usuário e o aparelho da sessão."""
+    return Origem(
+        usuario_id=None if sessao is None else sessao.usuario_id,
+        ip=ip_do_pedido(request),
+        dispositivo=None if sessao is None else sessao.dispositivo,
+    )
+
+
+def ip_do_pedido(request: Request) -> str | None:
+    """O endereço que o uvicorn viu (`ip_do_cliente`): atrás de um proxy, o do proxy, a não
+    ser que o uvicorn suba confiando nele (`--forwarded-allow-ips`) e troque pelo do
+    cliente. O `X-Forwarded-For` não é lido aqui: qualquer um o escreve."""
+    return ip_do_cliente(request.scope)
 
 
 def exigir_sessao(sessao: Sessao | None = Depends(sessao_atual)) -> Sessao:

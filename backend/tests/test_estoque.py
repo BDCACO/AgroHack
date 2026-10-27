@@ -152,6 +152,9 @@ def test_inventario_com_falta_lanca_a_diferenca_sem_virar_consumo(client: TestCl
         "talhao_id": None,  # a falta não foi aplicada em lugar nenhum
         "usuario_id": None,  # autenticação desligada e sem login: ninguém é o autor
         "lancado_por": None,
+        "fornecedor_id": None,  # a falta não veio de revenda nenhuma
+        "comprado_de": None,
+        "item_do_pedido_id": None,
     }
     depois = client.get(f"/api/v1/insumos/{insumo['id']}").json()
     assert depois["estoque_atual"] == 70

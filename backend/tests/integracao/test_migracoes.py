@@ -2,18 +2,32 @@
 criam é o mesmo dos modelos (o autogenerate não acha nada a fazer)."""
 
 import subprocess
+import sys
+from collections.abc import Iterator
 
 import pytest
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, make_url, text
 from sqlalchemy.exc import IntegrityError
 
-from tests.integracao.conftest import alembic
+from tests.integracao.conftest import (
+    BACKEND,
+    PAPEL_DA_APP,
+    URL_DO_BANCO,
+    alembic,
+    ambiente_do_entrypoint,
+)
 
 
 def test_migrations_descem_e_sobem_e_batem_com_os_modelos(banco: Engine) -> None:
-    # O banco da sessão pode ter preços, uuids, talhões e usuários de outro teste:
-    # descartá-los é o pedido aqui.
+    # O banco da sessão pode ter preços, uuids, talhões, usuários, compras, categorias e
+    # eventos de auditoria de outro teste: descartá-los é o pedido aqui.
     alembic(
+        "-x",
+        "descartar_auditoria=sim",
+        "-x",
+        "descartar_categorias=sim",
+        "-x",
+        "descartar_compras=sim",
         "-x",
         "descartar_precos=sim",
         "-x",
@@ -252,3 +266,345 @@ def test_banco_recusa_talhao_fora_da_retirada_para_uso(
         banco.begin() as conexao,
     ):
         conexao.execute(text("DELETE FROM talhoes"))
+
+
+def test_downgrade_nao_descarta_fornecedores_e_pedidos_sem_pedir(banco: Engine) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(
+            text("TRUNCATE insumos, fornecedores, pedidos, usuarios RESTART IDENTITY CASCADE")
+        )
+        conexao.execute(text("INSERT INTO fornecedores (nome) VALUES ('Revenda Boa Safra')"))
+
+    with pytest.raises(subprocess.CalledProcessError) as recusa:
+        alembic("downgrade", "0009")
+    assert "descartar_compras=sim" in recusa.value.stderr
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT nome FROM fornecedores")) == "Revenda Boa Safra"
+
+    alembic("-x", "descartar_compras=sim", "downgrade", "0009")
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT to_regclass('fornecedores')")) is None
+        assert conexao.scalar(text("SELECT to_regclass('pedidos')")) is None
+    alembic("upgrade", "head")
+
+
+@pytest.mark.parametrize(
+    ("tipo", "motivo"), [("saida", None), ("saida", "descarte"), ("entrada", "inventario")]
+)
+def test_banco_recusa_fornecedor_e_pedido_fora_da_compra(
+    banco: Engine, tipo: str, motivo: str | None
+) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, fornecedores, pedidos RESTART IDENTITY CASCADE"))
+        conexao.execute(text("INSERT INTO insumos (nome, unidade) VALUES ('Ureia', 'kg')"))
+        conexao.execute(text("INSERT INTO fornecedores (nome) VALUES ('Revenda')"))
+        conexao.execute(
+            text(
+                "INSERT INTO pedidos (fornecedor_id, situacao, feito_em)"
+                " VALUES (1, 'aberto', '2026-10-01')"
+            )
+        )
+        conexao.execute(
+            text("INSERT INTO itens_do_pedido (pedido_id, insumo_id, quantidade) VALUES (1, 1, 50)")
+        )
+    inserir = text(
+        "INSERT INTO movimentacoes"
+        " (insumo_id, tipo, data, quantidade, motivo, fornecedor_id, item_do_pedido_id)"
+        " VALUES (1, :tipo, '2026-10-01', 1, :motivo, :fornecedor, :item)"
+    )
+    for fornecedor, item, restricao in (
+        (1, None, "ck_movimentacoes_fornecedor_so_em_compra"),
+        (None, 1, "ck_movimentacoes_pedido_so_em_compra"),
+    ):
+        with pytest.raises(IntegrityError, match=restricao), banco.begin() as conexao:
+            conexao.execute(
+                inserir, {"tipo": tipo, "motivo": motivo, "fornecedor": fornecedor, "item": item}
+            )
+    # A compra aceita os dois; e o fornecedor com compra ou pedido não se apaga, nem fora
+    # da API.
+    with banco.begin() as conexao:
+        conexao.execute(inserir, {"tipo": "entrada", "motivo": None, "fornecedor": 1, "item": 1})
+    with (
+        pytest.raises(
+            IntegrityError, match=r"fk_(movimentacoes|pedidos)_fornecedor_id_fornecedores"
+        ),
+        banco.begin() as conexao,
+    ):
+        conexao.execute(text("DELETE FROM fornecedores"))
+
+
+@pytest.mark.parametrize(
+    ("situacao", "previsto_para", "restricao"),
+    [
+        ("perdido", None, "ck_pedidos_situacao_valida"),
+        ("aberto", "2026-09-30", "ck_pedidos_previsto_depois_de_feito"),
+    ],
+)
+def test_banco_recusa_pedido_incoerente_mesmo_fora_da_api(
+    banco: Engine, situacao: str, previsto_para: str | None, restricao: str
+) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE pedidos RESTART IDENTITY CASCADE"))
+
+    with pytest.raises(IntegrityError, match=restricao), banco.begin() as conexao:
+        conexao.execute(
+            text(
+                "INSERT INTO pedidos (situacao, feito_em, previsto_para)"
+                " VALUES (:situacao, '2026-10-01', :previsto_para)"
+            ),
+            {"situacao": situacao, "previsto_para": previsto_para},
+        )
+
+
+def test_a_migration_cria_as_categorias_de_partida(banco: Engine) -> None:
+    alembic("-x", "descartar_categorias=sim", "downgrade", "0010")
+    alembic("upgrade", "head")
+
+    with banco.connect() as conexao:
+        nomes = conexao.scalars(text("SELECT nome FROM categorias ORDER BY id")).all()
+    assert nomes[:3] == ["Fertilizante", "Corretivo de solo", "Defensivo agrícola"]
+    assert "Nutrição animal" in nomes
+
+
+@pytest.mark.parametrize("o_que", ["insumo com categoria", "categoria cadastrada pelo dono"])
+def test_downgrade_nao_descarta_categorias_sem_pedir(banco: Engine, o_que: str) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, categorias RESTART IDENTITY CASCADE"))
+        conexao.execute(text("INSERT INTO categorias (nome) VALUES ('Fertilizante')"))
+        if o_que == "insumo com categoria":
+            conexao.execute(
+                text("INSERT INTO insumos (nome, unidade, categoria_id) VALUES ('Ureia', 'kg', 1)")
+            )
+        else:
+            conexao.execute(text("INSERT INTO categorias (nome) VALUES ('Sementes de pasto')"))
+
+    with pytest.raises(subprocess.CalledProcessError) as recusa:
+        alembic("downgrade", "0010")
+    assert "descartar_categorias=sim" in recusa.value.stderr
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT count(*) FROM categorias")) >= 1
+
+    alembic("-x", "descartar_categorias=sim", "downgrade", "0010")
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT to_regclass('categorias')")) is None
+    alembic("upgrade", "head")
+
+
+def test_so_as_categorias_de_partida_descem_sem_pedir(banco: Engine) -> None:
+    # Recriadas pela própria migration ao subir: descê-las não perde nada.
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, categorias RESTART IDENTITY CASCADE"))
+        conexao.execute(text("INSERT INTO categorias (nome) VALUES ('Fertilizante'), ('Outros')"))
+
+    alembic("downgrade", "0010")
+    alembic("upgrade", "head")
+
+
+def test_categoria_com_insumo_nao_se_apaga_nem_fora_da_api(banco: Engine) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, categorias RESTART IDENTITY CASCADE"))
+        conexao.execute(text("INSERT INTO categorias (nome) VALUES ('Fertilizante')"))
+        conexao.execute(
+            text("INSERT INTO insumos (nome, unidade, categoria_id) VALUES ('Ureia', 'kg', 1)")
+        )
+
+    with (
+        pytest.raises(IntegrityError, match="fk_insumos_categoria_id_categorias"),
+        banco.begin() as conexao,
+    ):
+        conexao.execute(text("DELETE FROM categorias"))
+
+
+def _indices_de_movimentacoes(banco: Engine) -> set[str]:
+    with banco.connect() as conexao:
+        return set(
+            conexao.scalars(
+                text("SELECT indexname FROM pg_indexes WHERE tablename = 'movimentacoes'")
+            )
+        )
+
+
+def test_indices_da_lista_de_movimentacoes_sobem_e_descem(banco: Engine) -> None:
+    novos = {"ix_movimentacoes_data_id", "ix_movimentacoes_insumo_id_data_id"}
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE insumos, categorias RESTART IDENTITY CASCADE"))
+
+    assert novos <= _indices_de_movimentacoes(banco)
+    # O composto começa por insumo_id: o simples sairia redundante.
+    assert "ix_movimentacoes_insumo_id" not in _indices_de_movimentacoes(banco)
+
+    alembic("-x", "descartar_categorias=sim", "downgrade", "0010")
+    depois = _indices_de_movimentacoes(banco)
+    assert not novos & depois
+    assert "ix_movimentacoes_insumo_id" in depois
+    alembic("upgrade", "head")
+
+
+def _poderes_na_auditoria(banco: Engine) -> dict[str, bool]:
+    with banco.connect() as conexao:
+        return {
+            poder: conexao.scalar(
+                text("SELECT has_table_privilege(:papel, 'eventos_de_auditoria', :poder)"),
+                {"papel": PAPEL_DA_APP, "poder": poder},
+            )
+            for poder in ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE")
+        }
+
+
+def test_downgrade_nao_descarta_a_auditoria_sem_pedir(banco: Engine) -> None:
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE eventos_de_auditoria"))
+        conexao.execute(
+            text(
+                "INSERT INTO eventos_de_auditoria (acao, entidade, entidade_id, dados, origem)"
+                " VALUES ('insumo.removido', 'insumo', 1, CAST(:dados AS jsonb), 'terminal')"
+            ),
+            {"dados": '{"nome": "Ureia"}'},
+        )
+
+    with pytest.raises(subprocess.CalledProcessError) as recusa:
+        alembic("downgrade", "0011")
+    assert "descartar_auditoria=sim" in recusa.value.stderr
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT dados->>'nome' FROM eventos_de_auditoria")) == "Ureia"
+
+    alembic("-x", "descartar_auditoria=sim", "downgrade", "0011")
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT to_regclass('eventos_de_auditoria')")) is None
+        assert conexao.scalar(text("SELECT to_regproc('recusar_mudanca_na_auditoria')")) is None
+    alembic("upgrade", "head")
+
+
+def test_a_tabela_da_auditoria_nasce_somente_acrescentar(banco: Engine) -> None:
+    """Recriada pela migration, sem o comando do papel rodar de novo (um `make migrate` com a
+    API no ar): o ALTER DEFAULT PRIVILEGES daria o DML inteiro, e a migration o tira."""
+    alembic("-x", "descartar_auditoria=sim", "downgrade", "0011")
+    alembic("upgrade", "head")
+
+    assert _poderes_na_auditoria(banco) == {
+        "SELECT": True,
+        "INSERT": True,
+        "UPDATE": False,
+        "DELETE": False,
+        "TRUNCATE": False,
+    }
+    # E o gatilho, que recusa até o dono, volta com ela.
+    with banco.begin() as conexao:
+        conexao.execute(
+            text(
+                "INSERT INTO eventos_de_auditoria (acao, dados, origem)"
+                " VALUES ('demo.limpa', CAST('{}' AS jsonb), 'terminal')"
+            )
+        )
+    with pytest.raises(IntegrityError, match="só aceita acrescentar"), banco.begin() as conexao:
+        conexao.execute(text("DELETE FROM eventos_de_auditoria"))
+
+
+def _colunas_de_sessoes(banco: Engine) -> set[str]:
+    with banco.connect() as conexao:
+        return set(
+            conexao.scalars(
+                text(
+                    "SELECT column_name FROM information_schema.columns"
+                    " WHERE table_name = 'sessoes'"
+                )
+            )
+        )
+
+
+def test_a_0013_comeca_o_ultimo_uso_no_login_e_desce_sem_pedir(banco: Engine) -> None:
+    """As sessões abertas antes da 0013 continuam valendo: o último uso começa no login (o
+    único uso que se sabe delas), e o IP fica vazio. O downgrade não pede confirmação: as
+    duas colunas são anotações sobre a sessão, e não dado do produtor."""
+    alembic("downgrade", "0012")
+    with banco.begin() as conexao:
+        conexao.execute(text("TRUNCATE usuarios RESTART IDENTITY CASCADE"))
+        conexao.execute(
+            text(
+                "INSERT INTO usuarios (nome, login, senha_hash, papel)"
+                " VALUES ('Zé', 'ze', 'scrypt$x', 'funcionario')"
+            )
+        )
+        conexao.execute(
+            text(
+                "INSERT INTO sessoes (usuario_id, token_hash, criada_em, expira_em, dispositivo)"
+                " VALUES (1, repeat('a', 64), now() - interval '10 days',"
+                " now() + interval '20 days', 'Celular do Zé')"
+            )
+        )
+
+    alembic("upgrade", "head")
+    with banco.connect() as conexao:
+        sessao = conexao.execute(
+            text("SELECT ultimo_uso_em = criada_em, ip, dispositivo FROM sessoes")
+        ).one()
+    assert tuple(sessao) == (True, None, "Celular do Zé")
+
+    alembic("downgrade", "0012")
+    assert not {"ultimo_uso_em", "ip"} & _colunas_de_sessoes(banco)
+    with banco.connect() as conexao:
+        assert conexao.scalar(text("SELECT dispositivo FROM sessoes")) == "Celular do Zé"
+    alembic("upgrade", "head")
+    assert {"ultimo_uso_em", "ip"} <= _colunas_de_sessoes(banco)
+
+
+# A senha do dono com o que o configparser do Alembic entende como interpolação ("%",
+# "%(x)s") e com "@", que na URL vira "%40": todas chegam à URL codificadas, com "%".
+SENHA_COM_PORCENTO = "Segr@do%Dono%(x)s 100%"
+PAPEL_COM_PORCENTO = "dono_com_porcento_teste"
+
+
+@pytest.fixture
+def dono_com_porcento(banco: Engine) -> Iterator[None]:
+    with banco.begin() as conexao:
+        conexao.execute(text(f"DROP ROLE IF EXISTS {PAPEL_COM_PORCENTO}"))
+        senha = SENHA_COM_PORCENTO.replace("'", "''")
+        conexao.execute(
+            text(f"CREATE ROLE {PAPEL_COM_PORCENTO} LOGIN SUPERUSER PASSWORD '{senha}'")
+        )
+    yield
+    with banco.begin() as conexao:
+        conexao.execute(text(f"DROP ROLE IF EXISTS {PAPEL_COM_PORCENTO}"))
+
+
+def _url_do_dono(senha: str) -> str:
+    return (
+        make_url(URL_DO_BANCO)
+        .set(username=PAPEL_COM_PORCENTO, password=senha)
+        .render_as_string(hide_password=False)
+    )
+
+
+def _alembic_sem_conferir(url: str, *argumentos: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 (comando fixo)
+        [sys.executable, "-m", "alembic", *argumentos],
+        cwd=BACKEND,
+        env=ambiente_do_entrypoint(MIGRATIONS_DATABASE_URL=url),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_senha_do_dono_com_porcento_funciona_e_nao_vai_para_o_log(
+    dono_com_porcento: None,
+) -> None:
+    url = _url_do_dono(SENHA_COM_PORCENTO)
+    assert "%25" in url
+    assert "%40" in url
+
+    for argumentos in (("upgrade", "head"), ("current",), ("upgrade", "head", "--sql")):
+        rodou = _alembic_sem_conferir(url, *argumentos)
+        assert rodou.returncode == 0, rodou.stderr
+        assert SENHA_COM_PORCENTO not in rodou.stdout + rodou.stderr
+        assert url not in rodou.stdout + rodou.stderr
+
+    # Com a senha errada, o Alembic cai, mas a senha não aparece na saída.
+    errada = "Errada%40%Tamb@m"
+    url_errada = _url_do_dono(errada)
+    caiu = _alembic_sem_conferir(url_errada, "upgrade", "head")
+    assert caiu.returncode != 0
+    saida = caiu.stdout + caiu.stderr
+    assert "password authentication failed" in saida
+    for segredo in (errada, url_errada, make_url(url_errada).password):
+        assert str(segredo) not in saida

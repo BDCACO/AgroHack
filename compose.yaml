@@ -32,7 +32,11 @@ services:
       target: dev
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # Dois papéis no PostgreSQL. A API conecta com o da aplicação, que só lê e grava
+      # dados; o POSTGRES_USER, superusuário e dono do schema, fica para as migrations e
+      # para criar o papel da aplicação, no entrypoint (ver backend/app/papel_da_aplicacao.py).
+      DATABASE_URL: postgresql+psycopg://${APP_DB_USER:-campocerto_app}:${APP_DB_PASSWORD:?defina APP_DB_PASSWORD no .env (só letras e números; gere com openssl rand -hex 16)}@db:5432/${POSTGRES_DB}
+      MIGRATIONS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       # Login com papéis. Desligada por padrão no desenvolvimento (o site e o app ainda não
       # têm tela de login); em production a API não sobe sem AUTENTICACAO=true.

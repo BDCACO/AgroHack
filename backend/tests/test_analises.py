@@ -64,3 +64,19 @@ def test_custo_medio_opcional_poe_reais_nos_alertas(client: TestClient) -> None:
     assert vencido["justificativa"].endswith("são cerca de R$ 15,00.")
     corpo["insumo"]["custo_medio"] = 0
     assert client.post("/api/v1/analises", json=corpo).status_code == 422
+
+
+def test_pedido_a_caminho_opcional_entra_na_reposicao(client: TestClient) -> None:
+    a_caminho = [{"quantidade": 70, "previsto_para": str(REF + timedelta(days=5))}]
+
+    corpo = client.post("/api/v1/analises", json=pedido(a_caminho=a_caminho)).json()
+
+    # O que já foi pedido não se pede de novo; o alerta de falta diz quando chega.
+    assert corpo["reposicao"]["pedir_hoje"] is False
+    risco = next(a for a in corpo["alertas"] if a["tipo"] == "risco_de_falta")
+    assert risco["gravidade"] == "media"
+    assert "Já foram pedidos 70 kg." in risco["justificativa"]
+    sem_data = client.post("/api/v1/analises", json=pedido(a_caminho=[{"quantidade": 70}]))
+    assert sem_data.status_code == 200
+    negativo = pedido(a_caminho=[{"quantidade": -1}])
+    assert client.post("/api/v1/analises", json=negativo).status_code == 422

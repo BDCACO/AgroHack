@@ -14,7 +14,7 @@ import csv
 import io
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from zipfile import ZipFile
 
@@ -24,12 +24,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
-from app.models import Insumo, Movimentacao, Talhao
+from app.models import Categoria, Fornecedor, Insumo, Movimentacao, Talhao
 from app.schemas.estoque import (
     QUANTIDADE_MAXIMA,
     SEM_CARACTERE_DE_CONTROLE,
     VALOR_UNITARIO_MAXIMO,
 )
+from app.services import auditoria
 
 COLUNAS_OBRIGATORIAS = ("data", "insumo", "tipo", "quantidade")
 # Colunas de número, que decidem juntas se a vírgula é decimal ou milhar. `valor` (o preço
@@ -102,6 +103,11 @@ class ResultadoImportacao:
     # Linhas idênticas a movimentações que já estão no banco: sinal de planilha
     # importada duas vezes. Só aviso — duas retiradas iguais no mesmo dia existem.
     ja_lancadas: int = 0
+    # Fornecedores que a planilha vai cadastrar, como o insumo novo: confira a grafia antes
+    # de importar, para "Revenda Boa Safra" e "Revenda Boa Safa" não virarem dois.
+    fornecedores_novos: list[str] = field(default_factory=list)
+    # As categorias que a planilha vai cadastrar (dos insumos novos), pelo mesmo motivo.
+    categorias_novas: list[str] = field(default_factory=list)
     erros: list[str] = field(default_factory=list)
     importado: bool = False
 
@@ -116,6 +122,7 @@ class _Linha:
     motivo: str | None
     valor_unitario: float | None
     talhao: Talhao | None  # onde a retirada foi aplicada; só cadastrado
+    fornecedor: Fornecedor | None  # de quem foi a compra: o cadastrado, ou um novo
 
 
 # (número da linha no arquivo, células) — ou, no lugar das células, o erro de forma da
@@ -124,10 +131,11 @@ type _Lidas = list[tuple[int, list[Celula] | str]]
 
 
 def importar(
-    db: Session, arquivo: str | bytes, *, confirmar: bool, usuario_id: int | None = None
+    db: Session, arquivo: str | bytes, *, confirmar: bool, origem: auditoria.Origem
 ) -> ResultadoImportacao:
     """Confere a planilha — texto = CSV, bytes = .xlsx — e devolve o resumo. Com
-    `confirmar` e sem erros, grava em nome de `usuario_id` (quem importou)."""
+    `confirmar` e sem erros, grava em nome de quem importou (`origem`), e o resumo vai
+    para a trilha de auditoria na mesma transação."""
     resultado = ResultadoImportacao()
     if isinstance(arquivo, bytes):
         lido = _ler_xlsx(arquivo, resultado.erros)
@@ -149,6 +157,13 @@ def importar(
     talhoes: dict[str, list[Talhao]] = {}
     for talhao in db.scalars(select(Talhao).order_by(Talhao.nome)):
         talhoes.setdefault(talhao.nome.casefold(), []).append(talhao)
+    fornecedores: dict[str, list[Fornecedor]] = {}
+    for fornecedor in db.scalars(select(Fornecedor).order_by(Fornecedor.nome)):
+        fornecedores.setdefault(fornecedor.nome.casefold(), []).append(fornecedor)
+    fornecedores_novos: dict[str, Fornecedor] = {}
+    categorias = _Cadastro(cadastradas={}, novos={})
+    for categoria in db.scalars(select(Categoria).order_by(Categoria.nome)):
+        categorias.cadastradas.setdefault(categoria.nome.casefold(), []).append(categoria)
     linhas: list[_Linha] = []
     for numero, celulas in lidas:
         if isinstance(celulas, str):
@@ -156,13 +171,28 @@ def importar(
             continue
         campos = dict(zip(cabecalho, celulas, strict=False))
         try:
-            linhas.append(_ler(campos, decimal, cadastrados, novos, talhoes))
+            linhas.append(
+                _ler(
+                    campos,
+                    decimal,
+                    cadastrados,
+                    novos,
+                    talhoes,
+                    fornecedores,
+                    fornecedores_novos,
+                    categorias,
+                )
+            )
         except ValueError as erro:
             resultado.erros.append(f"Linha {numero}: {erro}")
 
     if not linhas and not resultado.erros:
         resultado.erros.append("Nenhuma movimentação na planilha.")
     _resumir(resultado, linhas)
+    resultado.fornecedores_novos = [f.nome for f in fornecedores_novos.values()]
+    # Só as que algum insumo novo vai de fato usar: a linha com erro não cadastra nada.
+    usadas = {id(i.categoria) for i in novos.values() if i.categoria is not None}
+    resultado.categorias_novas = [c.nome for c in categorias.novos.values() if id(c) in usadas]
     resultado.ja_lancadas = _ja_lancadas(db, linhas)
     if resultado.erros or not confirmar:
         return resultado
@@ -176,7 +206,9 @@ def importar(
             motivo=linha.motivo,
             valor_unitario=linha.valor_unitario,
             talhao_id=linha.talhao and linha.talhao.id,
-            usuario_id=usuario_id,
+            # Pela relação, e não pelo id: o fornecedor novo só ganha id ao gravar.
+            fornecedor=linha.fornecedor,
+            usuario_id=origem.usuario_id,
         )
         if linha.insumo.id is None:
             linha.insumo.movimentacoes.append(movimentacao)
@@ -184,6 +216,29 @@ def importar(
             movimentacao.insumo_id = linha.insumo.id
             db.add(movimentacao)
     db.add_all(novos.values())
+    db.add_all(fornecedores_novos.values())
+    # A categoria nova vai junto com o insumo novo que a usa (a relação a grava).
+    # Milhares de lançamentos de uma vez: o resumo, e não cada linha (a planilha é a cópia
+    # dela, e cada movimentação já diz quem a lançou), basta para saber o que entrou.
+    auditoria.registrar(
+        db,
+        origem,
+        "importacao.confirmada",
+        "importacao",
+        None,
+        {
+            "formato": "xlsx" if isinstance(arquivo, bytes) else "csv",
+            "linhas": resultado.linhas,
+            "entradas": resultado.entradas,
+            "saidas": resultado.saidas,
+            "primeira_data": resultado.primeira_data,
+            "ultima_data": resultado.ultima_data,
+            "ja_lancadas": resultado.ja_lancadas,
+            "insumos": [asdict(total) for total in resultado.insumos],
+            "fornecedores_novos": resultado.fornecedores_novos,
+            "categorias_novas": resultado.categorias_novas,
+        },
+    )
     db.commit()
     resultado.importado = True
     return resultado
@@ -414,12 +469,27 @@ def _pista(texto: str) -> str | None:
     return separador
 
 
+@dataclass
+class _Cadastro:
+    """As categorias pelo nome sem diferenciar maiúsculas, como o insumo e o fornecedor: o
+    cadastro aceita "Adubo" e "adubo", e a planilha casa a chave com as duas (aí é erro na
+    linha). E as que a planilha vai cadastrar, uma por chave: "Adubo" e "adubo" novas são
+    uma só, com a grafia da primeira linha (a cópia de segurança de um sistema que tinha as
+    duas, restaurada num vazio, junta-as; a prévia mostra a que vai ser criada)."""
+
+    cadastradas: dict[str, list[Categoria]]
+    novos: dict[str, Categoria]
+
+
 def _ler(
     campos: dict[str, Celula],
     decimal: str,
     cadastrados: dict[str, list[Insumo]],
     novos: dict[str, Insumo],
     talhoes: dict[str, list[Talhao]],
+    fornecedores: dict[str, list[Fornecedor]],
+    fornecedores_novos: dict[str, Fornecedor],
+    categorias: _Cadastro,
 ) -> _Linha:
     nome = _texto(campos.get("insumo", ""))
     if not nome:
@@ -476,8 +546,29 @@ def _ler(
                 "talhão só se informa numa saída (retirada para uso): é onde o insumo foi aplicado."
             )
         talhao = _talhao(nome_do_talhao, talhoes)
+    fornecedor = None
+    if nome_do_fornecedor := _texto(campos.get("fornecedor", "")):
+        # De quem se comprou: descarte, retirada, sobra e falta não vieram de revenda.
+        if tipo != "entrada" or motivo is not None:
+            raise ValueError(
+                "fornecedor só se informa numa entrada (compra): é de quem se comprou."
+            )
+        if len(nome_do_fornecedor) > 120:
+            raise ValueError("nome do fornecedor com mais de 120 caracteres.")
+        if not re.fullmatch(SEM_CARACTERE_DE_CONTROLE, nome_do_fornecedor):
+            raise ValueError("o nome do fornecedor tem um caractere inválido.")
+        fornecedor = _fornecedor(nome_do_fornecedor, fornecedores, fornecedores_novos)
+    nome_da_categoria = _texto(campos.get("categoria", ""))
+    if len(nome_da_categoria) > 60:
+        raise ValueError("nome da categoria com mais de 60 caracteres.")
+    if not re.fullmatch(SEM_CARACTERE_DE_CONTROLE, nome_da_categoria):
+        raise ValueError("o nome da categoria tem um caractere inválido.")
     insumo = _insumo(nome, unidade, cadastrados, novos)
-    return _Linha(insumo, tipo, data, quantidade, validade, motivo, valor_unitario, talhao)
+    if nome_da_categoria and insumo.id is None:
+        _categorizar(insumo, nome_da_categoria, categorias)
+    return _Linha(
+        insumo, tipo, data, quantidade, validade, motivo, valor_unitario, talhao, fornecedor
+    )
 
 
 def _numero(celula: Celula, decimal: str, coluna: str, *, casas: int) -> float:
@@ -518,6 +609,58 @@ def _insumo(
         # Somar kg com saca daria um estoque sem sentido.
         raise ValueError(f'"{nome}" já está cadastrado em {insumo.unidade}, não em {unidade}.')
     return insumo
+
+
+def _categorizar(insumo: Insumo, nome: str, categorias: _Cadastro) -> None:
+    """A categoria só vale para o insumo que a planilha cadastra. O já cadastrado fica com a
+    da tela de Insumos: a planilha é de movimentações, e mudar o cadastro por uma coluna
+    dela seria uma segunda tela de cadastro, escondida. A que não existe é cadastrada pelo
+    nome, como o fornecedor: só precisa dele, e a cópia de segurança restaurada num sistema
+    vazio devolve cada insumo à sua categoria sem cadastro à mão."""
+    chave = nome.casefold()
+    match categorias.cadastradas.get(chave, []):
+        case [categoria]:
+            pass
+        case []:
+            categoria = categorias.novos.setdefault(chave, Categoria(nome=nome))
+        case varias:
+            # O cadastro diferencia maiúsculas; a planilha, não. Escolher uma seria chute.
+            raise ValueError(
+                f'há mais de uma categoria cadastrada como "{nome}" '
+                f"({', '.join(c.nome for c in varias)}); renomeie uma delas antes de importar."
+            )
+    if insumo.categoria is None:
+        insumo.categoria = categoria
+    elif insumo.categoria is not categoria:
+        # O mesmo insumo novo em duas categorias: escolher uma seria chute.
+        raise ValueError(
+            f'"{insumo.nome}" já está na categoria {insumo.categoria.nome} em outra linha, '
+            f"não em {nome}."
+        )
+
+
+def _fornecedor(
+    nome: str, cadastrados: dict[str, list[Fornecedor]], novos: dict[str, Fornecedor]
+) -> Fornecedor:
+    """Casa o nome com o cadastro, sem diferenciar maiúsculas, como o insumo. O que não
+    existe é cadastrado com a grafia da primeira linha em que aparece: o fornecedor, ao
+    contrário do talhão, só precisa do nome, e a cópia de segurança restaurada num sistema
+    vazio traz de volta de quem foi cada compra sem cadastro à mão. A prévia lista os novos
+    (`fornecedores_novos`), para a grafia ser conferida antes de gravar."""
+    chave = nome.casefold()
+    match cadastrados.get(chave, []):
+        case [fornecedor]:
+            return fornecedor
+        case []:
+            if chave not in novos:
+                novos[chave] = Fornecedor(nome=nome)
+            return novos[chave]
+        case varios:
+            raise ValueError(
+                f'há mais de um fornecedor cadastrado como "{nome}" '
+                f"({', '.join(f.nome for f in varios)}); renomeie um deles na tela de "
+                "Fornecedores."
+            )
 
 
 def _talhao(nome: str, talhoes: dict[str, list[Talhao]]) -> Talhao:
@@ -574,13 +717,14 @@ def _ja_lancadas(db: Session, linhas: list[_Linha]) -> int:
     ids = {linha.insumo.id for linha in linhas if linha.insumo.id is not None}
     if not ids:
         return 0
-    # Preço e talhão contam só quando os dois lados os têm: preço diferente é outra
-    # compra, mas o preço (ou o talhão) que faltava antes completa o lançamento, não faz
-    # dele outro. A mesma compra reimportada, agora com o preço, tem de ser avisada.
+    # Preço, talhão e fornecedor contam só quando os dois lados os têm: preço diferente é
+    # outra compra, mas o preço (ou o talhão, ou o fornecedor) que faltava antes completa o
+    # lançamento, não faz dele outro. A mesma compra reimportada, agora com o preço, tem de
+    # ser avisada.
     no_banco: dict[tuple, list[tuple]] = defaultdict(list)
     for m in db.scalars(select(Movimentacao).where(Movimentacao.insumo_id.in_(ids))):
         chave = (m.insumo_id, m.tipo, m.data, m.quantidade, m.validade, m.motivo)
-        no_banco[chave].append((m.valor_unitario, m.talhao_id))
+        no_banco[chave].append((m.valor_unitario, m.talhao_id, m.fornecedor_id))
     repetidas = 0
     for linha in linhas:
         chave = (
@@ -591,7 +735,12 @@ def _ja_lancadas(db: Session, linhas: list[_Linha]) -> int:
             linha.validade,
             linha.motivo,
         )
-        completa = (linha.valor_unitario, linha.talhao and linha.talhao.id)
+        fornecedor = linha.fornecedor
+        if fornecedor is not None:
+            # O fornecedor que a planilha vai cadastrar ainda não tem id, e não é nenhum dos
+            # gravados: uma marca que não casa com id nenhum, mas também não é "vazio".
+            fornecedor = fornecedor.id or ("novo", fornecedor.nome.casefold())
+        completa = (linha.valor_unitario, linha.talhao and linha.talhao.id, fornecedor)
         candidatos = no_banco[chave]
         for indice, gravada in enumerate(candidatos):
             if all(

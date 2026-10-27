@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.analysis.consumo import Analise, analisar
-from app.domain.estoque import Insumo, Lote, Retirada
+from app.domain.estoque import Encomenda, Insumo, Lote, Retirada
 from app.schemas.analise import PedidoDeAnalise
 
 router = APIRouter(tags=["análise"])
@@ -23,4 +23,5 @@ def analisar_insumo(pedido: PedidoDeAnalise) -> Analise:
         registros_desde=pedido.registros_desde,
         referencia=pedido.referencia,
         custo_medio=custo_medio,
+        a_caminho=[Encomenda(**e.model_dump()) for e in pedido.a_caminho],
     )

@@ -15,6 +15,7 @@ from app.domain import talhao as regras
 from app.models import Insumo, Movimentacao, Talhao
 from app.schemas.estoque import MovimentacaoResposta
 from app.schemas.talhao import TalhaoCadastro, TalhaoDetalhe, TalhaoResposta
+from app.services import auditoria
 
 
 class NomeDuplicado(Exception):
@@ -90,23 +91,39 @@ def criar_talhao(db: Session, dados: TalhaoCadastro) -> TalhaoResposta:
     return _resposta(talhao, [], {}, hoje())
 
 
-def atualizar_talhao(db: Session, talhao_id: int, dados: TalhaoCadastro) -> TalhaoResposta:
+def atualizar_talhao(
+    db: Session, talhao_id: int, dados: TalhaoCadastro, origem: auditoria.Origem
+) -> TalhaoResposta:
     talhao = buscar_talhao(db, talhao_id)
+    antes = _cadastro(talhao)
     for campo, valor in dados.model_dump().items():
         setattr(talhao, campo, valor)
+    # A área é o divisor do custo por hectare: mudá-la muda a conta de todas as safras.
+    if mudou := auditoria.diferencas(antes, _cadastro(talhao)):
+        auditoria.registrar(
+            db, origem, "talhao.alterado", "talhao", talhao.id, {"nome": talhao.nome, **mudou}
+        )
     _salvar(db)
     # A área mudou o custo por hectare; o nome, a frase da carência.
     aplicacoes = _aplicacoes(db, talhao_id).get(talhao_id, [])
     return _resposta(talhao, aplicacoes, _custos_medios(db), hoje())
 
 
-def remover_talhao(db: Session, talhao_id: int) -> None:
+def remover_talhao(db: Session, talhao_id: int, origem: auditoria.Origem) -> None:
     talhao = buscar_talhao(db, talhao_id)
     aplicacoes = db.scalar(
         select(func.count()).select_from(Movimentacao).where(Movimentacao.talhao_id == talhao_id)
     )
     if aplicacoes:
         raise TalhaoComAplicacoes(talhao.nome, aplicacoes)
+    auditoria.registrar(
+        db,
+        origem,
+        "talhao.removido",
+        "talhao",
+        talhao.id,
+        {"id": talhao.id, **_cadastro(talhao), "demonstracao": talhao.demonstracao},
+    )
     db.delete(talhao)
     try:
         db.commit()
@@ -121,6 +138,10 @@ def buscar_talhao(db: Session, talhao_id: int) -> Talhao:
     if talhao is None:
         raise TalhaoInexistente
     return talhao
+
+
+def _cadastro(talhao: Talhao) -> dict[str, object]:
+    return {"nome": talhao.nome, "area_ha": talhao.area_ha, "cultura": talhao.cultura}
 
 
 def _salvar(db: Session) -> None:

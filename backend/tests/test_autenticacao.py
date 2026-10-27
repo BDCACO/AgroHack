@@ -123,20 +123,24 @@ def test_sem_token_ou_com_token_falso_e_401_com_www_authenticate(
         assert "entre" in resposta.json()["detail"].lower()
 
 
-def test_sessao_expira_em_30_dias(
+def test_sessao_sem_uso_expira_em_30_dias(
     cliente_autenticado: TestClient, criar_usuario: CriarUsuario, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # A validade se renova com o uso (tests/test_sessoes.py): o que vence em 30 dias é a
+    # sessão esquecida, como a do aparelho que ninguém mais abre.
     criar_usuario("ze")
-    cabecalho = entrar(cliente_autenticado, "ze")
     agora = datetime.now(UTC)
+    monkeypatch.setattr(autenticacao, "agora", lambda: agora)
+    esquecido, em_uso = entrar(cliente_autenticado, "ze"), entrar(cliente_autenticado, "ze")
 
     monkeypatch.setattr(autenticacao, "agora", lambda: agora + timedelta(days=29, hours=23))
-    assert cliente_autenticado.get(EU, headers=cabecalho).status_code == 200
+    assert cliente_autenticado.get(EU, headers=em_uso).status_code == 200
 
     monkeypatch.setattr(autenticacao, "agora", lambda: agora + timedelta(days=30, minutes=1))
-    resposta = cliente_autenticado.get(EU, headers=cabecalho)
+    resposta = cliente_autenticado.get(EU, headers=esquecido)
     assert resposta.status_code == 401
     assert "expirou" in resposta.json()["detail"]
+    assert cliente_autenticado.get(EU, headers=em_uso).status_code == 200
 
 
 def test_sair_encerra_so_a_sessao_atual(

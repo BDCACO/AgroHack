@@ -14,6 +14,10 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 # de autenticação pedem a sua (`cliente_autenticado`). Um AUTENTICACAO=true no .env do
 # desenvolvedor não pode mudar o resultado da suíte.
 os.environ["AUTENTICACAO"] = "false"
+# Desligado pelo mesmo motivo: todo pedido do TestClient vem do mesmo "IP", e os testes que
+# montam o cenário pela API (120 movimentações num segundo) passariam do limite de
+# escritas, que é para gente. Os testes do limite o ligam (tests/test_limite_por_ip.py).
+os.environ["LIMITE_POR_IP"] = "false"
 
 from collections.abc import Callable, Iterator
 from functools import cache
@@ -32,6 +36,10 @@ from app.models import Base, Usuario
 
 # Senha de todos os usuários criados pelos testes.
 SENHA = "senha-do-teste"
+# O IP de onde vêm os pedidos do `client` e do `cliente_autenticado` (um da faixa reservada
+# para documentação). O padrão do TestClient, "testclient", não é IP, e a API só guarda IP
+# (`ip_do_cliente`, em app/api/protecoes.py).
+IP_DO_TESTE = "192.0.2.10"
 
 
 @pytest.fixture
@@ -52,7 +60,7 @@ def db() -> Iterator[Session]:
 def client(db: Session) -> Iterator[TestClient]:
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
-    with TestClient(app) as c:
+    with TestClient(app, client=(IP_DO_TESTE, 50000)) as c:
         yield c
 
 
@@ -62,7 +70,7 @@ def cliente_autenticado(db: Session) -> Iterator[TestClient]:
     settings = Settings(environment="test", database_url="sqlite://", autenticacao=True)
     app = create_app(settings)
     app.dependency_overrides[get_db] = lambda: db
-    with TestClient(app) as c:
+    with TestClient(app, client=(IP_DO_TESTE, 50000)) as c:
         yield c
 
 
@@ -92,6 +100,14 @@ def criar_usuario(db: Session) -> CriarUsuario:
         return usuario
 
     return criar
+
+
+def erro_inesperado(caplog: pytest.LogCaptureFixture) -> BaseException:
+    """O erro que virou 500: a API responde com frase e id, e o erro em si vai só para o
+    log (`app.erro`, com o traceback). É por ele que o teste confere o que quebrou."""
+    erros = [r for r in caplog.records if r.name == "app.erro" and r.exc_info]
+    assert erros, "nenhum erro inesperado no log"
+    return erros[-1].exc_info[1]  # type: ignore[index]
 
 
 def entrar(cliente: TestClient, login: str, senha_digitada: str = SENHA) -> dict[str, str]:

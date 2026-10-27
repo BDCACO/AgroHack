@@ -10,7 +10,19 @@ from app.api.permissoes import (
     exigir_funcionario,
     exigir_sessao,
 )
-from app.api.routes import analises, autenticacao, estoque, health, talhoes, usuarios
+from app.api.routes import (
+    analises,
+    auditoria,
+    autenticacao,
+    categorias,
+    estoque,
+    fornecedores,
+    health,
+    pedidos,
+    relatorios,
+    talhoes,
+    usuarios,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router)
@@ -18,7 +30,15 @@ api_router.include_router(autenticacao.publico)
 api_router.include_router(autenticacao.router, dependencies=[Depends(exigir_sessao)])
 api_router.include_router(estoque.campo, dependencies=[Depends(exigir_funcionario)])
 api_router.include_router(estoque.gestao, dependencies=[Depends(exigir_dono)])
+api_router.include_router(categorias.campo, dependencies=[Depends(exigir_funcionario)])
+api_router.include_router(categorias.gestao, dependencies=[Depends(exigir_dono)])
 api_router.include_router(talhoes.campo, dependencies=[Depends(exigir_funcionario)])
 api_router.include_router(talhoes.gestao, dependencies=[Depends(exigir_dono)])
+api_router.include_router(fornecedores.campo, dependencies=[Depends(exigir_funcionario)])
+api_router.include_router(fornecedores.gestao, dependencies=[Depends(exigir_dono)])
+api_router.include_router(pedidos.campo, dependencies=[Depends(exigir_funcionario)])
+api_router.include_router(pedidos.gestao, dependencies=[Depends(exigir_dono)])
+api_router.include_router(relatorios.campo, dependencies=[Depends(exigir_funcionario)])
 api_router.include_router(analises.router, dependencies=[Depends(exigir_dono)])
 api_router.include_router(usuarios.router, dependencies=[Depends(exigir_dono_com_login)])
+api_router.include_router(auditoria.router, dependencies=[Depends(exigir_dono_com_login)])

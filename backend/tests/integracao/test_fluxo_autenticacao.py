@@ -14,7 +14,7 @@ import httpx
 from sqlalchemy import Engine, text
 
 from app.core.relogio import hoje
-from tests.integracao.conftest import BACKEND, URL_DO_BANCO, subir_uvicorn
+from tests.integracao.conftest import BACKEND, URL_DA_APP, subir_uvicorn
 from tests.test_senha import scrypt_de_antes
 
 HOJE = str(hoje())
@@ -31,7 +31,7 @@ def criar_dono(login: str, nome: str, *extras: str) -> subprocess.CompletedProce
     """O comando de verdade, como no servidor, com a senha pela variável de ambiente."""
     ambiente = os.environ | {
         "ENVIRONMENT": "test",
-        "DATABASE_URL": URL_DO_BANCO,
+        "DATABASE_URL": URL_DA_APP,
         "SENHA_DO_DONO": SENHA_DO_DONO,
     }
     comando = ["criar-dono", "--login", login, "--nome", nome, *extras]
@@ -233,7 +233,7 @@ def test_chutes_simultaneos_nao_passam_do_limite(
 def test_producao_sem_autenticacao_nao_sobe(banco: Engine) -> None:
     ambiente = os.environ | {
         "ENVIRONMENT": "production",
-        "DATABASE_URL": URL_DO_BANCO,
+        "DATABASE_URL": URL_DA_APP,
     }
     ambiente.pop("AUTENTICACAO", None)
 

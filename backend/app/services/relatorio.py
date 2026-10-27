@@ -2,9 +2,10 @@
 agrônomo ou guardar.
 
 A aba Movimentações tem o formato da importação: o relatório também é a cópia de
-segurança de todas as entradas e saídas (com o talhão de cada aplicação), e volta para o
-sistema pela mesma tela. Os talhões precisam estar cadastrados antes: a aba Talhões tem a
-área e a cultura de cada um.
+segurança de todas as entradas e saídas (com o talhão de cada aplicação e o fornecedor de
+cada compra), e volta para o sistema pela mesma tela. Os talhões precisam estar
+cadastrados antes: a aba Talhões tem a área e a cultura de cada um. A aba Pedidos mostra o
+que foi pedido e ainda não chegou; ela não volta pela importação.
 """
 
 import math
@@ -21,10 +22,12 @@ from sqlalchemy.orm import Session
 
 from app.core.relogio import hoje
 from app.domain.estoque import Gravidade, TipoAlerta
-from app.models import Insumo, Movimentacao, Talhao
+from app.domain.relatorio_por_periodo import RelatorioPorPeriodo
+from app.models import Categoria, Fornecedor, Insumo, Movimentacao, Talhao
+from app.schemas.compras import PedidoResposta
 from app.schemas.estoque import InsumoResposta, Resumo
 from app.schemas.talhao import TalhaoResposta
-from app.services import estoque, resumo, talhoes
+from app.services import estoque, pedidos, relatorio_por_periodo, resumo, talhoes
 from app.services.planilha_modelo import (
     CINZA,
     FORMATO_DATA,
@@ -66,21 +69,44 @@ _TIPO_NA_PLANILHA = {
 
 
 def gerar(db: Session) -> bytes:
+    # Primeiro tudo que vem do banco; depois a planilha, que é só Python e, com muitas
+    # movimentações, leva segundos. A leitura termina antes de montá-la: com a transação
+    # aberta nesse tempo, o idle_in_transaction_session_timeout derrubaria a conexão no
+    # meio de um relatório legítimo, à medida que o banco cresce.
     insumos = estoque.listar_insumos(db)
     referencia = hoje()
+    numeros = resumo.resumir(db, insumos, referencia)
+    # Todos, sem o limite da lista da tela (200 por situação, os mais recentes).
+    em_andamento = [
+        p
+        for situacao in pedidos.EM_ANDAMENTO
+        for p in pedidos.listar_pedidos(db, situacao, limite=None)
+    ]
+    lista_de_talhoes = talhoes.listar_talhoes(db)
+    # Os últimos 12 meses, como o GET /relatorios/periodo sem datas.
+    por_mes = relatorio_por_periodo.gerar(
+        db, relatorio_por_periodo.inicio_dos_ultimos_meses(referencia), referencia, "mes"
+    )
+    movimentacoes = _movimentacoes(db)
+    db.rollback()  # só leitura: nada a gravar, e a conexão volta livre
+
     livro = Workbook()
     livro.properties.creator = "CampoCerto"
     livro.properties.title = f"Situação do estoque em {referencia:%d/%m/%Y}"
 
     aba_resumo = livro.active
     aba_resumo.title = "Resumo"
-    _aba_de_resumo(aba_resumo, insumos, resumo.resumir(db, insumos, referencia), referencia)
+    _aba_de_resumo(aba_resumo, insumos, numeros, referencia)
     _aba_de_alertas(livro.create_sheet("Alertas"), insumos)
     _aba_de_reposicao(livro.create_sheet("Reposição"), insumos)
+    _aba_de_pedidos(livro.create_sheet("Pedidos"), em_andamento)
     _aba_de_estoque(livro.create_sheet("Estoque"), insumos)
-    _aba_de_talhoes(livro.create_sheet("Talhões"), talhoes.listar_talhoes(db))
+    _aba_de_talhoes(livro.create_sheet("Talhões"), lista_de_talhoes)
+    # Fica antes da aba Movimentações e com outro nome: a importação lê só aquela, e a
+    # cópia de segurança volta igual.
+    _aba_por_mes(livro.create_sheet("Por mês"), por_mes)
     aba_de_movimentacoes(
-        livro.create_sheet("Movimentações"), total_de_insumos=0, linhas=_movimentacoes(db)
+        livro.create_sheet("Movimentações"), total_de_insumos=0, linhas=movimentacoes
     )
 
     arquivo = BytesIO()
@@ -146,6 +172,11 @@ def _aba_de_resumo(
         ("Alertas", "Cada alerta, dos mais graves aos mais leves, com a conta que o justifica."),
         ("Reposição", "Quanto pedir de cada insumo, até quando e quanto custa, com a conta."),
         (
+            "Pedidos",
+            "O que foi pedido às revendas e ainda não chegou, com a previsão de chegada; os "
+            "atrasados em destaque.",
+        ),
+        (
             "Estoque",
             "A situação de cada insumo, o custo médio e o valor em estoque, e o que a análise "
             "não sabe (limitações).",
@@ -156,10 +187,17 @@ def _aba_de_resumo(
             "aplicado, com a conta) e o custo do que foi aplicado nele, total e por hectare.",
         ),
         (
+            "Por mês",
+            "Os últimos 12 meses: o gasto nas compras, o consumo e as perdas em reais, mês "
+            "a mês (o detalhe por insumo, categoria e fornecedor está na tela).",
+        ),
+        (
             "Movimentações",
             "Todas as entradas e saídas, no formato da importação: este arquivo também é a "
-            "cópia de segurança, e volta pela tela Importar dados, com os preços e o talhão de "
-            "cada aplicação. Os talhões precisam estar cadastrados antes (a aba Talhões tem a "
+            "cópia de segurança, e volta pela tela Importar dados, com os preços, o talhão de "
+            "cada aplicação, o fornecedor de cada compra e a categoria de cada insumo (o que "
+            "faltar é cadastrado). Os "
+            "talhões precisam estar cadastrados antes (a aba Talhões tem a "
             "área e a cultura). O mínimo, o prazo, a embalagem, o pedido mínimo e a carência "
             "de cada insumo não voltam: lance-os de novo na tela de Insumos.",
         ),
@@ -221,6 +259,59 @@ def _aba_de_reposicao(aba: Worksheet, insumos: list[InsumoResposta]) -> None:
             pedir.font = fonte(bold=True, color=GRAVIDADES["alta"][2])
         pedir.alignment = Alignment(horizontal="center", vertical="top")
     _filtro(aba, len(pedidos))
+
+
+def _aba_de_pedidos(aba: Worksheet, lista: list[PedidoResposta]) -> None:
+    _tabela(
+        aba,
+        [
+            ("pedido", 9),
+            ("feito em", 12),
+            ("fornecedor", 26),
+            ("previsto para", 13),
+            ("insumo", 28),
+            ("unidade", 10),
+            ("pedido (qtd)", 13),
+            ("recebido", 11),
+            ("falta chegar", 13),
+            ("preço combinado (R$)", 19),
+            ("situação", 12),
+        ],
+    )
+    # Uma linha por insumo que ainda falta chegar; a previsão mais próxima primeiro.
+    linhas = [
+        (pedido, item)
+        for pedido in sorted(
+            lista, key=lambda p: (p.previsto_para is None, p.previsto_para or p.feito_em, p.id)
+        )
+        for item in sorted(pedido.itens, key=lambda i: i.insumo)
+        if item.falta_receber > 0
+    ]
+    if not linhas:
+        _vazio(aba, "Nenhum pedido a caminho.")
+    for numero, (pedido, item) in enumerate(linhas, start=2):
+        aba.cell(numero, 1, pedido.id)
+        aba.cell(numero, 2, pedido.feito_em).number_format = FORMATO_DATA
+        if pedido.fornecedor is not None:
+            _texto(aba.cell(numero, 3), pedido.fornecedor)
+        aba.cell(numero, 4, pedido.previsto_para).number_format = FORMATO_DATA
+        _texto(aba.cell(numero, 5), item.insumo)
+        _texto(aba.cell(numero, 6), item.unidade)
+        for coluna, valor in enumerate(
+            (item.quantidade, item.quantidade_recebida, item.falta_receber), start=7
+        ):
+            aba.cell(numero, coluna, valor)
+        aba.cell(numero, 10, item.valor_unitario).number_format = FORMATO_DINHEIRO
+        situacao = aba.cell(numero, 11, _SITUACAO_DO_PEDIDO[pedido.situacao])
+        if pedido.atrasado:
+            # O atrasado salta aos olhos, nas cores do urgente: é hora de cobrar a revenda.
+            situacao.value = "Atrasado"
+            situacao.fill = PatternFill("solid", fgColor=GRAVIDADES["alta"][1])
+            situacao.font = fonte(bold=True, color=GRAVIDADES["alta"][2])
+    _filtro(aba, len(linhas))
+
+
+_SITUACAO_DO_PEDIDO = {"aberto": "Aberto", "parcial": "Parcial"}
 
 
 def _aba_de_estoque(aba: Worksheet, insumos: list[InsumoResposta]) -> None:
@@ -315,11 +406,39 @@ def _aba_de_talhoes(aba: Worksheet, lista: list[TalhaoResposta]) -> None:
     _filtro(aba, len(lista))
 
 
+def _aba_por_mes(aba: Worksheet, relatorio: RelatorioPorPeriodo) -> None:
+    _tabela(
+        aba,
+        [
+            ("mês", 12),
+            ("gasto em compras (R$)", 22),
+            ("compras sem preço", 18),
+            ("consumo (R$)", 16),
+            ("perdas (R$)", 14),
+        ],
+    )
+    for numero, periodo in enumerate(relatorio.periodos, start=2):
+        # Em reais, e não em quantidade: kg de um insumo e litros de outro não se somam.
+        consumo = round(sum(c.consumo for c in periodo.por_categoria), 2)
+        valores = (periodo.rotulo, periodo.gasto, periodo.compras_sem_preco, consumo)
+        for coluna, valor in enumerate((*valores, periodo.perdas), start=1):
+            celula = aba.cell(numero, coluna, valor)
+            if coluna in (2, 4, 5):
+                celula.number_format = FORMATO_DINHEIRO
+    linha = len(relatorio.periodos) + 3
+    for limitacao in relatorio.limitacoes:
+        aba.cell(linha, 1, f"• {limitacao}").font = fonte(italic=True, color=CINZA)
+        linha += 1
+
+
 def _movimentacoes(db: Session) -> list[tuple]:
     consulta = (
-        select(Movimentacao, Insumo, Talhao.nome)
-        .join(Insumo)
-        .outerjoin(Talhao)
+        select(Movimentacao, Insumo, Talhao.nome, Fornecedor.nome, Categoria.nome)
+        .select_from(Movimentacao)
+        .join(Insumo, Movimentacao.insumo_id == Insumo.id)
+        .outerjoin(Talhao, Movimentacao.talhao_id == Talhao.id)
+        .outerjoin(Fornecedor, Movimentacao.fornecedor_id == Fornecedor.id)
+        .outerjoin(Categoria, Insumo.categoria_id == Categoria.id)
         .order_by(Movimentacao.data, Insumo.nome, Movimentacao.id)
     )
     return [
@@ -332,8 +451,11 @@ def _movimentacoes(db: Session) -> list[tuple]:
             m.validade,
             m.valor_unitario,
             talhao and ILLEGAL_CHARACTERS_RE.sub("", talhao),
+            fornecedor and ILLEGAL_CHARACTERS_RE.sub("", fornecedor),
+            # Em toda linha do insumo: a importação a usa ao cadastrá-lo num sistema vazio.
+            categoria and ILLEGAL_CHARACTERS_RE.sub("", categoria),
         )
-        for m, insumo, talhao in db.execute(consulta)
+        for m, insumo, talhao, fornecedor, categoria in db.execute(consulta)
     ]
 
 
