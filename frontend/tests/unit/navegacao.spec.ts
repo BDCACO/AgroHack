@@ -41,6 +41,7 @@ describe('navegação', () => {
       'Movimentações',
       'Compras',
       'Talhões',
+      'Relatórios',
       'Importar dados',
       'Usuários',
       'Sistema',

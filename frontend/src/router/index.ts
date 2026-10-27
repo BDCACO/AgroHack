@@ -36,6 +36,7 @@ const TalhaoPage = () => import('@/pages/TalhaoPage.vue')
 const ImportarPage = () => import('@/pages/ImportarPage.vue')
 const SistemaPage = () => import('@/pages/SistemaPage.vue')
 const ComprasPage = () => import('@/pages/ComprasPage.vue')
+const RelatoriosPage = () => import('@/pages/RelatoriosPage.vue')
 const FornecedoresPage = () => import('@/pages/FornecedoresPage.vue')
 const FornecedorPage = () => import('@/pages/FornecedorPage.vue')
 const UsuariosPage = () => import('@/pages/UsuariosPage.vue')
@@ -90,6 +91,12 @@ const telas: RouteRecordRaw[] = [
     name: 'talhoes',
     component: TalhoesPage,
     meta: { titulo: 'Talhões', menu: { icone: 'talhoes' } },
+  },
+  {
+    path: 'relatorios',
+    name: 'relatorios',
+    component: RelatoriosPage,
+    meta: { titulo: 'Relatórios', menu: { icone: 'relatorios' } },
   },
   {
     path: 'importar',

@@ -332,3 +332,64 @@ export interface SugestaoDePedido {
   grupos: GrupoSugerido[]
   limitacoes: string[]
 }
+
+export type Agrupamento = 'mes' | 'semana' | 'dia'
+
+export interface ConsumoDoInsumo {
+  insumo_id: number
+  insumo: string
+  unidade: string
+  quantidade: number // só a retirada para uso, na unidade do insumo
+  valor: number | null // pelo custo médio; null sem preço
+}
+
+export interface TotalDaCategoria {
+  categoria_id: number | null // null: os insumos sem categoria
+  categoria: string | null
+  gasto: number
+  consumo: number
+  perdas: number
+}
+
+export interface TotalDoFornecedor {
+  fornecedor_id: number | null // null: as compras sem fornecedor
+  fornecedor: string | null
+  gasto: number
+  compras: number
+  compras_sem_preco: number
+}
+
+export interface TotaisDoPeriodo {
+  consumo: ConsumoDoInsumo[]
+  gasto: number // nas compras com preço
+  compras_sem_preco: number // fora do gasto
+  perdas: number // descarte e falta da contagem, pelo custo médio
+  perdas_sem_preco: number
+  por_categoria: TotalDaCategoria[]
+  por_fornecedor: TotalDoFornecedor[]
+}
+
+export interface PeriodoDoRelatorio extends TotaisDoPeriodo {
+  inicio: string
+  fim: string
+  rotulo: string // "out/2026", "semana de 19/10/2026", "24/10/2026"
+}
+
+/** `GET /relatorios/periodo`: sem movimento, o período vem zerado (sem buraco). */
+export interface RelatorioPorPeriodo {
+  desde: string
+  ate: string
+  agrupar: Agrupamento
+  periodos: PeriodoDoRelatorio[]
+  total: TotaisDoPeriodo
+  limitacoes: string[]
+}
+
+export interface FiltroDoRelatorio {
+  desde?: string
+  ate?: string
+  agrupar?: Agrupamento
+  categoria_id?: number | ''
+  insumo_id?: number | ''
+  fornecedor_id?: number | ''
+}
