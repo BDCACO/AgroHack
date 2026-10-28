@@ -51,20 +51,27 @@ class _FormularioState extends State<_Formulario> {
   Future<void> _lancar() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _enviando = true);
+    final dados = MovimentacaoEntrada(
+      insumoId: _insumo!.id,
+      tipo: _tipo,
+      data: _data,
+      quantidade: double.parse(
+        _quantidadeController.text.replaceAll(',', '.'),
+      ),
+      validade: _validade,
+    );
+    final servicos = Servicos.of(context);
     try {
-      await Servicos.of(context).estoque.registrarMovimentacao(
-        MovimentacaoEntrada(
-          insumoId: _insumo!.id,
-          tipo: _tipo,
-          data: _data,
-          quantidade: double.parse(
-            _quantidadeController.text.replaceAll(',', '.'),
-          ),
-          validade: _validade,
-        ),
-      );
-      if (mounted) Navigator.pop(context, true);
+      await servicos.estoque.registrarMovimentacao(dados);
+      if (mounted) Navigator.pop(context, 'ok');
     } catch (erro) {
+      // Sem resposta da API: guarda para enviar quando a rede voltar, em vez
+      // de fazer a pessoa perder o que já preencheu.
+      if (erro is ApiError && erro.status == null) {
+        await servicos.pendencias.adicionar(dados);
+        if (mounted) Navigator.pop(context, 'offline');
+        return;
+      }
       if (!mounted) return;
       setState(() => _enviando = false);
       ScaffoldMessenger.of(context).showSnackBar(
