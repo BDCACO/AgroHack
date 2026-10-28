@@ -56,8 +56,7 @@ async function entrar() {
       <p class="mt-1 text-sm text-stone-600">
         Com o login e a senha que o dono da fazenda cadastrou para você.
       </p>
-      <label class="mt-5 block text-sm font-medium text-stone-700">
-        Login
+      <label class="flutuante mt-5">
         <input
           ref="campoLogin"
           v-model="form.login"
@@ -65,18 +64,21 @@ async function entrar() {
           autocomplete="username"
           autocapitalize="none"
           spellcheck="false"
+          placeholder=" "
           class="campo"
         >
+        <span class="rotulo">Login</span>
       </label>
-      <label class="mt-4 block text-sm font-medium text-stone-700">
-        Senha
+      <label class="flutuante mt-4">
         <input
           v-model="form.senha"
           type="password"
           required
           autocomplete="current-password"
+          placeholder=" "
           class="campo"
         >
+        <span class="rotulo">Senha</span>
       </label>
       <p
         v-if="erro"

@@ -92,23 +92,23 @@ const descricao = computed(() => {
       <legend class="mb-1 text-sm font-medium text-stone-700">
         Período <span class="font-normal text-stone-500">(a safra; vazio = desde o início)</span>
       </legend>
-      <label class="text-sm text-stone-600">
-        De
+      <label class="flutuante">
         <input
           v-model="periodo.desde"
           type="date"
           class="campo"
           data-teste="desde"
         >
+        <span class="rotulo">De</span>
       </label>
-      <label class="text-sm text-stone-600">
-        Até
+      <label class="flutuante">
         <input
           v-model="periodo.ate"
           type="date"
           class="campo"
           data-teste="ate"
         >
+        <span class="rotulo">Até</span>
       </label>
     </fieldset>
 

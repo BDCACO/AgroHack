@@ -55,6 +55,8 @@ export interface InsumoCadastro {
   pedido_minimo: number | null
   // Dias entre aplicar e poder colher ou abater; 0 = não tem carência; null = não informada.
   carencia_dias: number | null
+  // GET /categorias. Fora do envio, a API mantém a gravada.
+  categoria_id?: number | null
 }
 
 export interface Insumo extends InsumoCadastro {
@@ -63,6 +65,9 @@ export interface Insumo extends InsumoCadastro {
   estoque_atual: number
   custo_medio: number | null // R$ por unidade, das compras com preço
   valor_em_estoque: number | null // estoque atual (se positivo) × custo médio
+  categoria?: string | null // o nome da categoria
+  em_pedido?: number // pedido à revenda e ainda não chegou: a reposição já desconta
+  chegada_prevista?: string | null // AAAA-MM-DD, a mais distante desses pedidos
   analise: Analise
 }
 
@@ -74,6 +79,7 @@ export interface MovimentacaoEntrada {
   validade: string | null
   valor_unitario?: number | null // R$ por unidade, só numa entrada (o preço da compra)
   talhao_id?: number | null // onde foi aplicado, só numa saída (retirada para uso)
+  fornecedor_id?: number | null // de quem se comprou, só numa entrada
 }
 
 export interface Movimentacao extends MovimentacaoEntrada {
@@ -180,6 +186,246 @@ export interface TalhaoDetalhe extends Talhao {
 
 /** Recorte de uma safra no custo e nas aplicações (a carência olha todas). AAAA-MM-DD. */
 export interface Periodo {
+  desde?: string
+  ate?: string
+}
+
+/** `GET /usuarios`: o usuário como o dono o vê. */
+export interface UsuarioCompleto extends Usuario {
+  ativo: boolean
+  criado_em: string
+  bloqueado_ate: string | null // senhas erradas seguidas; null: não está bloqueado
+}
+
+export interface UsuarioCadastro {
+  nome: string
+  login: string // minúsculas, números, ponto, hífen e sublinhado
+  senha: string // a inicial, de 8 ou mais; o funcionário troca depois
+  papel: Papel
+}
+
+/** O que vier muda; o que não vier fica. */
+export interface UsuarioAlteracao {
+  nome?: string
+  papel?: Papel
+  ativo?: boolean
+}
+
+/** Um aparelho com login aberto. Nunca o token. */
+export interface Sessao {
+  id: number
+  dispositivo: string | null // o que o aparelho disse ser no login: declarado, não prova
+  ip: string | null
+  criada_em: string
+  ultimo_uso_em: string // anotado de 5 em 5 minutos
+  expira_em: string
+  atual: boolean // a deste navegador
+}
+
+export interface FornecedorCadastro {
+  nome: string
+  contato: string | null // com quem falar
+  telefone: string | null // o WhatsApp da revenda
+  cidade: string | null
+  observacao: string | null
+  ativo: boolean // desativado sai das escolhas; as compras ficam
+}
+
+export interface Fornecedor extends FornecedorCadastro {
+  id: number
+  demonstracao: boolean
+}
+
+/** O que se pagou a um fornecedor por um insumo: é o que compara revendas. */
+export interface PrecoPago {
+  insumo_id: number
+  insumo: string
+  unidade: string
+  fornecedor_id: number
+  fornecedor: string
+  compras: number
+  quantidade: number
+  preco_medio: number | null // ponderado pela quantidade; null sem preço nas compras
+}
+
+export interface FornecedorDetalhe extends Fornecedor {
+  compras: Movimentacao[] // as mais recentes primeiro, até 20
+  precos: PrecoPago[]
+}
+
+export type SituacaoDoPedido = 'aberto' | 'parcial' | 'recebido' | 'cancelado'
+
+export interface ItemDoPedido {
+  id: number // o que o recebimento informa
+  insumo_id: number
+  insumo: string
+  unidade: string
+  quantidade: number
+  valor_unitario: number | null // o combinado com a revenda
+  quantidade_recebida: number // pode passar da pedida: veio a mais
+  falta_receber: number
+}
+
+export interface Pedido {
+  id: number
+  fornecedor_id: number | null
+  fornecedor: string | null
+  situacao: SituacaoDoPedido
+  feito_em: string // AAAA-MM-DD
+  previsto_para: string | null
+  observacao: string | null
+  usuario_id: number | null
+  feito_por: string | null
+  atrasado: boolean // a previsão passou e ainda falta chegar
+  custo_estimado: number | null
+  itens: ItemDoPedido[]
+}
+
+export interface PedidoEntrada {
+  fornecedor_id: number | null
+  feito_em?: string
+  previsto_para: string | null
+  observacao: string | null
+  itens: { insumo_id: number; quantidade: number; valor_unitario: number | null }[]
+}
+
+/** O que chegou da carga: cada linha vira uma entrada no estoque. */
+export interface Recebimento {
+  data: string
+  itens: {
+    item_id: number
+    quantidade: number
+    validade: string | null
+    valor_unitario: number | null // só se a nota veio com outro preço
+  }[]
+}
+
+export interface ResultadoDoRecebimento {
+  pedido: Pedido
+  movimentacoes: Movimentacao[]
+  avisos: string[] // não impedem nada: pedem para conferir
+}
+
+export interface ItemSugerido {
+  insumo_id: number
+  insumo: string
+  unidade: string
+  quantidade: number // em embalagens fechadas, já descontado o que está a caminho
+  valor_unitario: number | null
+  custo_estimado: number | null
+  pedir_em: string
+  pedir_hoje: boolean
+  justificativa: string
+}
+
+/** Um pedido por revenda: a da última compra de cada insumo. */
+export interface GrupoSugerido {
+  fornecedor_id: number | null
+  fornecedor: string | null
+  itens: ItemSugerido[]
+  custo_estimado: number | null
+}
+
+export interface SugestaoDePedido {
+  referencia: string
+  dias: number
+  grupos: GrupoSugerido[]
+  limitacoes: string[]
+}
+
+export type Agrupamento = 'mes' | 'semana' | 'dia'
+
+export interface ConsumoDoInsumo {
+  insumo_id: number
+  insumo: string
+  unidade: string
+  quantidade: number // só a retirada para uso, na unidade do insumo
+  valor: number | null // pelo custo médio; null sem preço
+}
+
+export interface TotalDaCategoria {
+  categoria_id: number | null // null: os insumos sem categoria
+  categoria: string | null
+  gasto: number
+  consumo: number
+  perdas: number
+}
+
+export interface TotalDoFornecedor {
+  fornecedor_id: number | null // null: as compras sem fornecedor
+  fornecedor: string | null
+  gasto: number
+  compras: number
+  compras_sem_preco: number
+}
+
+export interface TotaisDoPeriodo {
+  consumo: ConsumoDoInsumo[]
+  gasto: number // nas compras com preço
+  compras_sem_preco: number // fora do gasto
+  perdas: number // descarte e falta da contagem, pelo custo médio
+  perdas_sem_preco: number
+  por_categoria: TotalDaCategoria[]
+  por_fornecedor: TotalDoFornecedor[]
+}
+
+export interface PeriodoDoRelatorio extends TotaisDoPeriodo {
+  inicio: string
+  fim: string
+  rotulo: string // "out/2026", "semana de 19/10/2026", "24/10/2026"
+}
+
+/** `GET /relatorios/periodo`: sem movimento, o período vem zerado (sem buraco). */
+export interface RelatorioPorPeriodo {
+  desde: string
+  ate: string
+  agrupar: Agrupamento
+  periodos: PeriodoDoRelatorio[]
+  total: TotaisDoPeriodo
+  limitacoes: string[]
+}
+
+export interface FiltroDoRelatorio {
+  desde?: string
+  ate?: string
+  agrupar?: Agrupamento
+  categoria_id?: number | ''
+  insumo_id?: number | ''
+  fornecedor_id?: number | ''
+}
+
+export interface Categoria {
+  id: number
+  nome: string
+  insumos: number // com algum, ela não se remove
+}
+
+/** Os filtros de GET /movimentacoes que a tela usa. Vazio = sem filtro. */
+export interface FiltroDeMovimentacoes {
+  busca?: string // no nome do insumo, sem diferenciar maiúsculas nem acentos
+  tipo?: 'entrada' | 'saida' | ''
+  desde?: string
+  ate?: string
+}
+
+/** Um registro da trilha de auditoria: só se acrescenta, nunca se apaga. */
+export interface EventoDeAuditoria {
+  id: number
+  ocorrido_em: string
+  usuario_id: number | null // null: sem login, comando no servidor ou login recusado
+  feito_por: string | null
+  acao: string // "usuario.criado", "login.recusado"...
+  entidade: string | null
+  entidade_id: number | null
+  dados: Record<string, unknown> // o que foi apagado, o antes e o depois, ou o resumo
+  origem: 'api' | 'terminal'
+  ip: string | null
+  dispositivo: string | null
+}
+
+export interface FiltroDeAuditoria {
+  acao?: string // o código ou o grupo ("usuario")
+  usuario_id?: number | ''
   desde?: string
   ate?: string
 }

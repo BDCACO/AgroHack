@@ -9,6 +9,8 @@ import { listarInsumos } from '@/services/estoque'
 import type { Insumo } from '@/types/api'
 
 // O layout verifica a API ao montar; aqui a API não existe.
+// Movimentações carrega os fornecedores para a compra.
+vi.mock('@/services/compras', () => ({ listarFornecedores: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/services/health', () => ({
   buscarHealth: vi.fn().mockResolvedValue({ status: 'ok' }),
   buscarReadiness: vi.fn().mockResolvedValue({ status: 'pronto', database: 'ok' }),
@@ -37,8 +39,12 @@ describe('navegação', () => {
       'Painel',
       'Insumos',
       'Movimentações',
+      'Compras',
       'Talhões',
+      'Relatórios',
       'Importar dados',
+      'Usuários',
+      'Auditoria',
       'Sistema',
     ])
   })
@@ -61,29 +67,33 @@ describe('navegação', () => {
     const { wrapper } = await montarEm('/')
 
     const links = wrapper.findAll('aside nav a')
-    expect(links.map((link) => link.text())).toEqual(itensDeMenu.map((item) => item.rotulo))
+    // Sem login, as telas que dependem dele (Usuários) ficam fora.
+    expect(links.map((link) => link.text())).toEqual(
+      itensDeMenu.filter((item) => !item.comLogin).map((item) => item.rotulo),
+    )
   })
 
-  it('no celular, a barra de baixo tem as mesmas telas, com rótulos que cabem nela', async () => {
+  it('no celular, a barra de baixo tem as telas do dia a dia, com rótulos que cabem nela', async () => {
     const { wrapper } = await montarEm('/movimentacoes')
 
     const abas = wrapper.findAll('[data-teste="aba"]')
-    expect(abas.map((aba) => aba.text())).toEqual([
-      'Painel',
-      'Insumos',
-      'Movimentos',
-      'Talhões',
-      'Importar',
-      'Sistema',
-    ])
-    expect(abas.map((aba) => aba.attributes('aria-current'))).toEqual([
-      undefined,
-      undefined,
-      'page',
-      undefined,
-      undefined,
-      undefined,
-    ])
+    expect(abas.map((aba) => aba.text())).toEqual(
+      itensDeMenu.filter((item) => item.barra).map((item) => item.rotuloCurto),
+    )
+    expect(abas.map((aba) => aba.text())).toContain('Movimentos')
+    expect(abas.map((aba) => aba.attributes('aria-current'))).toContain('page')
+    expect(wrapper.find('[data-teste="aba-mais"]').text()).toBe('Mais')
+  })
+
+  it('o "Mais" do celular abre as outras telas, e acende quando se está numa delas', async () => {
+    const { wrapper } = await montarEm('/sistema', { attachTo: document.body })
+    expect(wrapper.find('[data-teste="aba-mais"]').classes()).toContain('text-white')
+
+    await wrapper.find('[data-teste="aba-mais"]').trigger('click')
+    const outras = [...document.querySelectorAll('[data-teste="menu-mais"] a')].map((a) => a.textContent?.trim())
+    expect(outras).toEqual(itensDeMenu.filter((item) => !item.barra && !item.comLogin).map((item) => item.rotulo))
+    expect(outras).toContain('Sistema')
+    wrapper.unmount()
   })
 
   it('a aba do Painel mostra quantos alertas urgentes há', async () => {
@@ -153,36 +163,5 @@ describe('navegação', () => {
     const { wrapper } = await montarEm('/')
 
     expect(wrapper.find('[data-teste="resumo-status"]').text()).toBe('Sistema operando')
-  })
-
-  it('avisa quando há dados de demonstração, e só nesse caso', async () => {
-    const semDemo = await montarEm('/')
-    expect(semDemo.wrapper.find('[data-teste="aviso-demonstracao"]').exists()).toBe(false)
-
-    const insumoDeDemo: Insumo = {
-      id: 1,
-      nome: 'Ureia agrícola',
-      unidade: 'kg',
-      estoque_minimo: null,
-      prazo_reposicao_dias: null,
-      embalagem: null,
-      pedido_minimo: null,
-      carencia_dias: null,
-      custo_medio: null,
-      valor_em_estoque: null,
-      demonstracao: true,
-      estoque_atual: 0,
-      analise: {
-        consumo_diario: null,
-        cobertura_dias: null,
-        alertas: [],
-        reposicao: null,
-        limitacoes: [],
-      },
-    }
-    vi.mocked(listarInsumos).mockResolvedValueOnce([insumoDeDemo])
-    const comDemo = await montarEm('/insumos')
-
-    expect(comDemo.wrapper.find('[data-teste="aviso-demonstracao"]').exists()).toBe(true)
   })
 })

@@ -87,8 +87,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
     >
       {{ editandoId === undefined ? 'Novo talhão' : 'Alterar talhão' }}
     </h2>
-    <label class="text-sm font-medium text-stone-700">
-      Nome
+    <label class="flutuante">
       <input
         v-model="form.nome"
         required
@@ -96,20 +95,21 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
         placeholder="Talhão Norte"
         class="campo"
       >
+      <span class="rotulo">Nome</span>
     </label>
-    <label class="text-sm font-medium text-stone-700">
-      Área, em hectares
+    <label class="flutuante">
       <input
         v-model.number="form.area"
         type="number"
         required
         min="0.01"
         step="any"
+        placeholder=" "
         class="campo"
       >
+      <span class="rotulo">Área, em hectares</span>
     </label>
-    <label class="text-sm font-medium text-stone-700">
-      Cultura <span class="font-normal text-stone-500">(opcional)</span>
+    <label class="flutuante">
       <input
         v-model="form.cultura"
         maxlength="60"
@@ -117,6 +117,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
         placeholder="Soja"
         class="campo"
       >
+      <span class="rotulo">Cultura <span class="font-normal text-stone-500">(opcional)</span></span>
       <datalist id="culturas">
         <option value="Soja" />
         <option value="Milho" />
