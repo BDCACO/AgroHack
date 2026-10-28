@@ -62,7 +62,10 @@ class _EstruturaState extends State<Estrutura> {
     return Scaffold(
       appBar: AppBar(title: Text(tela.titulo)),
       // Cada tela busca seus dados ao aparecer, e de novo ao voltar para ela.
-      body: KeyedSubtree(key: ValueKey(_atual), child: tela.pagina),
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        child: KeyedSubtree(key: ValueKey(_atual), child: tela.pagina),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _atual,
         onDestinationSelected: (i) => setState(() => _atual = i),

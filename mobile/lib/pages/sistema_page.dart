@@ -15,6 +15,7 @@ class SistemaPage extends StatelessWidget {
     return CarregarDados<ReadinessResponse>(
       buscar: health.buscarReadiness,
       construir: (context, prontidao) => ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
           ListTile(
             leading: const Icon(Icons.cloud_done_outlined),
