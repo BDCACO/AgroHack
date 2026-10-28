@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:campocerto/app.dart';
 import 'package:campocerto/core/api/cliente_api.dart';
+import 'package:campocerto/models/api.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -79,6 +80,65 @@ void main() {
 
     expect(find.text('No ar'), findsOneWidget);
     expect(find.text('Conectado'), findsOneWidget);
+  });
+
+  testWidgets('lançar uma movimentação nova aparece na lista ao voltar', (
+    tester,
+  ) async {
+    final novaMovimentacao = <String, dynamic>{
+      'id': 11,
+      'insumo_id': 2,
+      'tipo': 'entrada',
+      'data': '2026-10-27',
+      'quantidade': 500,
+      'validade': null,
+    };
+    // A 1ª busca de /v1/movimentacoes é o load inicial da aba; a 2ª é ao
+    // voltar do formulário, já com o lançamento novo.
+    var buscasDeMovimentacoes = 0;
+    final client = MockClient((pedido) async {
+      if (pedido.url.path == '/v1/insumos') {
+        return http.Response.bytes(
+          utf8.encode(jsonEncode([insumoComAlerta, insumoSemAlerta])),
+          200,
+        );
+      }
+      if (pedido.url.path == '/v1/movimentacoes') {
+        if (pedido.method == 'POST') {
+          return http.Response.bytes(
+            utf8.encode(jsonEncode(novaMovimentacao)),
+            201,
+          );
+        }
+        buscasDeMovimentacoes++;
+        final lista = buscasDeMovimentacoes == 1
+            ? [movimentacao]
+            : [movimentacao, novaMovimentacao];
+        return http.Response.bytes(utf8.encode(jsonEncode(lista)), 200);
+      }
+      return http.Response('', 404);
+    });
+    await tester.pumpWidget(
+      CampoCertoApp(api: ClienteApi(client: client, baseUrl: 'http://api/v1')),
+    );
+    await tester.pumpAndSettle();
+    await _irPara(tester, 'Movimentações');
+
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButtonFormField<Insumo>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Calcário'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField), '500');
+    await tester.tap(find.widgetWithText(FilledButton, 'Lançar'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ureia'), findsOneWidget);
+    expect(find.text('Calcário'), findsOneWidget);
+    expect(find.text('+500 t'), findsOneWidget);
   });
 
   testWidgets('sem API, avisa e oferece tentar de novo', (tester) async {
