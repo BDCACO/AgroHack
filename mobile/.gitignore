@@ -46,3 +46,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Capturas de teste manual, não fazem parte da suíte automatizada
+/test/capturas/
