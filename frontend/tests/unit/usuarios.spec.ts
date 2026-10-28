@@ -201,10 +201,10 @@ describe('Minha conta', () => {
     ])
   })
 
-  it('o nome no menu leva à conta, que mostra quem é e onde está conectado', async () => {
+  it('o nome na barra do topo leva à conta, que mostra quem é e onde está conectado', async () => {
     const { wrapper, router } = await montarEm('/')
 
-    expect(wrapper.find('aside a[href="/conta"]').text()).toContain('Dona Maria')
+    expect(wrapper.find('[data-teste="sessao"] a[href="/conta"]').text()).toContain('Dona Maria')
     await router.push('/conta')
     await flushPromises()
 

@@ -73,6 +73,46 @@ describe('navegação', () => {
     )
   })
 
+  it('o botão da barra do topo recolhe o menu aos ícones, e o navegador lembra', async () => {
+    localStorage.clear()
+    const { wrapper } = await montarEm('/')
+    const botao = wrapper.find('[data-teste="recolher-menu"]')
+    expect(botao.attributes('aria-expanded')).toBe('true')
+    expect(botao.attributes('aria-label')).toBe('Recolher o menu')
+
+    await botao.trigger('click')
+
+    expect(wrapper.find('aside').attributes('data-recolhido')).toBe('true')
+    expect(botao.attributes('aria-expanded')).toBe('false')
+    expect(botao.attributes('aria-label')).toBe('Abrir o menu')
+    // O nome de cada tela some da vista, mas continua para o leitor de tela e no "title".
+    const insumos = wrapper.findAll('aside nav a')[1]!
+    expect(insumos.text()).toBe('Insumos')
+    expect(insumos.find('[data-teste="rotulo-menu"]').classes()).toContain('sr-only')
+    expect(insumos.attributes('title')).toBe('Insumos')
+    expect(localStorage.getItem('campocerto.menu-recolhido')).toBe('1')
+    wrapper.unmount()
+
+    setActivePinia(createPinia())
+    const outra = await montarEm('/insumos')
+    expect(outra.wrapper.find('aside').attributes('data-recolhido')).toBe('true')
+    await outra.wrapper.find('[data-teste="recolher-menu"]').trigger('click')
+    expect(outra.wrapper.find('aside').attributes('data-recolhido')).toBeUndefined()
+    expect(localStorage.getItem('campocerto.menu-recolhido')).toBe('0')
+    localStorage.clear()
+  })
+
+  it('a barra do topo diz onde se está, com a volta para a seção numa página dentro dela', async () => {
+    const naSecao = await montarEm('/insumos')
+    expect(naSecao.wrapper.find('[data-teste="barra-do-topo"] nav').text()).toBe('Insumos')
+
+    setActivePinia(createPinia())
+    const dentro = await montarEm('/compras/fornecedores')
+    const caminho = dentro.wrapper.find('[data-teste="barra-do-topo"] nav')
+    expect(caminho.findAll('li').map((li) => li.text())).toEqual(['Compras', 'Fornecedores'])
+    expect(caminho.find('a').attributes('href')).toBe('/compras')
+  })
+
   it('no celular, a barra de baixo tem as telas do dia a dia, com rótulos que cabem nela', async () => {
     const { wrapper } = await montarEm('/movimentacoes')
 
@@ -159,9 +199,12 @@ describe('navegação', () => {
     wrapper.unmount()
   })
 
-  it('o resumo de status do menu reflete a verificação', async () => {
+  it('a barra do topo leva ao código do projeto no GitHub, em outra aba', async () => {
     const { wrapper } = await montarEm('/')
 
-    expect(wrapper.find('[data-teste="resumo-status"]').text()).toBe('Sistema operando')
+    const link = wrapper.find('[data-teste="link-github"]')
+    expect(link.attributes('href')).toBe('https://github.com/BDCACO/AgroHack')
+    expect(link.attributes('target')).toBe('_blank')
+    expect(link.attributes('rel')).toContain('noopener')
   })
 })
