@@ -164,35 +164,4 @@ describe('navegação', () => {
 
     expect(wrapper.find('[data-teste="resumo-status"]').text()).toBe('Sistema operando')
   })
-
-  it('avisa quando há dados de demonstração, e só nesse caso', async () => {
-    const semDemo = await montarEm('/')
-    expect(semDemo.wrapper.find('[data-teste="aviso-demonstracao"]').exists()).toBe(false)
-
-    const insumoDeDemo: Insumo = {
-      id: 1,
-      nome: 'Ureia agrícola',
-      unidade: 'kg',
-      estoque_minimo: null,
-      prazo_reposicao_dias: null,
-      embalagem: null,
-      pedido_minimo: null,
-      carencia_dias: null,
-      custo_medio: null,
-      valor_em_estoque: null,
-      demonstracao: true,
-      estoque_atual: 0,
-      analise: {
-        consumo_diario: null,
-        cobertura_dias: null,
-        alertas: [],
-        reposicao: null,
-        limitacoes: [],
-      },
-    }
-    vi.mocked(listarInsumos).mockResolvedValueOnce([insumoDeDemo])
-    const comDemo = await montarEm('/insumos')
-
-    expect(comDemo.wrapper.find('[data-teste="aviso-demonstracao"]').exists()).toBe(true)
-  })
 })

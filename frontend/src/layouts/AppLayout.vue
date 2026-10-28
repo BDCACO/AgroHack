@@ -76,7 +76,7 @@ const urgentes = computed(() => estoque.alertas.filter((a) => a.alerta.gravidade
 
 onMounted(() => {
   status.verificar()
-  // O contador do menu e o aviso de demonstração valem em qualquer tela. A página monta
+  // O contador do menu vale em qualquer tela. A página monta
   // antes do layout: se ela já pediu os dados, não se pede de novo.
   if (!estoque.carregado && !estoque.carregando) estoque.carregar()
 })
@@ -228,20 +228,6 @@ onMounted(() => {
         tabindex="-1"
         class="mx-auto w-full max-w-6xl flex-1 px-4 py-6 focus:outline-none sm:px-6 lg:px-10 lg:py-10"
       >
-        <!-- Dado fictício nunca aparece sem aviso: é o que separa demonstração de invenção. -->
-        <p
-          v-if="estoque.insumos.some((insumo) => insumo.demonstracao)"
-          role="note"
-          class="mb-6 animate-surgir rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-          data-teste="aviso-demonstracao"
-        >
-          <!-- No celular, o curto: o comando de apagar é para quem roda o sistema. O espaço fica
-               dentro de cada versão, colado ao texto dela. -->
-          <strong>Dados de demonstração.</strong><span class="sm:hidden"> Fazenda fictícia, para apresentar o sistema.</span>
-          <span class="max-sm:hidden"> Parte dos insumos e movimentações foi gerada
-            para apresentar o sistema e não vem de uma fazenda real. Para apagar:
-            <code>make demo-limpar</code>.</span>
-        </p>
         <!-- Páginas têm mais de um elemento na raiz: o div dá à transição um só a animar. -->
         <RouterView v-slot="{ Component, route: atual }">
           <Transition

@@ -78,7 +78,7 @@ A resposta das rotas é o próprio `Analise` do motor (dataclass), sem schema es
 | `app/usuarios.py` | O comando que cria o primeiro dono no servidor (`make usuario-dono`) |
 | `app/models/auditoria.py` | `eventos_de_auditoria`: quem, quando, a ação, sobre o quê, o conteúdo em JSONB e de onde; somente acrescentar |
 | `app/services/auditoria.py` | Grava o evento na transação da ação (sem commit, sem segredo) e o consulta (`GET /auditoria`) |
-| `app/demo.py` | Fazenda fictícia para a apresentação (`make demo`): insumos e talhões marcados com `demonstracao`, que a tela sinaliza e `make demo-limpar` apaga sozinhos (menos o talhão em que se lançou a aplicação de um insumo real) |
+| `app/demo.py` | Fazenda fictícia para a apresentação (`make demo`): insumos e talhões marcados com `demonstracao`, que `make demo-limpar` apaga sozinhos (menos o talhão em que se lançou a aplicação de um insumo real) |
 | `app/core/relogio.py` | `hoje()` na data de Rondônia (UTC−4 fixo, sem horário de verão), não na do servidor |
 
 Lote = entrada com validade. Como a retirada não diz de qual lote saiu, o saldo de cada lote é
