@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -147,11 +147,14 @@ describe('Filtros de insumos', () => {
     const wrapper = await montarEm('/insumos')
 
     await wrapper.find('[aria-label="Alterar Calcário dolomítico"]').trigger('click')
-    await wrapper.find('main form [data-teste="categoria"]').setValue(10)
-    await wrapper.find('main form').trigger('submit')
+    // O formulário abre numa janela, que vai para o <body> (Teleport).
+    const form = new DOMWrapper(document.querySelector('[role="dialog"] [data-teste="form-insumo"]')!)
+    await form.find('[data-teste="categoria"]').setValue(10)
+    await form.trigger('submit')
     await flushPromises()
 
     expect(estoque.atualizarInsumo).toHaveBeenCalledWith(3, expect.objectContaining({ categoria_id: 10 }))
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
     wrapper.unmount()
   })
 })

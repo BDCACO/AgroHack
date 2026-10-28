@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, useTemplateRef } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import GerenciarCategorias from '@/components/GerenciarCategorias.vue'
 import IconeSvg from '@/components/IconeSvg.vue'
+import JanelaModal from '@/components/JanelaModal.vue'
 import SeloDeGravidade from '@/components/SeloDeGravidade.vue'
 import { dataBr, reais } from '@/formatos'
 import { useCategoriasStore } from '@/stores/categorias'
@@ -59,7 +60,6 @@ const aberto = ref(false)
 const editandoId = ref<number>()
 const salvando = ref(false)
 const erroDoForm = ref<string | null>(null)
-const tituloDoForm = useTemplateRef<HTMLElement>('tituloDoForm')
 
 function abrir(insumo?: Insumo) {
   Object.assign(
@@ -79,10 +79,9 @@ function abrir(insumo?: Insumo) {
   )
   editandoId.value = insumo?.id
   erroDoForm.value = null
+  // Numa janela, e não no alto da página: quem tocou em "Alterar" lá embaixo da lista não perde
+  // o lugar, e ao fechar o foco volta para o botão.
   aberto.value = true
-  // O formulário abre no alto da página. Quem tocou em "Alterar" lá embaixo da lista (no
-  // celular, quase sempre) é levado até ele, e o leitor de tela anuncia o título.
-  nextTick(() => tituloDoForm.value?.focus())
 }
 
 async function salvar() {
@@ -138,155 +137,156 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
     </template>
   </CabecalhoDePagina>
 
-  <form
+  <JanelaModal
     v-if="aberto"
-    class="cartao mt-2 mb-6 grid animate-surgir gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4"
-    @submit.prevent="salvar"
+    :titulo="editandoId === undefined ? 'Novo insumo' : 'Alterar insumo'"
+    larga
+    @fechar="aberto = false"
   >
-    <h2
-      ref="tituloDoForm"
-      tabindex="-1"
-      class="scroll-mt-4 text-base font-semibold text-stone-900 focus:outline-none sm:col-span-2 lg:col-span-4"
+    <form
+      class="grid gap-4 sm:grid-cols-2"
+      data-teste="form-insumo"
+      @submit.prevent="salvar"
     >
-      {{ editandoId === undefined ? 'Novo insumo' : 'Alterar insumo' }}
-    </h2>
-    <label class="flutuante">
-      <input
-        v-model="form.nome"
-        required
-        maxlength="120"
-        placeholder="Ureia agrícola"
-        class="campo"
-      >
-      <span class="rotulo">Nome</span>
-    </label>
-    <label class="flutuante">
-      <input
-        v-model="form.unidade"
-        required
-        maxlength="20"
-        list="unidades"
-        placeholder="kg"
-        class="campo"
-      >
-      <span class="rotulo">Unidade</span>
-      <datalist id="unidades">
-        <option value="kg" />
-        <option value="L" />
-        <option value="t" />
-        <option value="sc" />
-        <option value="dose" />
-        <option value="un" />
-      </datalist>
-    </label>
-    <label class="flutuante">
-      <input
-        v-model.number="form.estoque_minimo"
-        type="number"
-        min="0"
-        step="any"
-        placeholder=" "
-        class="campo"
-      >
-      <span class="rotulo">Estoque mínimo <span class="font-normal text-stone-500">(opcional)</span></span>
-    </label>
-    <label class="flutuante">
-      <input
-        v-model.number="form.prazo"
-        type="number"
-        min="0"
-        max="365"
-        step="1"
-        placeholder=" "
-        class="campo"
-      >
-      <span class="rotulo">Prazo de entrega, em dias <span class="font-normal text-stone-500">(opcional)</span></span>
-    </label>
-    <label class="flutuante">
-      <input
-        v-model.number="form.embalagem"
-        type="number"
-        min="0.001"
-        step="any"
-        placeholder="50"
-        class="campo"
-      >
-      <span class="rotulo">Embalagem, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span></span>
-    </label>
-    <label class="flutuante">
-      <input
-        v-model.number="form.pedido_minimo"
-        type="number"
-        min="0"
-        step="any"
-        placeholder=" "
-        class="campo"
-      >
-      <span class="rotulo">Pedido mínimo, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span></span>
-    </label>
-    <label class="flutuante">
-      <input
-        v-model.number="form.carencia"
-        type="number"
-        min="0"
-        max="365"
-        step="1"
-        placeholder=" "
-        class="campo"
-      >
-      <span class="rotulo">Carência, em dias <span class="font-normal text-stone-500">(defensivos)</span></span>
-    </label>
-    <label class="flutuante">
-      <select
-        v-model.number="form.categoria"
-        class="campo"
-        data-teste="categoria"
-      >
-        <option value="">
-          Sem categoria
-        </option>
-        <option
-          v-for="categoria in categorias.categorias"
-          :key="categoria.id"
-          :value="categoria.id"
+      <label class="flutuante">
+        <input
+          v-model="form.nome"
+          autofocus
+          required
+          maxlength="120"
+          placeholder="Ureia agrícola"
+          class="campo"
         >
-          {{ categoria.nome }}
-        </option>
-      </select>
-      <span class="rotulo">Categoria</span>
-    </label>
-    <p class="text-xs text-stone-500 sm:col-span-2 lg:col-span-4">
-      O mínimo dispara o alerta de estoque baixo e vira margem de segurança na reposição. O prazo
-      é quanto o fornecedor leva para entregar; sem ele, a análise assume 15 dias e avisa. Com a
-      embalagem (50 para o saco de 50 kg) e o pedido mínimo da revenda, a reposição sai em
-      embalagens fechadas. O preço entra ao lançar cada compra, em Movimentações. A carência é
-      quantos dias depois de aplicar se pode colher ou abater (está na bula ou no receituário);
-      0 se não tem, como a ureia. Com ela, os talhões avisam até quando não colher.
-    </p>
-    <p
-      v-if="erroDoForm"
-      role="alert"
-      class="text-sm text-red-700 sm:col-span-2 lg:col-span-4"
-    >
-      {{ erroDoForm }}
-    </p>
-    <div class="flex gap-2 sm:col-span-2 lg:col-span-4">
-      <button
-        type="submit"
-        class="botao-primario"
-        :disabled="salvando"
+        <span class="rotulo">Nome</span>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model="form.unidade"
+          required
+          maxlength="20"
+          list="unidades"
+          placeholder="kg"
+          class="campo"
+        >
+        <span class="rotulo">Unidade</span>
+        <datalist id="unidades">
+          <option value="kg" />
+          <option value="L" />
+          <option value="t" />
+          <option value="sc" />
+          <option value="dose" />
+          <option value="un" />
+        </datalist>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model.number="form.estoque_minimo"
+          type="number"
+          min="0"
+          step="any"
+          placeholder=" "
+          class="campo"
+        >
+        <span class="rotulo">Estoque mínimo <span class="font-normal text-stone-500">(opcional)</span></span>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model.number="form.prazo"
+          type="number"
+          min="0"
+          max="365"
+          step="1"
+          placeholder=" "
+          class="campo"
+        >
+        <span class="rotulo">Prazo de entrega, em dias <span class="font-normal text-stone-500">(opcional)</span></span>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model.number="form.embalagem"
+          type="number"
+          min="0.001"
+          step="any"
+          placeholder="50"
+          class="campo"
+        >
+        <span class="rotulo">Embalagem, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span></span>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model.number="form.pedido_minimo"
+          type="number"
+          min="0"
+          step="any"
+          placeholder=" "
+          class="campo"
+        >
+        <span class="rotulo">Pedido mínimo, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span></span>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model.number="form.carencia"
+          type="number"
+          min="0"
+          max="365"
+          step="1"
+          placeholder=" "
+          class="campo"
+        >
+        <span class="rotulo">Carência, em dias <span class="font-normal text-stone-500">(defensivos)</span></span>
+      </label>
+      <label class="flutuante">
+        <select
+          v-model.number="form.categoria"
+          class="campo"
+          data-teste="categoria"
+        >
+          <option value="">
+            Sem categoria
+          </option>
+          <option
+            v-for="categoria in categorias.categorias"
+            :key="categoria.id"
+            :value="categoria.id"
+          >
+            {{ categoria.nome }}
+          </option>
+        </select>
+        <span class="rotulo">Categoria</span>
+      </label>
+      <p class="text-xs text-stone-500 sm:col-span-2">
+        O mínimo dispara o alerta de estoque baixo e vira margem de segurança na reposição. O prazo
+        é quanto o fornecedor leva para entregar; sem ele, a análise assume 15 dias e avisa. Com a
+        embalagem (50 para o saco de 50 kg) e o pedido mínimo da revenda, a reposição sai em
+        embalagens fechadas. O preço entra ao lançar cada compra, em Movimentações. A carência é
+        quantos dias depois de aplicar se pode colher ou abater (está na bula ou no receituário);
+        0 se não tem, como a ureia. Com ela, os talhões avisam até quando não colher.
+      </p>
+      <p
+        v-if="erroDoForm"
+        role="alert"
+        class="text-sm text-red-700 sm:col-span-2"
       >
-        {{ salvando ? 'Salvando…' : 'Salvar' }}
-      </button>
-      <button
-        type="button"
-        class="botao-texto text-stone-700 hover:bg-stone-100"
-        @click="aberto = false"
-      >
-        Cancelar
-      </button>
-    </div>
-  </form>
+        {{ erroDoForm }}
+      </p>
+      <div class="flex flex-col-reverse gap-2 sm:col-span-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          class="botao-secundario"
+          @click="aberto = false"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          class="botao-primario"
+          :disabled="salvando"
+        >
+          {{ salvando ? 'Salvando…' : 'Salvar' }}
+        </button>
+      </div>
+    </form>
+  </JanelaModal>
 
   <p
     v-if="estoque.erro"
@@ -297,7 +297,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
   </p>
 
   <EstadoVazio
-    v-else-if="estoque.carregado && !estoque.insumos.length && !aberto"
+    v-else-if="estoque.carregado && !estoque.insumos.length"
     icone="insumos"
     titulo="Nenhum insumo cadastrado"
     :texto="sessao.podeGerir

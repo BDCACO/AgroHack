@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -233,12 +233,12 @@ describe('Talhões nas outras telas', () => {
     const { wrapper } = await montarEm('/insumos')
 
     await wrapper.findAll('main button').find((b) => b.text() === 'Cadastrar insumo')!.trigger('click')
-    const campo = (rotulo: string) =>
-      wrapper.findAll('main form label').find((l) => l.text().startsWith(rotulo))!.find('input')
+    const form = new DOMWrapper(document.querySelector('[role="dialog"] [data-teste="form-insumo"]')!)
+    const campo = (rotulo: string) => form.findAll('label').find((l) => l.text().startsWith(rotulo))!.find('input')
     await campo('Nome').setValue('Fungicida X')
     await campo('Unidade').setValue('L')
     await campo('Carência').setValue(15)
-    await wrapper.find('main form').trigger('submit')
+    await form.trigger('submit')
     await flushPromises()
 
     expect(estoque.criarInsumo).toHaveBeenCalledWith(expect.objectContaining({ carencia_dias: 15 }))
