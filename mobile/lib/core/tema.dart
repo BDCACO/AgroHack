@@ -47,10 +47,19 @@ extension AparenciaDaGravidade on Gravidade {
     Gravidade.baixa => 'Observar',
   };
 
+  /// Pra ícone, bolinha e barra de progresso — não precisa do contraste de texto.
   Color get cor => switch (this) {
     Gravidade.alta => const Color(0xFFDC2626),
     Gravidade.media => const Color(0xFFF59E0B),
     Gravidade.baixa => const Color(0xFF0EA5E9),
+  };
+
+  /// Pra texto em fundo claro: a mesma cor, mas escura o bastante pra passar
+  /// de 4,5:1 de contraste (o âmbar e o azul claros de `cor` não passavam).
+  Color get corTexto => switch (this) {
+    Gravidade.alta => const Color(0xFFB91C1C),
+    Gravidade.media => const Color(0xFFB45309),
+    Gravidade.baixa => const Color(0xFF0369A1),
   };
 }
 

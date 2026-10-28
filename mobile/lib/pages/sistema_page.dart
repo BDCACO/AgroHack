@@ -16,25 +16,27 @@ class SistemaPage extends StatelessWidget {
     final health = Servicos.of(context).health;
     return CarregarDados<ReadinessResponse>(
       buscar: health.buscarReadiness,
-      construir: (context, prontidao) => ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          ApareceEmCascata(
-            indice: 0,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _CartaoDeStatus(
-                icone: Icons.cloud_done_outlined,
-                titulo: 'API',
-                status: prontidao.pronto ? 'No ar' : 'Indisponível',
-                ok: prontidao.pronto,
+      construir: (context, prontidao) {
+        final tudoOk = prontidao.pronto && prontidao.bancoOk;
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            ApareceEmCascata(indice: 0, child: _ResumoGeral(tudoOk: tudoOk)),
+            const SizedBox(height: 16),
+            ApareceEmCascata(
+              indice: 1,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _CartaoDeStatus(
+                  icone: Icons.cloud_done_outlined,
+                  titulo: 'API',
+                  status: prontidao.pronto ? 'No ar' : 'Indisponível',
+                  ok: prontidao.pronto,
+                ),
               ),
             ),
-          ),
-          ApareceEmCascata(
-            indice: 1,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+            ApareceEmCascata(
+              indice: 2,
               child: _CartaoDeStatus(
                 icone: prontidao.bancoOk ? Icons.storage : Icons.error_outline,
                 titulo: 'Banco de dados',
@@ -42,16 +44,62 @@ class SistemaPage extends StatelessWidget {
                 ok: prontidao.bancoOk,
               ),
             ),
-          ),
-          ApareceEmCascata(
-            indice: 2,
-            child: Card(
-              child: ListTile(
-                leading: const Icon(Icons.link),
-                title: const Text('Endereço da API'),
-                subtitle: const Text(urlDaApi),
+            ApareceEmCascata(
+              indice: 3,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.link,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        urlDaApi,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// O que importa pra quem não vai ler duas linhas técnicas: tá tudo bem ou não.
+class _ResumoGeral extends StatelessWidget {
+  const _ResumoGeral({required this.tudoOk});
+
+  final bool tudoOk;
+
+  @override
+  Widget build(BuildContext context) {
+    final cor = tudoOk ? Cores.campo600 : const Color(0xFFB91C1C);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Icon(tudoOk ? Icons.check_circle : Icons.error, color: cor, size: 56),
+          const SizedBox(height: 12),
+          Text(
+            tudoOk ? 'Tudo funcionando' : 'Tem algo errado',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(color: cor, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -74,18 +122,21 @@ class _CartaoDeStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cor = ok ? Cores.campo600 : const Color(0xFFDC2626);
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: cor.withValues(alpha: 0.12),
-          foregroundColor: cor,
-          child: Icon(icone),
-        ),
-        title: Text(titulo),
-        subtitle: Text(
-          status,
-          style: TextStyle(color: cor, fontWeight: FontWeight.w600),
+    final cor = ok ? Cores.campo600 : const Color(0xFFB91C1C);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Card(
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: cor.withValues(alpha: 0.12),
+            foregroundColor: cor,
+            child: Icon(icone),
+          ),
+          title: Text(titulo, style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text(
+            status,
+            style: TextStyle(color: cor, fontWeight: FontWeight.w600),
+          ),
         ),
       ),
     );

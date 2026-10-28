@@ -86,7 +86,10 @@ class _ResumoDeGravidade extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             '$quantidade ${gravidade.texto}',
-            style: TextStyle(color: gravidade.cor, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: gravidade.corTexto,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -137,18 +140,18 @@ class _CartaoDeAlerta extends StatelessWidget {
                           child: Text(
                             alerta.gravidade.texto,
                             style: TextStyle(
-                              color: alerta.gravidade.cor,
-                              fontSize: 12,
+                              color: alerta.gravidade.corTexto,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
                       alerta.justificativa,
-                      style: Theme.of(context).textTheme.bodyMedium,
+                      style: Theme.of(context).textTheme.bodyLarge,
                     ),
                   ],
                 ),

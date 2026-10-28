@@ -53,6 +53,7 @@ class _CartaoDeInsumo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cor = maisGrave?.cor ?? Cores.campo600;
+    final corTexto = maisGrave?.corTexto ?? Cores.campo800;
     final minimo = insumo.estoqueMinimo;
     // Até 1.5x o mínimo enche a barra: dá pra ver "folga" sem estourar o traço
     // só porque o estoque está bem acima do ponto de pedir mais.
@@ -91,7 +92,11 @@ class _CartaoDeInsumo extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text(
                   maisGrave == null ? 'Sem alertas' : maisGrave!.texto,
-                  style: TextStyle(color: cor, fontWeight: FontWeight.w600, fontSize: 13),
+                  style: TextStyle(
+                    color: corTexto,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
                 ),
               ],
             ),
