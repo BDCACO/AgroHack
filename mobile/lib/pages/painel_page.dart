@@ -46,9 +46,16 @@ class PainelPage extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            for (final (i, par) in alertas.indexed)
+            ApareceEmCascata(
+              indice: 0,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _DestaqueDeAlerta(insumo: alertas.first.$1, alerta: alertas.first.$2),
+              ),
+            ),
+            for (final (i, par) in alertas.skip(1).indexed)
               ApareceEmCascata(
-                indice: i,
+                indice: i + 1,
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: _CartaoDeAlerta(insumo: par.$1, alerta: par.$2),
@@ -57,6 +64,76 @@ class PainelPage extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// O alerta mais urgente de todos: não fica igual aos outros na lista, pra
+/// não precisar ler linha por linha pra saber o que resolver primeiro.
+class _DestaqueDeAlerta extends StatelessWidget {
+  const _DestaqueDeAlerta({required this.insumo, required this.alerta});
+
+  final Insumo insumo;
+  final Alerta alerta;
+
+  @override
+  Widget build(BuildContext context) {
+    final cor = alerta.gravidade.corTexto;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: cor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: cor.withValues(alpha: 0.35),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.priority_high, color: Colors.white, size: 18),
+              const SizedBox(width: 6),
+              Text(
+                alerta.gravidade.texto,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              Text(
+                ' · resolva primeiro',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '${alerta.tipo.rotulo} · ${insumo.nome}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            alerta.justificativa,
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.92), fontSize: 16),
+          ),
+        ],
+      ),
     );
   }
 }

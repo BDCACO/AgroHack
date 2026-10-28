@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 
 import '../models/api.dart';
 
@@ -23,9 +24,42 @@ ThemeData temaDoApp() {
   return ThemeData(
     colorScheme: esquema,
     scaffoldBackgroundColor: Cores.campo50,
+    // Cabeçalho com cor sólida da marca, não só texto escuro num fundo claro.
     appBarTheme: const AppBarTheme(
-      backgroundColor: Cores.campo50,
-      foregroundColor: Cores.campo800,
+      backgroundColor: Cores.campo600,
+      foregroundColor: Colors.white,
+      elevation: 0,
+      centerTitle: false,
+      systemOverlayStyle: SystemUiOverlayStyle.light,
+      titleTextStyle: TextStyle(
+        color: Colors.white,
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+    // Barra de baixo no mesmo verde do cabeçalho: as duas pontas da tela
+    // ficam marcadas, o conteúdo claro no meio.
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: Cores.campo600,
+      indicatorColor: Colors.white.withValues(alpha: 0.22),
+      iconTheme: WidgetStateProperty.resolveWith(
+        (estados) => IconThemeData(
+          color: estados.contains(WidgetState.selected)
+              ? Colors.white
+              : Colors.white70,
+        ),
+      ),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (estados) => TextStyle(
+          fontSize: 12,
+          color: estados.contains(WidgetState.selected)
+              ? Colors.white
+              : Colors.white70,
+          fontWeight: estados.contains(WidgetState.selected)
+              ? FontWeight.w700
+              : FontWeight.w500,
+        ),
+      ),
     ),
     // Cartão branco com sombra de verdade: no fundo verde-claro da tela, o
     // tom de superfície padrão do Material 3 quase não aparece.
