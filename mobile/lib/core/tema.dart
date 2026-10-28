@@ -68,7 +68,7 @@ ThemeData temaDoApp() {
       elevation: 2,
       shadowColor: Cores.campo800.withValues(alpha: 0.18),
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     ),
   );
 }
@@ -81,19 +81,23 @@ extension AparenciaDaGravidade on Gravidade {
     Gravidade.baixa => 'Observar',
   };
 
+  // Paleta "terra": vermelho-barro, ocre de colheita e verde-sálvia — a mesma
+  // família de cor da marca, em vez do vermelho/âmbar/azul genérico de
+  // dashboard que destoava do resto do app.
+
   /// Pra ícone, bolinha e barra de progresso — não precisa do contraste de texto.
   Color get cor => switch (this) {
-    Gravidade.alta => const Color(0xFFDC2626),
-    Gravidade.media => const Color(0xFFF59E0B),
-    Gravidade.baixa => const Color(0xFF0EA5E9),
+    Gravidade.alta => const Color(0xFFC1443B),
+    Gravidade.media => const Color(0xFFB9770E),
+    Gravidade.baixa => const Color(0xFF5B8C78),
   };
 
-  /// Pra texto em fundo claro: a mesma cor, mas escura o bastante pra passar
-  /// de 4,5:1 de contraste (o âmbar e o azul claros de `cor` não passavam).
+  /// Pra texto em fundo claro (ou fundo sólido com texto branco): a mesma
+  /// cor, mas escura o bastante pra passar de 4,5:1 de contraste.
   Color get corTexto => switch (this) {
-    Gravidade.alta => const Color(0xFFB91C1C),
-    Gravidade.media => const Color(0xFFB45309),
-    Gravidade.baixa => const Color(0xFF0369A1),
+    Gravidade.alta => const Color(0xFF8F2F28),
+    Gravidade.media => const Color(0xFF7A5107),
+    Gravidade.baixa => const Color(0xFF3F6354),
   };
 }
 

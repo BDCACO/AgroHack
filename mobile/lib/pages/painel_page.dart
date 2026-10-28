@@ -7,6 +7,13 @@ import '../widgets/aparece_em_cascata.dart';
 import '../widgets/carregar_dados.dart';
 import '../widgets/resumo_gravidade.dart';
 
+String _saudacao() {
+  final hora = DateTime.now().hour;
+  if (hora < 12) return 'Bom dia';
+  if (hora < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
 /// Os alertas de todos os insumos, os mais graves primeiro, com a justificativa.
 class PainelPage extends StatelessWidget {
   const PainelPage({super.key});
@@ -34,6 +41,21 @@ class PainelPage extends StatelessWidget {
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            Text(
+              _saudacao(),
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Cores.campo800,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Veja o que precisa de atenção na lavoura hoje.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
+            ),
+            const SizedBox(height: 20),
             FaixaDeResumo(porGravidade: porGravidade),
             const SizedBox(height: 16),
             ApareceEmCascata(
@@ -73,13 +95,17 @@ class _DestaqueDeAlerta extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cor,
-        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [cor, Color.lerp(cor, Colors.black, 0.18)!],
+        ),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: cor.withValues(alpha: 0.35),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
