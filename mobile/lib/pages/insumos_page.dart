@@ -6,6 +6,7 @@ import '../models/api.dart';
 import '../widgets/aparece_em_cascata.dart';
 import '../widgets/carregar_dados.dart';
 import '../widgets/formato.dart';
+import '../widgets/resumo_gravidade.dart';
 
 class InsumosPage extends StatelessWidget {
   const InsumosPage({super.key});
@@ -19,22 +20,40 @@ class InsumosPage extends StatelessWidget {
         if (insumos.isEmpty) {
           return const EstadoVazio('Nenhum insumo cadastrado ainda.');
         }
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: insumos.length,
-          itemBuilder: (context, i) {
-            final insumo = insumos[i];
-            final maisGrave = insumo.analise.alertas
+
+        final maisGraves = [
+          for (final insumo in insumos)
+            insumo.analise.alertas
                 .map((alerta) => alerta.gravidade)
                 .fold<Gravidade?>(
                   null,
                   (pior, g) => pior == null || g.index < pior.index ? g : pior,
+                ),
+        ];
+        final porGravidade = <Gravidade, int>{};
+        for (final g in maisGraves.nonNulls) {
+          porGravidade[g] = (porGravidade[g] ?? 0) + 1;
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: insumos.length + (porGravidade.isEmpty ? 0 : 1),
+          itemBuilder: (context, i) {
+            if (porGravidade.isNotEmpty) {
+              if (i == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: FaixaDeResumo(porGravidade: porGravidade),
                 );
+              }
+              i -= 1;
+            }
+            final insumo = insumos[i];
             return ApareceEmCascata(
               indice: i,
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _CartaoDeInsumo(insumo: insumo, maisGrave: maisGrave),
+                child: _CartaoDeInsumo(insumo: insumo, maisGrave: maisGraves[i]),
               ),
             );
           },
@@ -64,54 +83,60 @@ class _CartaoDeInsumo extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    insumo.nome,
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                  ),
-                ),
-                Text(
-                  '${formatarQuantidade(insumo.estoqueAtual)} ${insumo.unidade}',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                ),
-              ],
+            CircleAvatar(
+              backgroundColor: cor.withValues(alpha: 0.12),
+              foregroundColor: cor,
+              child: Icon(iconeDaUnidade(insumo.unidade)),
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(color: cor, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  maisGrave == null ? 'Sem alertas' : maisGrave!.texto,
-                  style: TextStyle(
-                    color: corTexto,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          insumo.nome,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        '${formatarQuantidade(insumo.estoqueAtual)} ${insumo.unidade}',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-            if (proporcao != null) ...[
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: proporcao,
-                  minHeight: 6,
-                  backgroundColor: cor.withValues(alpha: 0.15),
-                  valueColor: AlwaysStoppedAnimation(cor),
-                ),
+                  const SizedBox(height: 6),
+                  Text(
+                    maisGrave == null ? 'Sem alertas' : maisGrave!.texto,
+                    style: TextStyle(
+                      color: corTexto,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  if (proporcao != null) ...[
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: proporcao,
+                        minHeight: 6,
+                        backgroundColor: cor.withValues(alpha: 0.15),
+                        valueColor: AlwaysStoppedAnimation(cor),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-            ],
+            ),
           ],
         ),
       ),

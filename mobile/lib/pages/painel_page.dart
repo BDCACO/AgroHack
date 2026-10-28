@@ -5,6 +5,7 @@ import '../core/tema.dart';
 import '../models/api.dart';
 import '../widgets/aparece_em_cascata.dart';
 import '../widgets/carregar_dados.dart';
+import '../widgets/resumo_gravidade.dart';
 
 /// Os alertas de todos os insumos, os mais graves primeiro, com a justificativa.
 class PainelPage extends StatelessWidget {
@@ -33,18 +34,7 @@ class PainelPage extends StatelessWidget {
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final gravidade in Gravidade.values)
-                  if (porGravidade[gravidade] != null)
-                    _ResumoDeGravidade(
-                      gravidade: gravidade,
-                      quantidade: porGravidade[gravidade]!,
-                    ),
-              ],
-            ),
+            FaixaDeResumo(porGravidade: porGravidade),
             const SizedBox(height: 16),
             ApareceEmCascata(
               indice: 0,
@@ -131,42 +121,6 @@ class _DestaqueDeAlerta extends StatelessWidget {
           Text(
             alerta.justificativa,
             style: TextStyle(color: Colors.white.withValues(alpha: 0.92), fontSize: 16),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ResumoDeGravidade extends StatelessWidget {
-  const _ResumoDeGravidade({required this.gravidade, required this.quantidade});
-
-  final Gravidade gravidade;
-  final int quantidade;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: gravidade.cor.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: gravidade.cor, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            '$quantidade ${gravidade.texto}',
-            style: TextStyle(
-              color: gravidade.corTexto,
-              fontWeight: FontWeight.w600,
-            ),
           ),
         ],
       ),

@@ -72,6 +72,19 @@ void main() {
     expect(find.text('−30 kg'), findsOneWidget);
   });
 
+  testWidgets('filtrar por Entradas esconde a saída da lista', (tester) async {
+    await tester.pumpWidget(_app());
+    await tester.pumpAndSettle();
+    await _irPara(tester, 'Movimentações');
+    expect(find.text('Ureia'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Entradas'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ureia'), findsNothing);
+    expect(find.text('Nada lançado com esse filtro.'), findsOneWidget);
+  });
+
   testWidgets('Sistema mostra API e banco no ar', (tester) async {
     await tester.pumpWidget(_app());
     await tester.pumpAndSettle();
