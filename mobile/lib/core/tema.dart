@@ -27,6 +27,15 @@ ThemeData temaDoApp() {
       backgroundColor: Cores.campo50,
       foregroundColor: Cores.campo800,
     ),
+    // Cartão branco com sombra de verdade: no fundo verde-claro da tela, o
+    // tom de superfície padrão do Material 3 quase não aparece.
+    cardTheme: CardThemeData(
+      color: Colors.white,
+      elevation: 2,
+      shadowColor: Cores.campo800.withValues(alpha: 0.18),
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    ),
   );
 }
 

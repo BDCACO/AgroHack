@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/servicos.dart';
 import '../core/tema.dart';
 import '../models/api.dart';
+import '../widgets/aparece_em_cascata.dart';
 import '../widgets/carregar_dados.dart';
 
 /// Os alertas de todos os insumos, os mais graves primeiro, com a justificativa.
@@ -23,27 +24,139 @@ class PainelPage extends StatelessWidget {
         if (alertas.isEmpty) {
           return const EstadoVazio('Nenhum alerta. O estoque está em dia.');
         }
-        return ListView.separated(
+
+        final porGravidade = <Gravidade, int>{};
+        for (final (_, alerta) in alertas) {
+          porGravidade[alerta.gravidade] = (porGravidade[alerta.gravidade] ?? 0) + 1;
+        }
+
+        return ListView(
           padding: const EdgeInsets.all(16),
-          itemCount: alertas.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 8),
-          itemBuilder: (context, i) {
-            final (insumo, alerta) = alertas[i];
-            return Card(
-              child: ListTile(
-                leading: Icon(
-                  Icons.circle,
-                  size: 12,
-                  color: alerta.gravidade.cor,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final gravidade in Gravidade.values)
+                  if (porGravidade[gravidade] != null)
+                    _ResumoDeGravidade(
+                      gravidade: gravidade,
+                      quantidade: porGravidade[gravidade]!,
+                    ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            for (final (i, par) in alertas.indexed)
+              ApareceEmCascata(
+                indice: i,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _CartaoDeAlerta(insumo: par.$1, alerta: par.$2),
                 ),
-                title: Text('${alerta.tipo.rotulo} · ${insumo.nome}'),
-                subtitle: Text(alerta.justificativa),
-                trailing: Text(alerta.gravidade.texto),
               ),
-            );
-          },
+          ],
         );
       },
+    );
+  }
+}
+
+class _ResumoDeGravidade extends StatelessWidget {
+  const _ResumoDeGravidade({required this.gravidade, required this.quantidade});
+
+  final Gravidade gravidade;
+  final int quantidade;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: gravidade.cor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: gravidade.cor, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$quantidade ${gravidade.texto}',
+            style: TextStyle(color: gravidade.cor, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CartaoDeAlerta extends StatelessWidget {
+  const _CartaoDeAlerta({required this.insumo, required this.alerta});
+
+  final Insumo insumo;
+  final Alerta alerta;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 4, color: alerta.gravidade.cor),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${alerta.tipo.rotulo} · ${insumo.nome}',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: alerta.gravidade.cor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Text(
+                            alerta.gravidade.texto,
+                            style: TextStyle(
+                              color: alerta.gravidade.cor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      alerta.justificativa,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
