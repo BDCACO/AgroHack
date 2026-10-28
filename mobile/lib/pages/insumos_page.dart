@@ -124,13 +124,20 @@ class _CartaoDeInsumo extends StatelessWidget {
                   ),
                   if (proporcao != null) ...[
                     const SizedBox(height: 10),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(999),
-                      child: LinearProgressIndicator(
-                        value: proporcao,
-                        minHeight: 6,
-                        backgroundColor: cor.withValues(alpha: 0.15),
-                        valueColor: AlwaysStoppedAnimation(cor),
+                    // Enche a barra até o valor real em vez de já aparecer
+                    // pronta — fica claro que é uma medida, não um enfeite.
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: proporcao),
+                      duration: const Duration(milliseconds: 600),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, valor, _) => ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          value: valor,
+                          minHeight: 6,
+                          backgroundColor: cor.withValues(alpha: 0.15),
+                          valueColor: AlwaysStoppedAnimation(cor),
+                        ),
                       ),
                     ),
                   ],

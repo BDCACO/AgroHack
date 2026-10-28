@@ -28,6 +28,8 @@ class _ApareceEmCascataState extends State<ApareceEmCascata> {
 
   @override
   Widget build(BuildContext context) {
+    // "Reduzir movimento" do sistema: mostra direto, sem cascata nenhuma.
+    if (MediaQuery.of(context).disableAnimations) return widget.child;
     return AnimatedSlide(
       offset: _visivel ? Offset.zero : const Offset(0, 0.08),
       duration: const Duration(milliseconds: 250),
@@ -35,6 +37,7 @@ class _ApareceEmCascataState extends State<ApareceEmCascata> {
       child: AnimatedOpacity(
         opacity: _visivel ? 1 : 0,
         duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
         child: widget.child,
       ),
     );

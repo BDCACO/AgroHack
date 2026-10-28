@@ -59,32 +59,48 @@ class _MovimentacoesPageState extends State<MovimentacoesPage> {
               aoMudar: (tipo) => setState(() => _filtro = tipo),
             ),
             const SizedBox(height: 8),
-            if (filtradas.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
-                child: Center(child: Text('Nada lançado com esse filtro.')),
-              )
-            else
-              for (final grupo in grupos.entries) ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-                  child: Text(
-                    formatarDiaRelativo(grupo.key),
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                  ),
-                ),
-                for (final (i, mov) in grupo.value.indexed)
-                  ApareceEmCascata(
-                    indice: i,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _CartaoDeMovimentacao(
-                        mov: mov,
-                        insumo: insumos[mov.insumoId],
+            // Trocar o filtro troca a lista inteira: crossfade pra ficar
+            // claro que foi a escolha que mudou o que aparece, não um bug.
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              child: Column(
+                key: ValueKey(_filtro),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (filtradas.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 32),
+                      child: Center(child: Text('Nada lançado com esse filtro.')),
+                    )
+                  else
+                    for (final grupo in grupos.entries) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+                        child: Text(
+                          formatarDiaRelativo(grupo.key),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-              ],
+                      for (final (i, mov) in grupo.value.indexed)
+                        ApareceEmCascata(
+                          indice: i,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _CartaoDeMovimentacao(
+                              mov: mov,
+                              insumo: insumos[mov.insumoId],
+                            ),
+                          ),
+                        ),
+                    ],
+                ],
+              ),
+            ),
           ],
         );
       },
@@ -157,6 +173,8 @@ class _ResumoDeMovimentacoes extends StatelessWidget {
                   SizedBox(
                     height: 100,
                     child: BarChart(
+                      duration: const Duration(milliseconds: 400),
+                      curve: Curves.easeOutCubic,
                       BarChartData(
                         titlesData: const FlTitlesData(show: false),
                         gridData: const FlGridData(show: false),
