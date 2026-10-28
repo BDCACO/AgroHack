@@ -26,6 +26,7 @@ class MovimentacoesPage extends StatelessWidget {
           return const EstadoVazio('Nenhuma movimentação lançada ainda.');
         }
         return ListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: movimentacoes.length,
           itemBuilder: (context, i) {
             final mov = movimentacoes[i];
