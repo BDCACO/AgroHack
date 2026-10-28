@@ -59,9 +59,11 @@ class _Erro extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
+    // SingleChildScrollView em vez de só Center: numa tela baixa (teclado
+    // aberto, janela pequena) o Column não estoura, rola em vez de quebrar.
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

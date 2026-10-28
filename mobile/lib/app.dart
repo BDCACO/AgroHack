@@ -59,10 +59,19 @@ class _EstruturaState extends State<Estrutura> {
   @override
   Widget build(BuildContext context) {
     final tela = _telas[_atual];
+    // "Reduzir movimento" do sistema: troca instantânea, sem fade.
+    final duracao = MediaQuery.of(context).disableAnimations
+        ? Duration.zero
+        : const Duration(milliseconds: 200);
     return Scaffold(
       appBar: AppBar(title: Text(tela.titulo)),
       // Cada tela busca seus dados ao aparecer, e de novo ao voltar para ela.
-      body: KeyedSubtree(key: ValueKey(_atual), child: tela.pagina),
+      body: AnimatedSwitcher(
+        duration: duracao,
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: KeyedSubtree(key: ValueKey(_atual), child: tela.pagina),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _atual,
         onDestinationSelected: (i) => setState(() => _atual = i),
