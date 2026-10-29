@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, useTemplateRef } from 'vue'
+import { computed, reactive, ref } from 'vue'
 
 import { reais } from '@/formatos'
 import * as api from '@/services/compras'
@@ -7,7 +7,9 @@ import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import { useFornecedoresStore } from '@/stores/fornecedores'
 import type { Pedido, PedidoEntrada } from '@/types/api'
 
-/** O pedido novo (vazio ou vindo da sugestão) ou a alteração de um aberto. */
+import JanelaModal from './JanelaModal.vue'
+
+/** O pedido novo (vazio ou vindo da sugestão) ou a alteração de um aberto, numa janela. */
 const props = defineProps<{
   pedido?: Pedido
   rascunho?: Pick<PedidoEntrada, 'fornecedor_id' | 'itens'>
@@ -40,8 +42,6 @@ const form = reactive({
 })
 const salvando = ref(false)
 const erro = ref<string | null>(null)
-const titulo = useTemplateRef<HTMLElement>('titulo')
-onMounted(() => nextTick(() => titulo.value?.focus()))
 
 // Na alteração, o fornecedor desativado do pedido continua na lista, para não sumir.
 const escolhas = computed(() =>
@@ -89,171 +89,171 @@ async function salvar() {
 </script>
 
 <template>
-  <form
-    class="cartao mt-2 mb-6 grid animate-surgir gap-4 p-5"
-    data-teste="formulario-pedido"
-    @submit.prevent="salvar"
+  <JanelaModal
+    :titulo="pedido ? `Alterar o pedido nº ${pedido.id}` : 'Novo pedido de compra'"
+    larga
+    @fechar="emit('cancelar')"
   >
-    <h2
-      ref="titulo"
-      tabindex="-1"
-      class="text-base font-semibold text-stone-900 focus:outline-none"
+    <form
+      class="grid gap-4"
+      data-teste="formulario-pedido"
+      @submit.prevent="salvar"
     >
-      {{ pedido ? `Alterar o pedido nº ${pedido.id}` : 'Novo pedido de compra' }}
-    </h2>
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <label class="flutuante">
-        <select
-          v-model="form.fornecedorId"
-          class="campo"
-          data-teste="fornecedor"
-        >
-          <option value="">
-            Sem fornecedor cadastrado
-          </option>
-          <option
-            v-for="fornecedor in escolhas"
-            :key="fornecedor.id"
-            :value="fornecedor.id"
-          >
-            {{ fornecedor.nome }}
-          </option>
-        </select>
-        <span class="rotulo">Fornecedor</span>
-      </label>
-      <label class="flutuante">
-        <input
-          v-model="form.feitoEm"
-          type="date"
-          required
-          :max="hoje()"
-          class="campo"
-        >
-        <span class="rotulo">Pedido em</span>
-      </label>
-      <label class="flutuante">
-        <input
-          v-model="form.previstoPara"
-          type="date"
-          :min="form.feitoEm"
-          class="campo"
-          data-teste="previsao"
-        >
-        <span class="rotulo">Chega em <span class="font-normal text-stone-500">(previsão)</span></span>
-      </label>
-      <label class="flutuante">
-        <input
-          v-model="form.observacao"
-          maxlength="500"
-          placeholder="Frete por conta da revenda"
-          class="campo"
-        >
-        <span class="rotulo">Observação <span class="font-normal text-stone-500">(opcional)</span></span>
-      </label>
-    </div>
-
-    <fieldset class="grid gap-3">
-      <legend class="mb-1 text-sm font-medium text-stone-700">
-        Itens
-      </legend>
-      <div
-        v-for="(linha, indice) in form.linhas"
-        :key="indice"
-        class="grid items-center gap-3 rounded-lg bg-stone-50 p-3 sm:grid-cols-[2fr_1fr_1fr_auto]"
-        data-teste="linha-pedido"
-      >
+      <div class="grid gap-4 sm:grid-cols-2">
         <label class="flutuante">
           <select
-            v-model="linha.insumoId"
+            v-model="form.fornecedorId"
+            autofocus
             class="campo"
+            data-teste="fornecedor"
           >
             <option value="">
-              Escolha…
+              Sem fornecedor cadastrado
             </option>
             <option
-              v-for="insumo in estoque.insumos"
-              :key="insumo.id"
-              :value="insumo.id"
+              v-for="fornecedor in escolhas"
+              :key="fornecedor.id"
+              :value="fornecedor.id"
             >
-              {{ insumo.nome }} ({{ insumo.unidade }})
+              {{ fornecedor.nome }}
             </option>
           </select>
-          <span class="rotulo">Insumo</span>
+          <span class="rotulo">Fornecedor</span>
         </label>
         <label class="flutuante">
           <input
-            v-model.number="linha.quantidade"
-            type="number"
-            min="0.001"
-            step="any"
-            placeholder=" "
+            v-model="form.feitoEm"
+            type="date"
+            required
+            :max="hoje()"
             class="campo"
           >
-          <span class="rotulo">Quantidade{{ unidade(linha) ? ` (${unidade(linha)})` : '' }}</span>
+          <span class="rotulo">Pedido em</span>
         </label>
         <label class="flutuante">
           <input
-            v-model.number="linha.preco"
-            type="number"
-            min="0.0001"
-            step="any"
-            inputmode="decimal"
-            placeholder=" "
+            v-model="form.previstoPara"
+            type="date"
+            :min="form.feitoEm"
+            class="campo"
+            data-teste="previsao"
+          >
+          <span class="rotulo">Chega em <span class="font-normal text-stone-500">(previsão)</span></span>
+        </label>
+        <label class="flutuante">
+          <input
+            v-model="form.observacao"
+            maxlength="500"
+            placeholder="Frete por conta da revenda"
             class="campo"
           >
-          <span class="rotulo">Preço{{ unidade(linha) ? ` (R$/${unidade(linha)})` : '' }}</span>
+          <span class="rotulo">Observação <span class="font-normal text-stone-500">(opcional)</span></span>
         </label>
-        <button
-          type="button"
-          class="botao-perigo px-3"
-          :disabled="form.linhas.length === 1"
-          :aria-label="`Tirar o item ${indice + 1}`"
-          @click="form.linhas.splice(indice, 1)"
-        >
-          Tirar
-        </button>
       </div>
-      <div>
-        <button
-          type="button"
-          class="botao-texto"
-          @click="form.linhas.push(linhaVazia())"
-        >
-          + Outro insumo
-        </button>
-      </div>
-    </fieldset>
 
-    <p
-      v-if="estimado !== null"
-      class="text-sm text-stone-600"
-      data-teste="estimado"
-    >
-      Estimado: <strong class="text-stone-900 tabular-nums">{{ reais(estimado) }}</strong>
-      (dos itens com preço)
-    </p>
-    <p
-      v-if="erro"
-      role="alert"
-      class="text-sm text-red-700"
-    >
-      {{ erro }}
-    </p>
-    <div class="flex gap-2">
-      <button
-        type="submit"
-        class="botao-primario"
-        :disabled="salvando"
+      <fieldset class="grid gap-3">
+        <legend class="mb-1 text-sm font-medium text-stone-700">
+          Itens
+        </legend>
+        <div
+          v-for="(linha, indice) in form.linhas"
+          :key="indice"
+          class="grid items-center gap-3 rounded-lg bg-stone-50 p-3 sm:grid-cols-[2fr_1fr_1fr_auto]"
+          data-teste="linha-pedido"
+        >
+          <label class="flutuante">
+            <select
+              v-model="linha.insumoId"
+              class="campo"
+            >
+              <option value="">
+                Escolha…
+              </option>
+              <option
+                v-for="insumo in estoque.insumos"
+                :key="insumo.id"
+                :value="insumo.id"
+              >
+                {{ insumo.nome }} ({{ insumo.unidade }})
+              </option>
+            </select>
+            <span class="rotulo">Insumo</span>
+          </label>
+          <label class="flutuante">
+            <input
+              v-model.number="linha.quantidade"
+              type="number"
+              min="0.001"
+              step="any"
+              placeholder=" "
+              class="campo"
+            >
+            <span class="rotulo">Quantidade{{ unidade(linha) ? ` (${unidade(linha)})` : '' }}</span>
+          </label>
+          <label class="flutuante">
+            <input
+              v-model.number="linha.preco"
+              type="number"
+              min="0.0001"
+              step="any"
+              inputmode="decimal"
+              placeholder=" "
+              class="campo"
+            >
+            <span class="rotulo">Preço{{ unidade(linha) ? ` (R$/${unidade(linha)})` : '' }}</span>
+          </label>
+          <button
+            type="button"
+            class="botao-perigo px-3"
+            :disabled="form.linhas.length === 1"
+            :aria-label="`Tirar o item ${indice + 1}`"
+            @click="form.linhas.splice(indice, 1)"
+          >
+            Tirar
+          </button>
+        </div>
+        <div>
+          <button
+            type="button"
+            class="botao-texto"
+            @click="form.linhas.push(linhaVazia())"
+          >
+            + Outro insumo
+          </button>
+        </div>
+      </fieldset>
+
+      <p
+        v-if="estimado !== null"
+        class="text-sm text-stone-600"
+        data-teste="estimado"
       >
-        {{ salvando ? 'Salvando…' : pedido ? 'Salvar pedido' : 'Fazer pedido' }}
-      </button>
-      <button
-        type="button"
-        class="botao-texto text-stone-700 hover:bg-stone-100"
-        @click="emit('cancelar')"
+        Estimado: <strong class="text-stone-900 tabular-nums">{{ reais(estimado) }}</strong>
+        (dos itens com preço)
+      </p>
+      <p
+        v-if="erro"
+        role="alert"
+        class="text-sm text-red-700"
       >
-        Cancelar
-      </button>
-    </div>
-  </form>
+        {{ erro }}
+      </p>
+      <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          class="botao-secundario"
+          @click="emit('cancelar')"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          class="botao-primario"
+          :disabled="salvando"
+        >
+          {{ salvando ? 'Salvando…' : pedido ? 'Salvar pedido' : 'Fazer pedido' }}
+        </button>
+      </div>
+    </form>
+  </JanelaModal>
 </template>
