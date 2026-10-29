@@ -72,8 +72,8 @@ export async function removerMovimentacao(id: number): Promise<void> {
 
 /** Baixa um arquivo que a API gera. Pelo cliente HTTP, e não por um link comum: o link não
  * levaria o token da sessão. O nome vem da API (Content-Disposition). */
-async function baixar(caminho: string, nomePadrao: string): Promise<void> {
-  const resposta = await http.get<Blob>(caminho, { responseType: 'blob', timeout: 60_000 })
+export async function baixar(caminho: string, nomePadrao: string, params?: object): Promise<void> {
+  const resposta = await http.get<Blob>(caminho, { params, responseType: 'blob', timeout: 60_000 })
   const disposicao = String(resposta.headers['content-disposition'] ?? '')
   const nome = /filename="([^"]+)"/.exec(disposicao)?.[1] ?? nomePadrao
   const url = URL.createObjectURL(resposta.data)

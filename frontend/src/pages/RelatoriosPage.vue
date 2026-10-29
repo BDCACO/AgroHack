@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 
+import BotaoDeDownload from '@/components/BotaoDeDownload.vue'
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import GraficoPorPeriodo from '@/components/GraficoPorPeriodo.vue'
 import { dataBr, reais } from '@/formatos'
-import { buscarRelatorioPorPeriodo } from '@/services/relatorios'
+import { baixarRelatorioPorPeriodo, buscarRelatorioPorPeriodo } from '@/services/relatorios'
 import { useCategoriasStore } from '@/stores/categorias'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import { useFornecedoresStore } from '@/stores/fornecedores'
@@ -24,6 +25,9 @@ const filtro = reactive<Required<FiltroDoRelatorio>>({
   fornecedor_id: '',
 })
 const relatorio = ref<RelatorioPorPeriodo | null>(null)
+// O arquivo sai com os filtros da tela: o que se baixa é o que se vê.
+const baixarPdf = () => baixarRelatorioPorPeriodo({ ...filtro }, 'pdf')
+const baixarExcel = () => baixarRelatorioPorPeriodo({ ...filtro }, 'xlsx')
 const carregando = ref(false)
 const erro = ref<string | null>(null)
 
@@ -73,7 +77,22 @@ const plural = (n: number, um: string, varios: string) => (n === 1 ? `1 ${um}` :
   <CabecalhoDePagina
     titulo="Relatórios"
     descricao="Quanto se gastou em compras, quanto se consumiu e quanto se perdeu, mês a mês. Para fechar a safra e comparar com a anterior."
-  />
+  >
+    <template #acoes>
+      <BotaoDeDownload
+        rotulo="Baixar PDF"
+        :baixar="baixarPdf"
+        class="botao-secundario"
+        data-teste="baixar-pdf"
+      />
+      <BotaoDeDownload
+        rotulo="Baixar Excel"
+        :baixar="baixarExcel"
+        class="botao-primario"
+        data-teste="baixar-excel"
+      />
+    </template>
+  </CabecalhoDePagina>
 
   <form
     class="cartao mb-6 grid animate-surgir gap-4 p-5 sm:grid-cols-3 lg:grid-cols-6"
