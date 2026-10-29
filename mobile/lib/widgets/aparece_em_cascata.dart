@@ -3,7 +3,11 @@ import 'package:flutter/material.dart';
 /// Anima a entrada de um item de lista: desliza de baixo pra cima e some o
 /// fade, um pouco depois do item anterior — dá a sensação de cascata.
 class ApareceEmCascata extends StatefulWidget {
-  const ApareceEmCascata({super.key, required this.indice, required this.child});
+  const ApareceEmCascata({
+    super.key,
+    required this.indice,
+    required this.child,
+  });
 
   final int indice;
   final Widget child;

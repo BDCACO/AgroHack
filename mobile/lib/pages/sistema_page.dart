@@ -97,9 +97,8 @@ class _ResumoGeral extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             tudoOk ? 'Tudo funcionando' : 'Tem algo errado',
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(color: cor, fontWeight: FontWeight.bold),
+            style: Theme.of(context).textTheme.titleLarge
+                ?.copyWith(color: cor, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -132,7 +131,10 @@ class _CartaoDeStatus extends StatelessWidget {
             foregroundColor: cor,
             child: Icon(icone),
           ),
-          title: Text(titulo, style: const TextStyle(fontWeight: FontWeight.w600)),
+          title: Text(
+            titulo,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
           subtitle: Text(
             status,
             style: TextStyle(color: cor, fontWeight: FontWeight.w600),

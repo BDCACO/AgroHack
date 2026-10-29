@@ -72,7 +72,9 @@ class _MovimentacoesPageState extends State<MovimentacoesPage> {
                   if (filtradas.isEmpty)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 32),
-                      child: Center(child: Text('Nada lançado com esse filtro.')),
+                      child: Center(
+                        child: Text('Nada lançado com esse filtro.'),
+                      ),
                     )
                   else
                     for (final grupo in grupos.entries) ...[
@@ -165,9 +167,8 @@ class _ResumoDeMovimentacoes extends StatelessWidget {
                 children: [
                   Text(
                     'Movimentações por dia (últimos 14 dias)',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                    style: Theme.of(context).textTheme.bodyMedium
+                        ?.copyWith(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 12),
                   SizedBox(
@@ -237,7 +238,13 @@ class _Estatistica extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(valor, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(
+                  valor,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 Text(rotulo, style: Theme.of(context).textTheme.bodySmall),
               ],
             ),

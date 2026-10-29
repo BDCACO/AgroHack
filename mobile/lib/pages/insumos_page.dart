@@ -53,7 +53,10 @@ class InsumosPage extends StatelessWidget {
               indice: i,
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _CartaoDeInsumo(insumo: insumo, maisGrave: maisGraves[i]),
+                child: _CartaoDeInsumo(
+                  insumo: insumo,
+                  maisGrave: maisGraves[i],
+                ),
               ),
             );
           },
@@ -109,7 +112,10 @@ class _CartaoDeInsumo extends StatelessWidget {
                       ),
                       Text(
                         '${formatarQuantidade(insumo.estoqueAtual)} ${insumo.unidade}',
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
                       ),
                     ],
                   ),

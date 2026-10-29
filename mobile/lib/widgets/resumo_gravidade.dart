@@ -29,12 +29,18 @@ class ResumoDeGravidade extends StatelessWidget {
           Container(
             width: 8,
             height: 8,
-            decoration: BoxDecoration(color: gravidade.cor, shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: gravidade.cor,
+              shape: BoxShape.circle,
+            ),
           ),
           const SizedBox(width: 6),
           Text(
             '$quantidade ${gravidade.texto}',
-            style: TextStyle(color: gravidade.corTexto, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: gravidade.corTexto,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

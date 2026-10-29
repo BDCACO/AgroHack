@@ -35,7 +35,8 @@ class PainelPage extends StatelessWidget {
 
         final porGravidade = <Gravidade, int>{};
         for (final (_, alerta) in alertas) {
-          porGravidade[alerta.gravidade] = (porGravidade[alerta.gravidade] ?? 0) + 1;
+          porGravidade[alerta.gravidade] =
+              (porGravidade[alerta.gravidade] ?? 0) + 1;
         }
 
         return ListView(
@@ -51,9 +52,8 @@ class PainelPage extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Veja o que precisa de atenção na lavoura hoje.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(color: Colors.black54),
             ),
             const SizedBox(height: 20),
             FaixaDeResumo(porGravidade: porGravidade),
@@ -62,7 +62,10 @@ class PainelPage extends StatelessWidget {
               indice: 0,
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: _DestaqueDeAlerta(insumo: alertas.first.$1, alerta: alertas.first.$2),
+                child: _DestaqueDeAlerta(
+                  insumo: alertas.first.$1,
+                  alerta: alertas.first.$2,
+                ),
               ),
             ),
             for (final (i, par) in alertas.skip(1).indexed)
@@ -146,7 +149,10 @@ class _DestaqueDeAlerta extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             alerta.justificativa,
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.92), fontSize: 16),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.92),
+              fontSize: 16,
+            ),
           ),
         ],
       ),
