@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 
 import '../models/api.dart';
 
@@ -23,9 +24,51 @@ ThemeData temaDoApp() {
   return ThemeData(
     colorScheme: esquema,
     scaffoldBackgroundColor: Cores.campo50,
+    // Cabeçalho com cor sólida da marca, não só texto escuro num fundo claro.
     appBarTheme: const AppBarTheme(
-      backgroundColor: Cores.campo50,
-      foregroundColor: Cores.campo800,
+      backgroundColor: Cores.campo600,
+      foregroundColor: Colors.white,
+      elevation: 0,
+      centerTitle: false,
+      systemOverlayStyle: SystemUiOverlayStyle.light,
+      titleTextStyle: TextStyle(
+        color: Colors.white,
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+    // Barra de baixo no mesmo verde do cabeçalho: as duas pontas da tela
+    // ficam marcadas, o conteúdo claro no meio.
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: Cores.campo600,
+      indicatorColor: Colors.white.withValues(alpha: 0.22),
+      iconTheme: WidgetStateProperty.resolveWith(
+        (estados) => IconThemeData(
+          color: estados.contains(WidgetState.selected)
+              ? Colors.white
+              : Colors.white70,
+        ),
+      ),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (estados) => TextStyle(
+          fontSize: 12,
+          color: estados.contains(WidgetState.selected)
+              ? Colors.white
+              : Colors.white70,
+          fontWeight: estados.contains(WidgetState.selected)
+              ? FontWeight.w700
+              : FontWeight.w500,
+        ),
+      ),
+    ),
+    // Cartão branco com sombra de verdade: no fundo verde-claro da tela, o
+    // tom de superfície padrão do Material 3 quase não aparece.
+    cardTheme: CardThemeData(
+      color: Colors.white,
+      elevation: 2,
+      shadowColor: Cores.campo800.withValues(alpha: 0.18),
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     ),
   );
 }
@@ -38,10 +81,23 @@ extension AparenciaDaGravidade on Gravidade {
     Gravidade.baixa => 'Observar',
   };
 
+  // Paleta "terra": vermelho-barro, ocre de colheita e verde-sálvia — a mesma
+  // família de cor da marca, em vez do vermelho/âmbar/azul genérico de
+  // dashboard que destoava do resto do app.
+
+  /// Pra ícone, bolinha e barra de progresso — não precisa do contraste de texto.
   Color get cor => switch (this) {
-    Gravidade.alta => const Color(0xFFDC2626),
-    Gravidade.media => const Color(0xFFF59E0B),
-    Gravidade.baixa => const Color(0xFF0EA5E9),
+    Gravidade.alta => const Color(0xFFC1443B),
+    Gravidade.media => const Color(0xFFB9770E),
+    Gravidade.baixa => const Color(0xFF5B8C78),
+  };
+
+  /// Pra texto em fundo claro (ou fundo sólido com texto branco): a mesma
+  /// cor, mas escura o bastante pra passar de 4,5:1 de contraste.
+  Color get corTexto => switch (this) {
+    Gravidade.alta => const Color(0xFF8F2F28),
+    Gravidade.media => const Color(0xFF7A5107),
+    Gravidade.baixa => const Color(0xFF3F6354),
   };
 }
 
