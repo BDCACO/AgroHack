@@ -53,9 +53,11 @@ class _MovimentacoesPageState extends State<MovimentacoesPage> {
             servicos.estoque.listarInsumos(),
           ).wait;
           final pendentes = await servicos.pendencias.listar();
-          return (movimentacoes, {
-            for (final i in insumosLista) i.id: i,
-          }, pendentes);
+          return (
+            movimentacoes,
+            {for (final i in insumosLista) i.id: i},
+            pendentes,
+          );
         },
         construir: (context, dados) {
           final (movimentacoes, insumos, pendentes) = dados;
@@ -70,7 +72,8 @@ class _MovimentacoesPageState extends State<MovimentacoesPage> {
                 final insumo = insumos[pendencia.dados.insumoId];
                 return _ItemPendente(
                   pendencia: pendencia,
-                  nomeDoInsumo: insumo?.nome ?? 'Insumo ${pendencia.dados.insumoId}',
+                  nomeDoInsumo:
+                      insumo?.nome ?? 'Insumo ${pendencia.dados.insumoId}',
                   onTentar: () async {
                     await servicos.pendencias.tentarEnviar(
                       apenas: pendencia.criadoEm,

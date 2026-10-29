@@ -55,9 +55,7 @@ class _FormularioState extends State<_Formulario> {
       insumoId: _insumo!.id,
       tipo: _tipo,
       data: _data,
-      quantidade: double.parse(
-        _quantidadeController.text.replaceAll(',', '.'),
-      ),
+      quantidade: double.parse(_quantidadeController.text.replaceAll(',', '.')),
       validade: _validade,
     );
     final servicos = Servicos.of(context);
@@ -137,9 +135,7 @@ class _FormularioState extends State<_Formulario> {
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             validator: (texto) {
-              final valor = double.tryParse(
-                (texto ?? '').replaceAll(',', '.'),
-              );
+              final valor = double.tryParse((texto ?? '').replaceAll(',', '.'));
               return valor == null || valor <= 0
                   ? 'Informe uma quantidade válida'
                   : null;

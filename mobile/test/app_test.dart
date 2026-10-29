@@ -103,7 +103,9 @@ void main() {
       );
     });
     await tester.pumpWidget(
-      CampoCertoApp(api: ClienteApi(client: client, baseUrl: 'http://api/v1')),
+      CampoCertoApp(
+        api: ClienteApi(client: client, baseUrl: 'http://api/v1'),
+      ),
     );
     await tester.pumpAndSettle();
     await _irPara(tester, 'Insumos');
@@ -158,7 +160,9 @@ void main() {
       return http.Response('', 404);
     });
     await tester.pumpWidget(
-      CampoCertoApp(api: ClienteApi(client: client, baseUrl: 'http://api/v1')),
+      CampoCertoApp(
+        api: ClienteApi(client: client, baseUrl: 'http://api/v1'),
+      ),
     );
     await tester.pumpAndSettle();
     await _irPara(tester, 'Movimentações');
@@ -217,7 +221,9 @@ void main() {
       return http.Response('', 404);
     });
     await tester.pumpWidget(
-      CampoCertoApp(api: ClienteApi(client: client, baseUrl: 'http://api/v1')),
+      CampoCertoApp(
+        api: ClienteApi(client: client, baseUrl: 'http://api/v1'),
+      ),
     );
     await tester.pumpAndSettle();
     await _irPara(tester, 'Movimentações');
