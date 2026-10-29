@@ -104,8 +104,8 @@ onMounted(async () => {
 })
 watch(filtro, () => buscar())
 
-// Os dados de cada registro: em palavras, para o dono, ou como a API guardou, para quem vai
-// conferir campo a campo. A escolha é deste navegador.
+// Os dados de cada registro: formatados, em palavras, ou no original, como a API guardou,
+// para quem vai conferir campo a campo. A escolha é deste navegador.
 type Formato = 'legivel' | 'tecnico'
 const CHAVE_DO_FORMATO = 'campocerto.auditoria-formato'
 function lerFormato(): Formato {
@@ -124,8 +124,8 @@ watch(formato, (escolhido) => {
   }
 })
 const FORMATOS: { valor: Formato; rotulo: string }[] = [
-  { valor: 'legivel', rotulo: 'Fácil de ler' },
-  { valor: 'tecnico', rotulo: 'Técnico' },
+  { valor: 'legivel', rotulo: 'Formatado' },
+  { valor: 'tecnico', rotulo: 'Original' },
 ]
 
 const quem = (evento: EventoDeAuditoria) =>
@@ -231,7 +231,7 @@ const valor = (dado: unknown) =>
         role="radiogroup"
         aria-label="Como mostrar o que foi registrado"
       >
-        <span class="hidden sm:inline">Mostrar os dados:</span>
+        <span class="hidden sm:inline">Exibir:</span>
         <div class="inline-flex rounded-lg bg-stone-100 p-0.5">
           <button
             v-for="opcao in FORMATOS"

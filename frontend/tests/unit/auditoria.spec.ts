@@ -101,9 +101,11 @@ describe('Auditoria', () => {
     expect(registros[2]!.find('[data-teste="dados-legiveis"]').text()).toMatch(/Criados\s*Insumos\s*7/)
   })
 
-  it('"Técnico" mostra os dados como a API guardou, e o navegador lembra a escolha', async () => {
+  it('"Original" mostra os dados como a API guardou, e o navegador lembra a escolha', async () => {
     const { wrapper } = await montarEm('/auditoria')
     expect(wrapper.find('[data-teste="formato-legivel"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[data-teste="formato-legivel"]').text()).toBe('Formatado')
+    expect(wrapper.find('[data-teste="formato-tecnico"]').text()).toBe('Original')
 
     await wrapper.find('[data-teste="formato-tecnico"]').trigger('click')
 
