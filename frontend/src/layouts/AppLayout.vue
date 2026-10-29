@@ -116,7 +116,7 @@ onMounted(() => {
   <div class="min-h-screen lg:flex">
     <a
       href="#conteudo"
-      class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-campo-900 focus:shadow-lg"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60] focus:rounded-md focus:bg-superficie focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-campo-900 focus:shadow-lg"
     >
       Pular para o conteúdo
     </a>
@@ -125,7 +125,7 @@ onMounted(() => {
          não aparece. Rola junto com a página; quem fica sempre à mão é a barra de baixo. No
          app instalado, desce abaixo do relógio. -->
     <header
-      class="flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-3 bg-campo-900 px-4 pt-[env(safe-area-inset-top)] text-white lg:hidden"
+      class="flex h-[calc(3.5rem+env(safe-area-inset-top))] cromo items-center gap-3 bg-mata-900 px-4 pt-[env(safe-area-inset-top)] text-white lg:hidden"
     >
       <RouterLink
         :to="{ name: 'painel' }"
@@ -156,7 +156,7 @@ onMounted(() => {
          continua para o leitor de tela e aparece ao parar o mouse em cima. -->
     <aside
       id="menu-lateral"
-      class="inset-y-0 left-0 z-50 hidden shrink-0 flex-col overflow-hidden bg-linear-to-b from-campo-900 to-campo-950 whitespace-nowrap text-campo-50 transition-[width] duration-300 ease-movimento lg:sticky lg:top-0 lg:flex lg:h-screen"
+      class="inset-y-0 left-0 z-50 hidden shrink-0 flex-col overflow-hidden cromo bg-linear-to-b from-mata-900 to-mata-950 whitespace-nowrap text-campo-50 transition-[width] duration-300 ease-movimento lg:sticky lg:top-0 lg:flex lg:h-screen"
       :class="recolhido ? 'w-18' : 'w-64'"
       :data-recolhido="recolhido || undefined"
     >
@@ -213,11 +213,20 @@ onMounted(() => {
               v-if="item.nome === 'painel' && urgentes"
               class="rounded-full bg-red-500 text-xs font-bold text-white"
               :class="recolhido
-                ? 'absolute top-0.5 right-1 min-w-4 px-1 text-center text-[10px] leading-4 ring-2 ring-campo-900'
+                ? 'absolute top-0.5 right-1 min-w-4 px-1 text-center text-[10px] leading-4 ring-2 ring-mata-900'
                 : 'ml-auto px-2 py-0.5'"
               data-teste="urgentes-menu"
             >
               {{ urgentes }}<span class="sr-only">{{ urgentes === 1 ? ' urgente' : ' urgentes' }}</span>
+            </span>
+            <!-- A API ou o banco fora do ar: o ponto vermelho em Configurações, onde está o detalhe. -->
+            <span
+              v-if="item.nome === 'configuracoes' && status.situacao === 'problema'"
+              class="size-2.5 rounded-full bg-red-400 ring-2 ring-mata-900"
+              :class="recolhido ? 'absolute top-1.5 right-2' : 'ml-auto'"
+              data-teste="problema-menu"
+            >
+              <span class="sr-only">, sistema com problema</span>
             </span>
           </a>
         </RouterLink>
@@ -229,7 +238,7 @@ onMounted(() => {
       <!-- Barra do topo, no desktop: o botão que recolhe o menu, onde se está, o status do
            sistema e quem está usando. Fica presa no alto ao rolar. -->
       <header
-        class="sticky top-0 z-30 hidden h-16 items-center gap-3 border-b border-stone-200/80 bg-white/85 px-4 backdrop-blur lg:flex"
+        class="sticky top-0 z-30 hidden h-16 items-center gap-3 border-b border-stone-200/80 bg-superficie/85 px-4 backdrop-blur lg:flex"
         data-teste="barra-do-topo"
       >
         <button
@@ -305,7 +314,7 @@ onMounted(() => {
             GitHub<span class="sr-only"> (abre em outra aba)</span>
           </a>
 
-          <!-- Quem está usando: o nome leva a Minha conta. Sem login (API de desenvolvimento
+          <!-- Quem está usando: o nome leva a Configurações (perfil, senha, aparelhos). Sem login (API de desenvolvimento
                com a autenticação desligada), o caminho para entrar. -->
           <div
             v-if="sessao.usuario"
@@ -313,14 +322,13 @@ onMounted(() => {
             data-teste="sessao"
           >
             <RouterLink
-              :to="{ name: 'conta' }"
+              :to="{ name: 'configuracoes' }"
               class="flex items-center gap-2.5 rounded-lg py-1 pr-2 pl-1 transition-colors hover:bg-stone-100"
-              :class="rota.name === 'conta' ? 'bg-stone-100' : ''"
-              :aria-current="rota.name === 'conta' ? 'page' : undefined"
-              title="Minha conta: senha e aparelhos"
+              :class="rota.name === 'configuracoes' ? 'bg-stone-100' : ''"
+              title="Configurações: perfil, senha, aparelhos e tema"
             >
               <span
-                class="grid size-8 place-items-center rounded-full bg-campo-700 text-xs font-semibold text-white"
+                class="grid size-8 place-items-center rounded-full bg-campo-600 text-xs font-semibold text-white"
                 aria-hidden="true"
               >{{ iniciais(sessao.usuario.nome) }}</span>
               <span class="text-left leading-tight">
@@ -377,7 +385,7 @@ onMounted(() => {
     <!-- Barra de baixo, no celular e no tablet: as telas ao alcance do polegar, sem menu
          escondido. Mesmas telas e mesma ordem do menu lateral. -->
     <nav
-      class="barra-inferior fixed inset-x-0 bottom-0 z-40 bg-campo-900 pb-[env(safe-area-inset-bottom)] text-campo-100/75 shadow-[0_-1px_0_rgb(0_0_0/0.15)] lg:hidden"
+      class="barra-inferior cromo fixed inset-x-0 bottom-0 z-40 bg-mata-900 pb-[env(safe-area-inset-bottom)] text-campo-100/75 shadow-[0_-1px_0_rgb(0_0_0/0.15)] lg:hidden"
       aria-label="Principal"
     >
       <div
@@ -387,7 +395,7 @@ onMounted(() => {
         <!-- Como no menu lateral: um destaque só, que desliza até a aba nova. -->
         <span
           class="pointer-events-none absolute top-2 left-0 flex justify-center transition-[translate,opacity] duration-300 ease-movimento"
-          :class="indiceAtivo < 0 && rota.name !== 'conta' ? 'opacity-0' : ''"
+          :class="indiceAtivo < 0 ? 'opacity-0' : ''"
           :style="{ width: `${100 / (naBarra.length + 1)}%`, translate: `calc(${indiceNaBarra} * 100%) 0` }"
           aria-hidden="true"
         >
@@ -415,14 +423,14 @@ onMounted(() => {
               />
               <span
                 v-if="item.nome === 'painel' && urgentes"
-                class="absolute top-0 right-2.5 min-w-4 rounded-full bg-red-500 px-1 text-center text-[10px] leading-4 font-bold text-white ring-2 ring-campo-900"
+                class="absolute top-0 right-2.5 min-w-4 rounded-full bg-red-500 px-1 text-center text-[10px] leading-4 font-bold text-white ring-2 ring-mata-900"
                 data-teste="urgentes-aba"
               >
                 {{ urgentes }}<span class="sr-only">{{ urgentes === 1 ? ' urgente' : ' urgentes' }}</span>
               </span>
               <span
-                v-if="item.nome === 'sistema' && status.situacao === 'problema'"
-                class="absolute top-0.5 right-3.5 size-2.5 rounded-full bg-red-400 ring-2 ring-campo-900"
+                v-if="item.nome === 'configuracoes' && status.situacao === 'problema'"
+                class="absolute top-0.5 right-3.5 size-2.5 rounded-full bg-red-400 ring-2 ring-mata-900"
               >
                 <span class="sr-only">, com problema</span>
               </span>
@@ -433,7 +441,7 @@ onMounted(() => {
         <button
           type="button"
           class="group relative flex h-16 flex-col items-center justify-start gap-1 pt-2 text-[11px] leading-none font-medium transition-colors duration-150 [-webkit-tap-highlight-color:transparent]"
-          :class="indiceNaBarra === naBarra.length && (indiceAtivo >= 0 || rota.name === 'conta') ? 'text-white' : 'active:text-white'"
+          :class="indiceNaBarra === naBarra.length && indiceAtivo >= 0 ? 'text-white' : 'active:text-white'"
           aria-haspopup="dialog"
           data-teste="aba-mais"
           @click="maisAberto = true"
@@ -444,8 +452,8 @@ onMounted(() => {
               class="h-6 w-6 transition-transform duration-150 ease-chegada group-active:scale-90"
             />
             <span
-              v-if="noMais.some((item) => item.nome === 'sistema') && status.situacao === 'problema'"
-              class="absolute top-0.5 right-3.5 size-2.5 rounded-full bg-red-400 ring-2 ring-campo-900"
+              v-if="noMais.some((item) => item.nome === 'configuracoes') && status.situacao === 'problema'"
+              class="absolute top-0.5 right-3.5 size-2.5 rounded-full bg-red-400 ring-2 ring-mata-900"
             >
               <span class="sr-only">, sistema com problema</span>
             </span>
@@ -479,20 +487,6 @@ onMounted(() => {
               class="h-5 w-5 shrink-0 text-campo-700"
             />
             {{ item.rotulo }}
-          </RouterLink>
-        </li>
-        <li v-if="sessao.usuario">
-          <RouterLink
-            :to="{ name: 'conta' }"
-            class="flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium text-stone-700 active:bg-stone-100"
-            :class="rota.name === 'conta' ? 'bg-campo-50 text-campo-800' : ''"
-          >
-            <IconeSvg
-              nome="conta"
-              class="h-5 w-5 shrink-0 text-campo-700"
-            />
-            Minha conta
-            <span class="ml-auto truncate text-xs font-normal text-stone-500">{{ sessao.usuario.nome }}</span>
           </RouterLink>
         </li>
       </ul>

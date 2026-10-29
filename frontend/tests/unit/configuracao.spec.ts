@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
-import SistemaPage from '@/pages/SistemaPage.vue'
+import ConfiguracoesPage from '@/pages/ConfiguracoesPage.vue'
 import { routes } from '@/router'
 import * as api from '@/services/configuracao'
 import { useSessaoStore } from '@/stores/sessao'
@@ -22,12 +22,13 @@ const FUNCIONARIO: Usuario = { id: 2, nome: 'Zé', login: 'ze', papel: 'funciona
 
 async function montar() {
   const router = createRouter({ history: createMemoryHistory(), routes })
-  const wrapper = mount(SistemaPage, { global: { plugins: [router] } })
+  const wrapper = mount(ConfiguracoesPage, { global: { plugins: [router] } })
   await flushPromises()
   return wrapper
 }
 
-describe('Calendário de safra, no Sistema', () => {
+// O Sistema virou parte de Configurações, e o calendário foi junto.
+describe('Calendário de safra, em Configurações', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.mocked(api.buscarConfiguracao).mockResolvedValue({ meses_de_safra: [] })

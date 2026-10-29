@@ -34,14 +34,13 @@ const MovimentacoesPage = () => import('@/pages/MovimentacoesPage.vue')
 const TalhoesPage = () => import('@/pages/TalhoesPage.vue')
 const TalhaoPage = () => import('@/pages/TalhaoPage.vue')
 const ImportarPage = () => import('@/pages/ImportarPage.vue')
-const SistemaPage = () => import('@/pages/SistemaPage.vue')
+const ConfiguracoesPage = () => import('@/pages/ConfiguracoesPage.vue')
 const ComprasPage = () => import('@/pages/ComprasPage.vue')
 const RelatoriosPage = () => import('@/pages/RelatoriosPage.vue')
 const FornecedoresPage = () => import('@/pages/FornecedoresPage.vue')
 const FornecedorPage = () => import('@/pages/FornecedorPage.vue')
 const UsuariosPage = () => import('@/pages/UsuariosPage.vue')
 const AuditoriaPage = () => import('@/pages/AuditoriaPage.vue')
-const ContaPage = () => import('@/pages/ContaPage.vue')
 const NaoEncontradoPage = () => import('@/pages/NaoEncontradoPage.vue')
 const EntrarPage = () => import('@/pages/EntrarPage.vue')
 
@@ -125,10 +124,12 @@ const telas: RouteRecordRaw[] = [
     meta: { titulo: 'Auditoria', menu: { icone: 'auditoria' }, soDono: true, comLogin: true },
   },
   {
-    path: 'sistema',
-    name: 'sistema',
-    component: SistemaPage,
-    meta: { titulo: 'Sistema', menu: { icone: 'sistema' } },
+    // O tema, o perfil, a senha, os aparelhos e se a API e o banco estão no ar. Com a
+    // autenticação desligada, só o tema e o sistema (não há de quem ser o perfil).
+    path: 'configuracoes',
+    name: 'configuracoes',
+    component: ConfiguracoesPage,
+    meta: { titulo: 'Configurações', menu: { icone: 'configuracoes' } },
   },
 ]
 
@@ -193,13 +194,9 @@ export const routes: RouteRecordRaw[] = [
         props: (rota) => ({ id: Number(rota.params.id) }),
         meta: { titulo: 'Fornecedor', secao: 'compras' },
       },
-      {
-        path: 'conta',
-        name: 'conta',
-        component: ContaPage,
-        beforeEnter: comLogin,
-        meta: { titulo: 'Minha conta' },
-      },
+      // Minha conta e Sistema viraram partes de Configurações: o endereço antigo leva até lá.
+      { path: 'conta', redirect: { name: 'configuracoes' } },
+      { path: 'sistema', redirect: { name: 'configuracoes' } },
       {
         path: ':caminho(.*)*',
         name: 'nao-encontrado',

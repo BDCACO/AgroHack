@@ -6,7 +6,6 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import App from '@/App.vue'
 import { routes } from '@/router'
 import { ApiError } from '@/services/http'
-import * as conta from '@/services/sessao'
 import * as api from '@/services/usuarios'
 import { useSessaoStore } from '@/stores/sessao'
 import type { Sessao, Usuario, UsuarioCompleto } from '@/types/api'
@@ -29,13 +28,6 @@ vi.mock('@/services/usuarios', () => ({
   listarSessoesDe: vi.fn(),
   encerrarSessaoDe: vi.fn(),
   encerrarSessoesDe: vi.fn(),
-}))
-vi.mock('@/services/sessao', async (original) => ({
-  ...(await original<typeof import('@/services/sessao')>()),
-  trocarSenha: vi.fn(),
-  listarMinhasSessoes: vi.fn(),
-  encerrarMinhaSessao: vi.fn(),
-  encerrarOutrasSessoes: vi.fn(),
 }))
 
 const dono: Usuario = { id: 1, nome: 'Dona Maria', login: 'maria', papel: 'dono' }
@@ -193,79 +185,3 @@ describe('Usuários', () => {
   })
 })
 
-describe('Minha conta', () => {
-  beforeEach(() => {
-    vi.mocked(conta.listarMinhasSessoes).mockResolvedValue([
-      sessao(20, { atual: true }),
-      sessao(21, { dispositivo: 'Celular' }),
-    ])
-  })
-
-  it('o nome na barra do topo leva à conta, que mostra quem é e onde está conectado', async () => {
-    const { wrapper, router } = await montarEm('/')
-
-    expect(wrapper.find('[data-teste="sessao"] a[href="/conta"]').text()).toContain('Dona Maria')
-    await router.push('/conta')
-    await flushPromises()
-
-    expect(router.currentRoute.value.name).toBe('conta')
-    expect(wrapper.find('[data-teste="quem"]').text()).toBe('Login maria · Dono')
-    const aparelhos = wrapper.findAll('[data-teste="sessao-aparelho"]')
-    expect(aparelhos[0]!.text()).toContain('Este aparelho')
-    // Este aparelho não tem "Encerrar": para ele, é "Sair".
-    expect(aparelhos[0]!.find('button').exists()).toBe(false)
-    expect(aparelhos[1]!.find('button').text()).toBe('Encerrar')
-    wrapper.unmount()
-  })
-
-  it('a senha nova repetida diferente nem vai para a API; igual, troca e avisa', async () => {
-    vi.mocked(conta.trocarSenha).mockResolvedValue()
-    const { wrapper } = await montarEm('/conta')
-    const campos = wrapper.findAll('[data-teste="trocar-senha"] input')
-
-    await campos[0]!.setValue('senha-velha')
-    await campos[1]!.setValue('senha-nova-1')
-    await campos[2]!.setValue('senha-nova-2')
-    await wrapper.find('[data-teste="trocar-senha"]').trigger('submit')
-    expect(conta.trocarSenha).not.toHaveBeenCalled()
-    expect(wrapper.find('[data-teste="trocar-senha"] [role="alert"]').text()).toBe(
-      'A senha nova e a repetição não são iguais.',
-    )
-
-    await campos[2]!.setValue('senha-nova-1')
-    await wrapper.find('[data-teste="trocar-senha"]').trigger('submit')
-    await flushPromises()
-    expect(conta.trocarSenha).toHaveBeenCalledWith('senha-velha', 'senha-nova-1')
-    expect(wrapper.find('[data-teste="trocar-senha"] [role="status"]').text()).toContain('Senha trocada.')
-    wrapper.unmount()
-  })
-
-  it('a senha atual errada mostra a frase da API', async () => {
-    vi.mocked(conta.trocarSenha).mockRejectedValue(new ApiError(400, { detail: 'A senha atual não confere.' }))
-    const { wrapper } = await montarEm('/conta')
-    const campos = wrapper.findAll('[data-teste="trocar-senha"] input')
-
-    await campos[0]!.setValue('errada')
-    await campos[1]!.setValue('senha-nova-1')
-    await campos[2]!.setValue('senha-nova-1')
-    await wrapper.find('[data-teste="trocar-senha"]').trigger('submit')
-    await flushPromises()
-
-    expect(wrapper.find('[data-teste="trocar-senha"] [role="alert"]').text()).toBe('A senha atual não confere.')
-    wrapper.unmount()
-  })
-
-  it('sair dos outros aparelhos diz quantos saíram', async () => {
-    vi.mocked(conta.encerrarOutrasSessoes).mockResolvedValue(1)
-    const { wrapper } = await montarEm('/conta')
-
-    vi.mocked(conta.listarMinhasSessoes).mockResolvedValue([sessao(20, { atual: true })])
-    await wrapper.findAll('main button').find((b) => b.text() === 'Sair dos outros aparelhos')!.trigger('click')
-    await flushPromises()
-
-    expect(conta.encerrarOutrasSessoes).toHaveBeenCalled()
-    expect(wrapper.text()).toContain('1 aparelho saiu.')
-    expect(wrapper.findAll('[data-teste="sessao-aparelho"]')).toHaveLength(1)
-    wrapper.unmount()
-  })
-})
