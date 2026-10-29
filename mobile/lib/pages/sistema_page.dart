@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../core/config.dart';
 import '../core/servicos.dart';
+import '../core/tema.dart';
 import '../models/api.dart';
+import '../widgets/aparece_em_cascata.dart';
 import '../widgets/carregar_dados.dart';
 
 /// A situação da API e do banco: a verificação de que o app chega até eles.
@@ -14,27 +16,130 @@ class SistemaPage extends StatelessWidget {
     final health = Servicos.of(context).health;
     return CarregarDados<ReadinessResponse>(
       buscar: health.buscarReadiness,
-      construir: (context, prontidao) => ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        children: [
-          ListTile(
-            leading: const Icon(Icons.cloud_done_outlined),
-            title: const Text('API'),
-            subtitle: Text(prontidao.pronto ? 'No ar' : 'Indisponível'),
-          ),
-          ListTile(
-            leading: Icon(
-              prontidao.bancoOk ? Icons.storage : Icons.error_outline,
+      construir: (context, prontidao) {
+        final tudoOk = prontidao.pronto && prontidao.bancoOk;
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            ApareceEmCascata(indice: 0, child: _ResumoGeral(tudoOk: tudoOk)),
+            const SizedBox(height: 16),
+            ApareceEmCascata(
+              indice: 1,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _CartaoDeStatus(
+                  icone: Icons.cloud_done_outlined,
+                  titulo: 'API',
+                  status: prontidao.pronto ? 'No ar' : 'Indisponível',
+                  ok: prontidao.pronto,
+                ),
+              ),
             ),
-            title: const Text('Banco de dados'),
-            subtitle: Text(prontidao.bancoOk ? 'Conectado' : 'Com erro'),
-          ),
-          const ListTile(
-            leading: Icon(Icons.link),
-            title: Text('Endereço da API'),
-            subtitle: Text(urlDaApi),
+            ApareceEmCascata(
+              indice: 2,
+              child: _CartaoDeStatus(
+                icone: prontidao.bancoOk ? Icons.storage : Icons.error_outline,
+                titulo: 'Banco de dados',
+                status: prontidao.bancoOk ? 'Conectado' : 'Com erro',
+                ok: prontidao.bancoOk,
+              ),
+            ),
+            ApareceEmCascata(
+              indice: 3,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.link,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        urlDaApi,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// O que importa pra quem não vai ler duas linhas técnicas: tá tudo bem ou não.
+class _ResumoGeral extends StatelessWidget {
+  const _ResumoGeral({required this.tudoOk});
+
+  final bool tudoOk;
+
+  @override
+  Widget build(BuildContext context) {
+    final cor = tudoOk ? Cores.campo600 : const Color(0xFFB91C1C);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+      decoration: BoxDecoration(
+        color: cor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Icon(tudoOk ? Icons.check_circle : Icons.error, color: cor, size: 56),
+          const SizedBox(height: 12),
+          Text(
+            tudoOk ? 'Tudo funcionando' : 'Tem algo errado',
+            style: Theme.of(context).textTheme.titleLarge
+                ?.copyWith(color: cor, fontWeight: FontWeight.bold),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CartaoDeStatus extends StatelessWidget {
+  const _CartaoDeStatus({
+    required this.icone,
+    required this.titulo,
+    required this.status,
+    required this.ok,
+  });
+
+  final IconData icone;
+  final String titulo;
+  final String status;
+  final bool ok;
+
+  @override
+  Widget build(BuildContext context) {
+    final cor = ok ? Cores.campo600 : const Color(0xFFB91C1C);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Card(
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: cor.withValues(alpha: 0.12),
+            foregroundColor: cor,
+            child: Icon(icone),
+          ),
+          title: Text(
+            titulo,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          subtitle: Text(
+            status,
+            style: TextStyle(color: cor, fontWeight: FontWeight.w600),
+          ),
+        ),
       ),
     );
   }

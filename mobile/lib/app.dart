@@ -1,3 +1,4 @@
+import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 
 import 'core/api/cliente_api.dart';
@@ -55,20 +56,36 @@ class Estrutura extends StatefulWidget {
 
 class _EstruturaState extends State<Estrutura> {
   var _atual = 0;
+  var _indoPraFrente = true;
 
   @override
   Widget build(BuildContext context) {
     final tela = _telas[_atual];
+    // "Reduzir movimento" do sistema: troca instantânea, sem transição.
+    final reduzido = MediaQuery.of(context).disableAnimations;
     return Scaffold(
       appBar: AppBar(title: Text(tela.titulo)),
       // Cada tela busca seus dados ao aparecer, e de novo ao voltar para ela.
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 200),
+      // Eixo compartilhado horizontal: a aba mais à direita entra pela
+      // direita, a mais à esquerda pela esquerda — não é só um fade.
+      body: PageTransitionSwitcher(
+        duration: reduzido ? Duration.zero : const Duration(milliseconds: 280),
+        reverse: !_indoPraFrente,
+        transitionBuilder: (child, animation, animacaoSecundaria) =>
+            SharedAxisTransition(
+              animation: animation,
+              secondaryAnimation: animacaoSecundaria,
+              transitionType: SharedAxisTransitionType.horizontal,
+              child: child,
+            ),
         child: KeyedSubtree(key: ValueKey(_atual), child: tela.pagina),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _atual,
-        onDestinationSelected: (i) => setState(() => _atual = i),
+        onDestinationSelected: (i) => setState(() {
+          _indoPraFrente = i >= _atual;
+          _atual = i;
+        }),
         destinations: [
           for (final t in _telas)
             NavigationDestination(icon: Icon(t.icone), label: t.titulo),
