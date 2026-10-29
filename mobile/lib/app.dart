@@ -80,16 +80,75 @@ class _EstruturaState extends State<Estrutura> {
             ),
         child: KeyedSubtree(key: ValueKey(_atual), child: tela.pagina),
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: _BarraInferior(
         selectedIndex: _atual,
         onDestinationSelected: (i) => setState(() {
           _indoPraFrente = i >= _atual;
           _atual = i;
         }),
-        destinations: [
-          for (final t in _telas)
-            NavigationDestination(icon: Icon(t.icone), label: t.titulo),
-        ],
+      ),
+    );
+  }
+}
+
+/// A NavigationBar, só que o ícone encolhe ao toque — como o
+/// `group-active:scale-90` da barra de baixo do site — em vez de só o ripple
+/// do Material.
+class _BarraInferior extends StatelessWidget {
+  const _BarraInferior({
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  final int selectedIndex;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return NavigationBar(
+      selectedIndex: selectedIndex,
+      onDestinationSelected: onDestinationSelected,
+      destinations: [
+        for (final t in _telas)
+          NavigationDestination(
+            icon: _IconeComToque(icone: t.icone),
+            label: t.titulo,
+          ),
+      ],
+    );
+  }
+}
+
+/// Encolhe o ícone enquanto o dedo toca, como o `group-active:scale-90` do
+/// site — puramente visual, não intercepta o toque que seleciona a aba.
+class _IconeComToque extends StatefulWidget {
+  const _IconeComToque({required this.icone});
+
+  final IconData icone;
+
+  @override
+  State<_IconeComToque> createState() => _IconeComToqueState();
+}
+
+class _IconeComToqueState extends State<_IconeComToque> {
+  var _pressionado = false;
+
+  void _definir(bool valor) {
+    if (_pressionado != valor) setState(() => _pressionado = valor);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTapDown: (_) => _definir(true),
+      onTapUp: (_) => _definir(false),
+      onTapCancel: () => _definir(false),
+      child: AnimatedScale(
+        scale: _pressionado ? 0.9 : 1,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.easeOut,
+        child: Icon(widget.icone),
       ),
     );
   }

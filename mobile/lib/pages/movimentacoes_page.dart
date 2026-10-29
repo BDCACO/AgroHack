@@ -7,6 +7,7 @@ import '../models/api.dart';
 import '../services/pendencias.dart';
 import '../widgets/aparece_em_cascata.dart';
 import '../widgets/carregar_dados.dart';
+import '../widgets/destaque.dart';
 import '../widgets/formato.dart';
 import 'lancar_movimentacao_page.dart';
 
@@ -22,6 +23,8 @@ class _MovimentacoesPageState extends State<MovimentacoesPage> {
   // CarregarDados a buscar de novo.
   var _versao = 0;
   TipoMovimentacao? _filtro;
+  // A que acabou de ser lançada: pisca na lista, igual ao site.
+  int? _destacada;
 
   Map<DateTime, List<Movimentacao>> _agruparPorDia(List<Movimentacao> lista) {
     final grupos = <DateTime, List<Movimentacao>>{};
@@ -33,7 +36,7 @@ class _MovimentacoesPageState extends State<MovimentacoesPage> {
   }
 
   Future<void> _lancar() async {
-    final resultado = await Navigator.push<String>(
+    final resultado = await Navigator.push<Object>(
       context,
       MaterialPageRoute(builder: (_) => const LancarMovimentacaoPage()),
     );
@@ -48,6 +51,11 @@ class _MovimentacoesPageState extends State<MovimentacoesPage> {
           ),
         ),
       );
+    } else if (resultado is Movimentacao) {
+      setState(() => _destacada = resultado.id);
+      Future.delayed(const Duration(milliseconds: 1600), () {
+        if (mounted) setState(() => _destacada = null);
+      });
     }
   }
 
@@ -157,6 +165,7 @@ class _MovimentacoesPageState extends State<MovimentacoesPage> {
                                   child: _CartaoDeMovimentacao(
                                     mov: mov,
                                     insumo: insumos[mov.insumoId],
+                                    destacada: mov.id == _destacada,
                                   ),
                                 ),
                               ),
@@ -405,30 +414,39 @@ class _FiltroDeTipo extends StatelessWidget {
 }
 
 class _CartaoDeMovimentacao extends StatelessWidget {
-  const _CartaoDeMovimentacao({required this.mov, required this.insumo});
+  const _CartaoDeMovimentacao({
+    required this.mov,
+    required this.insumo,
+    this.destacada = false,
+  });
 
   final Movimentacao mov;
   final Insumo? insumo;
+  final bool destacada;
 
   @override
   Widget build(BuildContext context) {
     final entrada = mov.tipo == TipoMovimentacao.entrada;
     final cor = entrada ? Cores.campo600 : Cores.terra700;
     return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: cor.withValues(alpha: 0.12),
-          foregroundColor: cor,
-          child: Icon(entrada ? Icons.south_west : Icons.north_east),
-        ),
-        title: Text(
-          insumo?.nome ?? 'Insumo ${mov.insumoId}',
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        trailing: Text(
-          '${entrada ? '+' : '−'}${formatarQuantidade(mov.quantidade)} '
-          '${insumo?.unidade ?? ''}',
-          style: TextStyle(color: cor, fontWeight: FontWeight.w700),
+      clipBehavior: Clip.antiAlias,
+      child: Destaque(
+        ativo: destacada,
+        child: ListTile(
+          leading: CircleAvatar(
+            backgroundColor: cor.withValues(alpha: 0.12),
+            foregroundColor: cor,
+            child: Icon(entrada ? Icons.south_west : Icons.north_east),
+          ),
+          title: Text(
+            insumo?.nome ?? 'Insumo ${mov.insumoId}',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          trailing: Text(
+            '${entrada ? '+' : '−'}${formatarQuantidade(mov.quantidade)} '
+            '${insumo?.unidade ?? ''}',
+            style: TextStyle(color: cor, fontWeight: FontWeight.w700),
+          ),
         ),
       ),
     );

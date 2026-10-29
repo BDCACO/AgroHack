@@ -7,8 +7,10 @@ import '../models/api.dart';
 abstract final class Cores {
   /// Verde de lavoura: a cor da marca.
   static const campo50 = Color(0xFFF2F8EF);
+  static const campo100 = Color(0xFFE0EFD9);
   static const campo600 = Color(0xFF3F7A2C);
   static const campo800 = Color(0xFF29501E);
+  static const campo900 = Color(0xFF1F3B17);
 
   /// Terra e palha: o acento quente.
   static const terra100 = Color(0xFFF3ECE2);
@@ -25,8 +27,10 @@ ThemeData temaDoApp() {
     colorScheme: esquema,
     scaffoldBackgroundColor: Cores.campo50,
     // Cabeçalho com cor sólida da marca, não só texto escuro num fundo claro.
+    // O mesmo verde-900 do header/barra-inferior do site (lá, campo-600 é só
+    // o botão primário).
     appBarTheme: const AppBarTheme(
-      backgroundColor: Cores.campo600,
+      backgroundColor: Cores.campo900,
       foregroundColor: Colors.white,
       elevation: 0,
       centerTitle: false,
@@ -40,13 +44,15 @@ ThemeData temaDoApp() {
     // Barra de baixo no mesmo verde do cabeçalho: as duas pontas da tela
     // ficam marcadas, o conteúdo claro no meio.
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: Cores.campo600,
-      indicatorColor: Colors.white.withValues(alpha: 0.22),
+      backgroundColor: Cores.campo900,
+      // bg-white/15 do site, atrás da aba selecionada.
+      indicatorColor: Colors.white.withValues(alpha: 0.15),
       iconTheme: WidgetStateProperty.resolveWith(
         (estados) => IconThemeData(
           color: estados.contains(WidgetState.selected)
               ? Colors.white
-              : Colors.white70,
+              // text-campo-100/75 do site: não é cinza, é o verde claro da marca.
+              : Cores.campo100.withValues(alpha: 0.75),
         ),
       ),
       labelTextStyle: WidgetStateProperty.resolveWith(
@@ -54,7 +60,7 @@ ThemeData temaDoApp() {
           fontSize: 12,
           color: estados.contains(WidgetState.selected)
               ? Colors.white
-              : Colors.white70,
+              : Cores.campo100.withValues(alpha: 0.75),
           fontWeight: estados.contains(WidgetState.selected)
               ? FontWeight.w700
               : FontWeight.w500,
