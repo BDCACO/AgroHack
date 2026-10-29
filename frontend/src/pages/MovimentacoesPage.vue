@@ -188,7 +188,6 @@ const porDia = computed(() => {
 <template>
   <CabecalhoDePagina
     titulo="Movimentações"
-    descricao="Compras que chegaram (entradas) e retiradas do galpão (saídas). É daqui que sai o estoque e a análise de consumo."
   />
 
   <p

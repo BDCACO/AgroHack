@@ -138,7 +138,6 @@ const valor = (dado: unknown) =>
 <template>
   <CabecalhoDePagina
     titulo="Auditoria"
-    descricao="O que de sensível aconteceu: quem apagou ou mudou o quê, logins recusados, senhas e aparelhos. Os registros não se apagam."
   />
 
   <div

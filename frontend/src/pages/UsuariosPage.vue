@@ -146,7 +146,6 @@ const bloqueado = (usuario: UsuarioCompleto) =>
 <template>
   <CabecalhoDePagina
     titulo="Usuários"
-    descricao="Quem entra no CampoCerto. Cada funcionário tem o próprio login, e as movimentações dizem quem lançou."
   >
     <template #acoes>
       <button

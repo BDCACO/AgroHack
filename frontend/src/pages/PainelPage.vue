@@ -170,7 +170,7 @@ async function copiar() {
   <CabecalhoDePagina
     titulo="Painel"
     :sobretitulo="dataDeHoje"
-    :descricao="estoque.insumos.length ? resumoDoDia : 'Alertas sobre o estoque de insumos, com a justificativa de cada um.'"
+    :descricao="estoque.insumos.length ? resumoDoDia : undefined"
   >
     <!-- O relatório leva todos os preços e é a cópia de segurança: só o dono baixa. -->
     <template

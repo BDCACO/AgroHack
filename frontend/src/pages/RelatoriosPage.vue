@@ -76,7 +76,6 @@ const plural = (n: number, um: string, varios: string) => (n === 1 ? `1 ${um}` :
 <template>
   <CabecalhoDePagina
     titulo="Relatórios"
-    descricao="Quanto se gastou em compras, quanto se consumiu e quanto se perdeu, mês a mês. Para fechar a safra e comparar com a anterior."
   >
     <template #acoes>
       <BotaoDeDownload

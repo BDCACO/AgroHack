@@ -78,7 +78,6 @@ async function trocarSenha() {
 <template>
   <CabecalhoDePagina
     titulo="Minha conta"
-    descricao="Sua senha e os aparelhos em que você está conectado."
   />
 
   <div

@@ -115,7 +115,6 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
 <template>
   <CabecalhoDePagina
     titulo="Insumos"
-    descricao="Produtos em estoque: quantidade atual, mínimo e prazo de reposição."
   >
     <template #acoes>
       <button

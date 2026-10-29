@@ -61,7 +61,6 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
 <template>
   <CabecalhoDePagina
     titulo="Talhões"
-    descricao="Onde cada insumo foi aplicado: até quando não colher (carência) e quanto custou por hectare."
   >
     <template #acoes>
       <button
