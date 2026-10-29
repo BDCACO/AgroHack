@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- O app fala com a API do CampoCerto pela rede. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Lê o código de barras do insumo na tela de lançar movimentação. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
 
     <application
         android:label="CampoCerto"

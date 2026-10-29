@@ -61,6 +61,9 @@ class Insumo(Base):
     # Dias mínimos entre aplicar e colher ou abater (a bula do defensivo). 0 = não tem;
     # vazio = não informada, e a carência do talhão diz que não a considerou.
     carencia_dias: Mapped[int | None]
+    # O código de barras de fábrica da embalagem: o app ensina o vínculo na primeira
+    # leitura que não reconhece, e reconhece sozinho da próxima vez.
+    codigo_de_barras: Mapped[str | None] = mapped_column(String(64), unique=True)
     # Opcional: o insumo sem categoria vale como sempre. RESTRICT: a categoria com insumo
     # não se apaga (a tela pede para mudar os insumos de categoria antes).
     categoria_id: Mapped[int | None] = mapped_column(

@@ -352,6 +352,27 @@ def test_alterar_insumo_sem_os_campos_novos_mantem_embalagem(client: TestClient)
     assert (limpando.json()["embalagem"], limpando.json()["pedido_minimo"]) == (None, 100)
 
 
+def test_cadastro_com_codigo_de_barras_e_duplicado(client: TestClient) -> None:
+    ureia = criar(client, codigo_de_barras="7891234567890")
+    assert ureia["codigo_de_barras"] == "7891234567890"
+
+    duplicado = client.post(
+        "/api/v1/insumos",
+        json={"nome": "Calcário", "unidade": "t", "codigo_de_barras": "7891234567890"},
+    )
+    assert duplicado.status_code == 409
+
+
+def test_alterar_insumo_sem_codigo_de_barras_mantem_o_gravado(client: TestClient) -> None:
+    # O leitor do app só manda o código quando lê um novo: um PUT sem ele (de quem não lê
+    # código de barras) não pode apagar o vínculo já ensinado.
+    ureia = criar(client, codigo_de_barras="7891234567890")
+
+    sem = client.put(f"/api/v1/insumos/{ureia['id']}", json={"nome": "Ureia", "unidade": "kg"})
+
+    assert sem.json()["codigo_de_barras"] == "7891234567890"
+
+
 def test_preco_em_saida_explica_o_porque(client: TestClient) -> None:
     insumo = criar(client)
     corpo = {"insumo_id": insumo["id"], "tipo": "saida", "data": dia(0), "quantidade": 1}

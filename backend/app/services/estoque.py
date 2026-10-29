@@ -39,7 +39,13 @@ from app.services import auditoria, pedidos
 
 # Campos que vieram depois do site e do app: um PUT que não os manda (de uma versão que
 # não os conhece) mantém o que está gravado, em vez de apagá-los.
-_CAMPOS_OPCIONAIS_NOVOS = {"embalagem", "pedido_minimo", "carencia_dias", "categoria_id"}
+_CAMPOS_OPCIONAIS_NOVOS = {
+    "embalagem",
+    "pedido_minimo",
+    "carencia_dias",
+    "categoria_id",
+    "codigo_de_barras",
+}
 # O que faz dois envios com o mesmo uuid serem o mesmo lançamento. Com as casas que o banco
 # guarda: 2,0004 kg vira 2 kg na coluna, e o reenvio de 2,0004 ainda é o mesmo lançamento.
 _CONTEUDO_DO_LANCAMENTO = {
@@ -56,6 +62,10 @@ _CONTEUDO_DO_LANCAMENTO = {
 
 
 class NomeDuplicado(Exception):
+    pass
+
+
+class CodigoDeBarrasDuplicado(Exception):
     pass
 
 
@@ -529,6 +539,7 @@ def _cadastro(insumo: Insumo) -> dict[str, object]:
         "pedido_minimo": insumo.pedido_minimo,
         "carencia_dias": insumo.carencia_dias,
         "categoria_id": insumo.categoria_id,
+        "codigo_de_barras": insumo.codigo_de_barras,
     }
 
 
@@ -548,10 +559,12 @@ def _salvar(db: Session) -> None:
         db.commit()
     except IntegrityError as erro:
         db.rollback()
-        # Só o nome único vira "já existe": outra regra violada é defeito, não do usuário,
-        # e dizer "nome repetido" mandaria o produtor procurar o problema no lugar errado.
+        # Só o nome único e o código de barras único viram "já existe": outra regra violada
+        # é defeito, não do usuário, e um 409 genérico mandaria procurar o problema errado.
         if violou_nome_unico(erro, "insumos"):
             raise NomeDuplicado from erro
+        if violou_nome_unico(erro, "insumos", "codigo_de_barras"):
+            raise CodigoDeBarrasDuplicado from erro
         raise
 
 
@@ -625,6 +638,7 @@ def _resposta(
         embalagem=insumo.embalagem,
         pedido_minimo=insumo.pedido_minimo,
         carencia_dias=insumo.carencia_dias,
+        codigo_de_barras=insumo.codigo_de_barras,
         categoria_id=insumo.categoria_id,
         categoria=None if insumo.categoria is None else insumo.categoria.nome,
         estoque_atual=estoque,

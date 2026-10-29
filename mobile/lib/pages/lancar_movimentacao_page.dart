@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import '../core/api/cliente_api.dart';
 import '../core/servicos.dart';
 import '../models/api.dart';
+import '../services/codigo_de_barras.dart';
 import '../widgets/carregar_dados.dart';
 import '../widgets/formato.dart';
+import 'leitor_de_codigo_de_barras_page.dart';
 
 /// Formulário de uma movimentação nova: tipo, insumo, quantidade e, se houver,
 /// a validade do lote. Mesmos campos do POST /movimentacoes do site.
@@ -80,6 +82,76 @@ class _FormularioState extends State<_Formulario> {
     }
   }
 
+  Future<void> _lerCodigoDeBarras() async {
+    final codigo = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const LeitorDeCodigoDeBarrasPage()),
+    );
+    if (codigo == null || !mounted) return;
+
+    final encontrado = insumoPeloCodigoDeBarras(widget.insumos, codigo);
+    if (encontrado != null) {
+      final confirmado = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('É esse o insumo?'),
+          content: Text('Código encontrado: ${encontrado.nome}.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Não'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Sim'),
+            ),
+          ],
+        ),
+      );
+      if (confirmado == true && mounted) setState(() => _insumo = encontrado);
+      return;
+    }
+
+    if (!mounted) return;
+    final escolhido = await showModalBottomSheet<Insumo>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Código não reconhecido. De qual insumo ele é?'),
+            ),
+            for (final insumo in widget.insumos)
+              ListTile(
+                title: Text(insumo.nome),
+                onTap: () => Navigator.pop(context, insumo),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (escolhido == null || !mounted) return;
+    setState(() => _insumo = escolhido);
+    try {
+      // Ensina o vínculo para a próxima leitura reconhecer sozinha; o
+      // lançamento de agora não depende disso ter sucesso.
+      await Servicos.of(context).estoque.atualizarInsumo(
+        escolhido.id,
+        InsumoCadastro(
+          nome: escolhido.nome,
+          unidade: escolhido.unidade,
+          estoqueMinimo: escolhido.estoqueMinimo,
+          prazoReposicaoDias: escolhido.prazoReposicaoDias,
+          codigoDeBarras: codigo,
+        ),
+      );
+    } catch (_) {
+      // Sem internet ou API fora: tenta de novo na próxima leitura.
+    }
+  }
+
   Future<void> _escolherData({required bool validade}) async {
     final escolhida = await showDatePicker(
       context: context,
@@ -118,7 +190,14 @@ class _FormularioState extends State<_Formulario> {
           const SizedBox(height: 16),
           DropdownButtonFormField<Insumo>(
             initialValue: _insumo,
-            decoration: const InputDecoration(labelText: 'Insumo'),
+            decoration: InputDecoration(
+              labelText: 'Insumo',
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.qr_code_scanner),
+                tooltip: 'Ler código de barras',
+                onPressed: _lerCodigoDeBarras,
+              ),
+            ),
             items: [
               for (final insumo in widget.insumos)
                 DropdownMenuItem(value: insumo, child: Text(insumo.nome)),
