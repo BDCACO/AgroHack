@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import '../core/servicos.dart';
 import '../core/tema.dart';
 import '../models/api.dart';
+import '../services/pendencias.dart';
 import '../widgets/aparece_em_cascata.dart';
 import '../widgets/carregar_dados.dart';
 import '../widgets/formato.dart';
+import 'lancar_movimentacao_page.dart';
 
 class MovimentacoesPage extends StatefulWidget {
   const MovimentacoesPage({super.key});
@@ -16,6 +18,9 @@ class MovimentacoesPage extends StatefulWidget {
 }
 
 class _MovimentacoesPageState extends State<MovimentacoesPage> {
+  // Muda a cada lançamento ou ação numa pendência, só para forçar o
+  // CarregarDados a buscar de novo.
+  var _versao = 0;
   TipoMovimentacao? _filtro;
 
   Map<DateTime, List<Movimentacao>> _agruparPorDia(List<Movimentacao> lista) {
@@ -27,85 +32,195 @@ class _MovimentacoesPageState extends State<MovimentacoesPage> {
     return grupos;
   }
 
+  Future<void> _lancar() async {
+    final resultado = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const LancarMovimentacaoPage()),
+    );
+    if (resultado == null || !mounted) return;
+    setState(() => _versao++);
+    if (resultado == 'offline') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Sem internet: o lançamento foi guardado e será enviado '
+            'quando a rede voltar.',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final estoque = Servicos.of(context).estoque;
-    return CarregarDados<(List<Movimentacao>, Map<int, Insumo>)>(
-      buscar: () async {
-        final (movimentacoes, insumos) = await (
-          estoque.listarMovimentacoes(),
-          estoque.listarInsumos(),
-        ).wait;
-        return (movimentacoes, {for (final i in insumos) i.id: i});
-      },
-      construir: (context, dados) {
-        final (movimentacoes, insumos) = dados;
-        if (movimentacoes.isEmpty) {
-          return const EstadoVazio('Nenhuma movimentação lançada ainda.');
-        }
+    final servicos = Servicos.of(context);
+    return Scaffold(
+      body:
+          CarregarDados<
+            (List<Movimentacao>, Map<int, Insumo>, List<Pendencia>)
+          >(
+            key: ValueKey(_versao),
+            buscar: () async {
+              // Tenta mandar o que estiver pendente antes de montar a lista.
+              await servicos.pendencias.tentarEnviar();
+              final (movimentacoes, insumosLista) = await (
+                servicos.estoque.listarMovimentacoes(),
+                servicos.estoque.listarInsumos(),
+              ).wait;
+              final pendentes = await servicos.pendencias.listar();
+              return (
+                movimentacoes,
+                {for (final i in insumosLista) i.id: i},
+                pendentes,
+              );
+            },
+            construir: (context, dados) {
+              final (movimentacoes, insumos, pendentes) = dados;
+              if (movimentacoes.isEmpty && pendentes.isEmpty) {
+                return const EstadoVazio('Nenhuma movimentação lançada ainda.');
+              }
 
-        final filtradas = _filtro == null
-            ? movimentacoes
-            : movimentacoes.where((m) => m.tipo == _filtro).toList();
-        final grupos = _agruparPorDia(filtradas);
+              final filtradas = _filtro == null
+                  ? movimentacoes
+                  : movimentacoes.where((m) => m.tipo == _filtro).toList();
+              final grupos = _agruparPorDia(filtradas);
 
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _ResumoDeMovimentacoes(movimentacoes: movimentacoes),
-            const SizedBox(height: 16),
-            _FiltroDeTipo(
-              selecionado: _filtro,
-              aoMudar: (tipo) => setState(() => _filtro = tipo),
-            ),
-            const SizedBox(height: 8),
-            // Trocar o filtro troca a lista inteira: crossfade pra ficar
-            // claro que foi a escolha que mudou o que aparece, não um bug.
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
-              switchInCurve: Curves.easeOut,
-              switchOutCurve: Curves.easeIn,
-              child: Column(
-                key: ValueKey(_filtro),
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              return ListView(
+                padding: const EdgeInsets.all(16),
                 children: [
-                  if (filtradas.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 32),
-                      child: Center(
-                        child: Text('Nada lançado com esse filtro.'),
-                      ),
-                    )
-                  else
-                    for (final grupo in grupos.entries) ...[
+                  if (pendentes.isNotEmpty) ...[
+                    for (final pendencia in pendentes)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-                        child: Text(
-                          formatarDiaRelativo(grupo.key),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 13,
-                          ),
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _ItemPendente(
+                          pendencia: pendencia,
+                          nomeDoInsumo:
+                              insumos[pendencia.dados.insumoId]?.nome ??
+                              'Insumo ${pendencia.dados.insumoId}',
+                          onTentar: () async {
+                            await servicos.pendencias.tentarEnviar(
+                              apenas: pendencia.criadoEm,
+                            );
+                            if (mounted) setState(() => _versao++);
+                          },
+                          onDescartar: () async {
+                            await servicos.pendencias.descartar(
+                              pendencia.criadoEm,
+                            );
+                            if (mounted) setState(() => _versao++);
+                          },
                         ),
                       ),
-                      for (final (i, mov) in grupo.value.indexed)
-                        ApareceEmCascata(
-                          indice: i,
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: _CartaoDeMovimentacao(
-                              mov: mov,
-                              insumo: insumos[mov.insumoId],
+                    const SizedBox(height: 8),
+                  ],
+                  _ResumoDeMovimentacoes(movimentacoes: movimentacoes),
+                  const SizedBox(height: 16),
+                  _FiltroDeTipo(
+                    selecionado: _filtro,
+                    aoMudar: (tipo) => setState(() => _filtro = tipo),
+                  ),
+                  const SizedBox(height: 8),
+                  // Trocar o filtro troca a lista inteira: crossfade pra ficar
+                  // claro que foi a escolha que mudou o que aparece, não um bug.
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    switchInCurve: Curves.easeOut,
+                    switchOutCurve: Curves.easeIn,
+                    child: Column(
+                      key: ValueKey(_filtro),
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (filtradas.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 32),
+                            child: Center(
+                              child: Text('Nada lançado com esse filtro.'),
                             ),
-                          ),
-                        ),
-                    ],
+                          )
+                        else
+                          for (final grupo in grupos.entries) ...[
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+                              child: Text(
+                                formatarDiaRelativo(grupo.key),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            for (final (i, mov) in grupo.value.indexed)
+                              ApareceEmCascata(
+                                indice: i,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _CartaoDeMovimentacao(
+                                    mov: mov,
+                                    insumo: insumos[mov.insumoId],
+                                  ),
+                                ),
+                              ),
+                          ],
+                      ],
+                    ),
+                  ),
                 ],
-              ),
+              );
+            },
+          ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _lancar,
+        icon: const Icon(Icons.add),
+        label: const Text('Lançar'),
+      ),
+    );
+  }
+}
+
+/// Um lançamento ainda sem confirmação da API: sem rede, ou recusado (com o
+/// motivo). "Tentar de novo" manda só esse; "Descartar" apaga de vez.
+class _ItemPendente extends StatelessWidget {
+  const _ItemPendente({
+    required this.pendencia,
+    required this.nomeDoInsumo,
+    required this.onTentar,
+    required this.onDescartar,
+  });
+
+  final Pendencia pendencia;
+  final String nomeDoInsumo;
+  final VoidCallback onTentar;
+  final VoidCallback onDescartar;
+
+  @override
+  Widget build(BuildContext context) {
+    final entrada = pendencia.dados.tipo == TipoMovimentacao.entrada;
+    return Card(
+      child: ListTile(
+        leading: Icon(
+          entrada ? Icons.south_west : Icons.north_east,
+          color: Cores.terra700,
+        ),
+        title: Text(nomeDoInsumo),
+        subtitle: Text(
+          pendencia.erro ?? 'Sem internet. Será enviado quando a rede voltar.',
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Tentar de novo',
+              onPressed: onTentar,
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Descartar',
+              onPressed: onDescartar,
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
   }
 }

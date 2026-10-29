@@ -190,6 +190,15 @@ class MovimentacaoEntrada {
     this.validade,
   });
 
+  // Espelha toJson: usado para guardar um lançamento sem rede no aparelho.
+  factory MovimentacaoEntrada.fromJson(Json json) => MovimentacaoEntrada(
+    insumoId: json['insumo_id'] as int,
+    tipo: TipoMovimentacao.fromJson(json['tipo']),
+    data: _data(json['data']),
+    quantidade: _numero(json['quantidade']),
+    validade: _dataOuNula(json['validade']),
+  );
+
   final int insumoId;
   final TipoMovimentacao tipo;
   final DateTime data;
