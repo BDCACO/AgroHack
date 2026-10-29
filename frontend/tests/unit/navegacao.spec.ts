@@ -105,6 +105,9 @@ describe('navegação', () => {
   it('a barra do topo diz onde se está, com a volta para a seção numa página dentro dela', async () => {
     const naSecao = await montarEm('/insumos')
     expect(naSecao.wrapper.find('[data-teste="barra-do-topo"] nav').text()).toBe('Insumos')
+    // O título fica só na barra (e no cabeçalho do celular); o h1 da página, para o leitor de tela.
+    expect(naSecao.wrapper.find('main h1').classes()).toContain('sr-only')
+    expect(naSecao.wrapper.find('[data-teste="titulo-celular"]').text()).toBe('Insumos')
 
     setActivePinia(createPinia())
     const dentro = await montarEm('/compras/fornecedores')
