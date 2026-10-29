@@ -62,8 +62,8 @@ class _FormularioState extends State<_Formulario> {
     );
     final servicos = Servicos.of(context);
     try {
-      await servicos.estoque.registrarMovimentacao(dados);
-      if (mounted) Navigator.pop(context, 'ok');
+      final criada = await servicos.estoque.registrarMovimentacao(dados);
+      if (mounted) Navigator.pop(context, criada);
     } catch (erro) {
       // Sem resposta da API: guarda para enviar quando a rede voltar, em vez
       // de fazer a pessoa perder o que já preencheu.

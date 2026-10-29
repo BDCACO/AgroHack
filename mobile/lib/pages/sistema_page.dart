@@ -46,6 +46,13 @@ class SistemaPage extends StatelessWidget {
             ),
             ApareceEmCascata(
               indice: 3,
+              child: const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: _ModoSolForte(),
+              ),
+            ),
+            ApareceEmCascata(
+              indice: 4,
               child: Padding(
                 padding: const EdgeInsets.only(top: 16),
                 child: Row(
@@ -75,6 +82,36 @@ class SistemaPage extends StatelessWidget {
   }
 }
 
+/// Liga/desliga o modo sol forte: bordas sólidas e fundo sem translucidez,
+/// pensado pra usar no brilho direto do meio-dia, não pra ambiente escuro.
+class _ModoSolForte extends StatelessWidget {
+  const _ModoSolForte();
+
+  @override
+  Widget build(BuildContext context) {
+    final notificador = Servicos.of(context).solForte;
+    return ValueListenableBuilder<bool>(
+      valueListenable: notificador,
+      builder: (context, ligado, _) => Card(
+        child: SwitchListTile(
+          secondary: CircleAvatar(
+            backgroundColor: fundoDoCirculo(context, Cores.campo600),
+            foregroundColor: corDoIcone(context, Cores.campo600),
+            child: const Icon(Icons.wb_sunny_outlined),
+          ),
+          title: const Text('Modo sol forte'),
+          subtitle: const Text(
+            'Bordas sólidas e mais contraste, pra enxergar a tela no sol do '
+            'meio-dia.',
+          ),
+          value: ligado,
+          onChanged: (valor) => notificador.value = valor,
+        ),
+      ),
+    );
+  }
+}
+
 /// O que importa pra quem não vai ler duas linhas técnicas: tá tudo bem ou não.
 class _ResumoGeral extends StatelessWidget {
   const _ResumoGeral({required this.tudoOk});
@@ -84,21 +121,26 @@ class _ResumoGeral extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cor = tudoOk ? Cores.campo600 : const Color(0xFFB91C1C);
+    final corDoConteudo = corDoIcone(context, cor);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
       decoration: BoxDecoration(
-        color: cor.withValues(alpha: 0.1),
+        color: fundoDoCirculo(context, cor),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         children: [
-          Icon(tudoOk ? Icons.check_circle : Icons.error, color: cor, size: 56),
+          Icon(
+            tudoOk ? Icons.check_circle : Icons.error,
+            color: corDoConteudo,
+            size: 56,
+          ),
           const SizedBox(height: 12),
           Text(
             tudoOk ? 'Tudo funcionando' : 'Tem algo errado',
             style: Theme.of(context).textTheme.titleLarge
-                ?.copyWith(color: cor, fontWeight: FontWeight.bold),
+                ?.copyWith(color: corDoConteudo, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -127,8 +169,8 @@ class _CartaoDeStatus extends StatelessWidget {
       child: Card(
         child: ListTile(
           leading: CircleAvatar(
-            backgroundColor: cor.withValues(alpha: 0.12),
-            foregroundColor: cor,
+            backgroundColor: fundoDoCirculo(context, cor),
+            foregroundColor: corDoIcone(context, cor),
             child: Icon(icone),
           ),
           title: Text(

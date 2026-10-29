@@ -7,26 +7,67 @@ import '../models/api.dart';
 abstract final class Cores {
   /// Verde de lavoura: a cor da marca.
   static const campo50 = Color(0xFFF2F8EF);
+  static const campo100 = Color(0xFFE0EFD9);
   static const campo600 = Color(0xFF3F7A2C);
   static const campo800 = Color(0xFF29501E);
+  static const campo900 = Color(0xFF1F3B17);
 
   /// Terra e palha: o acento quente.
   static const terra100 = Color(0xFFF3ECE2);
   static const terra700 = Color(0xFF7A5A32);
 }
 
-ThemeData temaDoApp() {
+/// Se o app está no modo sol forte: sombra sutil e fundo pastel somem no
+/// brilho direto, então viram borda sólida e branco puro. Lido do tema em
+/// qualquer tela, sem passar o valor widget a widget.
+class ModoCampo extends ThemeExtension<ModoCampo> {
+  const ModoCampo({required this.solForte});
+
+  final bool solForte;
+
+  @override
+  ModoCampo copyWith({bool? solForte}) =>
+      ModoCampo(solForte: solForte ?? this.solForte);
+
+  @override
+  ModoCampo lerp(ThemeExtension<ModoCampo>? other, double t) =>
+      t < 0.5 ? this : (other as ModoCampo? ?? this);
+}
+
+bool solForte(BuildContext context) =>
+    Theme.of(context).extension<ModoCampo>()?.solForte ?? false;
+
+/// Fundo do círculo de ícone: translúcido normalmente; no sol forte, sólido
+/// (o translúcido lava no brilho direto e o ícone quase some).
+Color fundoDoCirculo(BuildContext context, Color cor) =>
+    solForte(context) ? cor : cor.withValues(alpha: 0.12);
+
+/// O ícone por cima do círculo: branco no sol forte (o círculo é sólido),
+/// a própria cor quando o círculo é só uma sugestão translúcida.
+Color corDoIcone(BuildContext context, Color cor) =>
+    solForte(context) ? Colors.white : cor;
+
+ThemeData temaDoApp({bool solForte = false}) {
   final esquema = ColorScheme.fromSeed(
     seedColor: Cores.campo600,
     primary: Cores.campo600,
     secondary: Cores.terra700,
   );
+  final fundo = solForte ? Colors.white : Cores.campo50;
   return ThemeData(
     colorScheme: esquema,
-    scaffoldBackgroundColor: Cores.campo50,
+    scaffoldBackgroundColor: fundo,
+    // O pacote `animations` (PageTransitionSwitcher/SharedAxisTransition, usado
+    // na troca de aba) pinta o fundo da transição com canvasColor quando
+    // ninguém passa `fillColor` — sem isso, ele cai no cinza-rosado padrão do
+    // Material 3 em vez do fundo da marca.
+    canvasColor: fundo,
+    extensions: [ModoCampo(solForte: solForte)],
     // Cabeçalho com cor sólida da marca, não só texto escuro num fundo claro.
+    // O mesmo verde-900 do header/barra-inferior do site (lá, campo-600 é só
+    // o botão primário).
     appBarTheme: const AppBarTheme(
-      backgroundColor: Cores.campo600,
+      backgroundColor: Cores.campo900,
       foregroundColor: Colors.white,
       elevation: 0,
       centerTitle: false,
@@ -40,13 +81,15 @@ ThemeData temaDoApp() {
     // Barra de baixo no mesmo verde do cabeçalho: as duas pontas da tela
     // ficam marcadas, o conteúdo claro no meio.
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: Cores.campo600,
-      indicatorColor: Colors.white.withValues(alpha: 0.22),
+      backgroundColor: Cores.campo900,
+      // bg-white/15 do site, atrás da aba selecionada.
+      indicatorColor: Colors.white.withValues(alpha: 0.15),
       iconTheme: WidgetStateProperty.resolveWith(
         (estados) => IconThemeData(
           color: estados.contains(WidgetState.selected)
               ? Colors.white
-              : Colors.white70,
+              // text-campo-100/75 do site: não é cinza, é o verde claro da marca.
+              : Cores.campo100.withValues(alpha: 0.75),
         ),
       ),
       labelTextStyle: WidgetStateProperty.resolveWith(
@@ -54,7 +97,7 @@ ThemeData temaDoApp() {
           fontSize: 12,
           color: estados.contains(WidgetState.selected)
               ? Colors.white
-              : Colors.white70,
+              : Cores.campo100.withValues(alpha: 0.75),
           fontWeight: estados.contains(WidgetState.selected)
               ? FontWeight.w700
               : FontWeight.w500,
@@ -62,13 +105,19 @@ ThemeData temaDoApp() {
       ),
     ),
     // Cartão branco com sombra de verdade: no fundo verde-claro da tela, o
-    // tom de superfície padrão do Material 3 quase não aparece.
+    // tom de superfície padrão do Material 3 quase não aparece. No sol forte,
+    // a sombra sutil não se vê de jeito nenhum — borda sólida no lugar dela.
     cardTheme: CardThemeData(
       color: Colors.white,
-      elevation: 2,
+      elevation: solForte ? 0 : 2,
       shadowColor: Cores.campo800.withValues(alpha: 0.18),
       margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: solForte
+            ? const BorderSide(color: Cores.campo800, width: 1.5)
+            : BorderSide.none,
+      ),
     ),
   );
 }
