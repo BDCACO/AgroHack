@@ -360,8 +360,8 @@ class _Estatistica extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             CircleAvatar(
-              backgroundColor: cor.withValues(alpha: 0.12),
-              foregroundColor: cor,
+              backgroundColor: fundoDoCirculo(context, cor),
+              foregroundColor: corDoIcone(context, cor),
               child: Icon(icone),
             ),
             const SizedBox(width: 12),
@@ -440,8 +440,8 @@ class _CartaoDeMovimentacao extends StatelessWidget {
         ativo: destacada,
         child: ListTile(
           leading: CircleAvatar(
-            backgroundColor: cor.withValues(alpha: 0.12),
-            foregroundColor: cor,
+            backgroundColor: fundoDoCirculo(context, cor),
+            foregroundColor: corDoIcone(context, cor),
             child: Icon(entrada ? Icons.south_west : Icons.north_east),
           ),
           title: Text(

@@ -20,7 +20,7 @@ class ResumoDeGravidade extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: gravidade.cor.withValues(alpha: 0.12),
+        color: fundoDoCirculo(context, gravidade.cor),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -31,7 +31,7 @@ class ResumoDeGravidade extends StatelessWidget {
           Text(
             '$quantidade ${gravidade.texto}',
             style: TextStyle(
-              color: gravidade.corTexto,
+              color: solForte(context) ? Colors.white : gravidade.corTexto,
               fontWeight: FontWeight.w600,
             ),
           ),

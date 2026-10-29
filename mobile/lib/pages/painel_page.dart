@@ -210,13 +210,18 @@ class _CartaoDeAlerta extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: alerta.gravidade.cor.withValues(alpha: 0.12),
+                            color: fundoDoCirculo(
+                              context,
+                              alerta.gravidade.cor,
+                            ),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
                             alerta.gravidade.texto,
                             style: TextStyle(
-                              color: alerta.gravidade.corTexto,
+                              color: solForte(context)
+                                  ? Colors.white
+                                  : alerta.gravidade.corTexto,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),

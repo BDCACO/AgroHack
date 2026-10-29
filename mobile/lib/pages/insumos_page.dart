@@ -96,8 +96,8 @@ class _CartaoDeInsumo extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CircleAvatar(
-              backgroundColor: cor.withValues(alpha: 0.12),
-              foregroundColor: cor,
+              backgroundColor: fundoDoCirculo(context, cor),
+              foregroundColor: corDoIcone(context, cor),
               child: Icon(iconeDaUnidade(insumo.unidade)),
             ),
             const SizedBox(width: 12),

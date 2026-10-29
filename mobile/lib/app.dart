@@ -1,5 +1,6 @@
 import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/api/cliente_api.dart';
 import 'core/servicos.dart';
@@ -10,19 +11,53 @@ import 'pages/movimentacoes_page.dart';
 import 'pages/painel_page.dart';
 import 'pages/sistema_page.dart';
 
-class CampoCertoApp extends StatelessWidget {
+const _chaveSolForte = 'modo.sol_forte';
+
+class CampoCertoApp extends StatefulWidget {
   const CampoCertoApp({super.key, required this.api});
 
   final ClienteApi api;
 
   @override
+  State<CampoCertoApp> createState() => _CampoCertoAppState();
+}
+
+class _CampoCertoAppState extends State<CampoCertoApp> {
+  final _solForte = ValueNotifier(false);
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      _solForte.value = prefs.getBool(_chaveSolForte) ?? false;
+    });
+    _solForte.addListener(_salvarPreferencia);
+  }
+
+  Future<void> _salvarPreferencia() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_chaveSolForte, _solForte.value);
+  }
+
+  @override
+  void dispose() {
+    _solForte.removeListener(_salvarPreferencia);
+    _solForte.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Servicos(
-      api: api,
-      child: MaterialApp(
-        title: 'CampoCerto',
-        theme: temaDoApp(),
-        home: const Estrutura(),
+      api: widget.api,
+      solForte: _solForte,
+      child: ValueListenableBuilder(
+        valueListenable: _solForte,
+        builder: (context, solForte, _) => MaterialApp(
+          title: 'CampoCerto',
+          theme: temaDoApp(solForte: solForte),
+          home: const Estrutura(),
+        ),
       ),
     );
   }

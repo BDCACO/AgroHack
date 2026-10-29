@@ -146,6 +146,25 @@ void main() {
     expect(find.text('Conectado'), findsOneWidget);
   });
 
+  testWidgets('ligar o modo sol forte troca o fundo da tela pra branco', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app());
+    await tester.pumpAndSettle();
+    await _irPara(tester, 'Sistema');
+
+    Color? fundo() =>
+        Theme.of(tester.element(find.byType(Scaffold).first))
+            .scaffoldBackgroundColor;
+
+    expect(fundo(), isNot(Colors.white));
+
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Modo sol forte'));
+    await tester.pumpAndSettle();
+
+    expect(fundo(), Colors.white);
+  });
+
   testWidgets('atualizar com a API fora mantém os dados e avisa', (
     tester,
   ) async {
