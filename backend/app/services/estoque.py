@@ -35,7 +35,7 @@ from app.schemas.estoque import (
     PrecoPago,
     como_o_banco,
 )
-from app.services import auditoria, pedidos
+from app.services import auditoria, configuracao, pedidos
 
 # Campos que vieram depois do site e do app: um PUT que não os manda (de uma versão que
 # não os conhece) mantém o que está gravado, em vez de apagá-los.
@@ -122,8 +122,10 @@ def listar_insumos(
         consulta = consulta.where(Insumo.id.in_(ids_pelo_nome(db, busca)))
     referencia = hoje()
     pedidos = a_caminho(db)
+    meses_de_safra = configuracao.obter_meses_de_safra(db)
     respostas = [
-        _resposta(insumo, referencia, pedidos.get(insumo.id, [])) for insumo in db.scalars(consulta)
+        _resposta(insumo, referencia, pedidos.get(insumo.id, []), meses_de_safra)
+        for insumo in db.scalars(consulta)
     ]
     if gravidade is not None:
         respostas = [
@@ -154,7 +156,7 @@ def criar_insumo(db: Session, dados: InsumoCadastro) -> InsumoResposta:
     db.add(insumo)
     _salvar(db)
     _recarregar_categoria(db, insumo)
-    return _resposta(insumo, hoje())
+    return _resposta(insumo, hoje(), meses_de_safra=configuracao.obter_meses_de_safra(db))
 
 
 def atualizar_insumo(
@@ -175,7 +177,12 @@ def atualizar_insumo(
         )
     _salvar(db)
     _recarregar_categoria(db, insumo)
-    return _resposta(insumo, hoje(), a_caminho(db, insumo_id).get(insumo_id, []))
+    return _resposta(
+        insumo,
+        hoje(),
+        a_caminho(db, insumo_id).get(insumo_id, []),
+        configuracao.obter_meses_de_safra(db),
+    )
 
 
 def a_caminho(db: Session, insumo_id: int | None = None) -> dict[int, list[dominio.Encomenda]]:
@@ -205,7 +212,14 @@ def detalhar_insumo(db: Session, insumo_id: int) -> InsumoDetalhe:
         # Vários lançamentos no mesmo dia: vale o saldo depois do último.
         por_dia[m.data] = round(saldo, 3)
     return InsumoDetalhe(
-        **dict(_resposta(insumo, hoje(), a_caminho(db, insumo_id).get(insumo_id, []))),
+        **dict(
+            _resposta(
+                insumo,
+                hoje(),
+                a_caminho(db, insumo_id).get(insumo_id, []),
+                configuracao.obter_meses_de_safra(db),
+            )
+        ),
         historico=[PontoDeEstoque(data=dia, saldo=valor) for dia, valor in por_dia.items()],
         movimentacoes=[MovimentacaoResposta.model_validate(m) for m in reversed(movimentacoes)],
         precos_por_fornecedor=sorted(
@@ -556,7 +570,10 @@ def _salvar(db: Session) -> None:
 
 
 def _resposta(
-    insumo: Insumo, referencia: date, pedidos: list[dominio.Encomenda] = ()
+    insumo: Insumo,
+    referencia: date,
+    pedidos: list[dominio.Encomenda] = (),
+    meses_de_safra: list[int] = (),
 ) -> InsumoResposta:
     entradas = [
         dominio.Entrada(m.data, m.quantidade, m.validade, m.valor_unitario)
@@ -594,6 +611,7 @@ def _resposta(
         referencia=referencia,
         custo_medio=custo_medio,
         a_caminho=pedidos,
+        meses_de_safra=meses_de_safra,
     )
     compras = [m for m in insumo.movimentacoes if m.tipo == "entrada" and m.motivo is None]
     com_preco = sum(m.valor_unitario is not None for m in compras)

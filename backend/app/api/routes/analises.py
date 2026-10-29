@@ -24,4 +24,5 @@ def analisar_insumo(pedido: PedidoDeAnalise) -> Analise:
         referencia=pedido.referencia,
         custo_medio=custo_medio,
         a_caminho=[Encomenda(**e.model_dump()) for e in pedido.a_caminho],
+        meses_de_safra=pedido.meses_de_safra,
     )

@@ -71,6 +71,12 @@ export interface Insumo extends InsumoCadastro {
   analise: Analise
 }
 
+/** O calendário de safra da fazenda inteira (não por insumo): 1 a 12, vazio enquanto
+ * ninguém configurou — a análise então ignora a época do ano, como sempre ignorou. */
+export interface Configuracao {
+  meses_de_safra: number[]
+}
+
 export interface MovimentacaoEntrada {
   insumo_id: number
   tipo: 'entrada' | 'saida'
