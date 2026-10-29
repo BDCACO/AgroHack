@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api/cliente_api.dart';
+import '../core/tema.dart';
 import 'esqueleto.dart';
 
 /// Busca os dados de uma tela e cuida do que é igual em todas: carregando,
@@ -151,17 +152,73 @@ class _EsqueletoDeLista extends StatelessWidget {
   }
 }
 
-/// Lista vazia que ainda deixa puxar para atualizar.
+/// Lista vazia que ainda deixa puxar para atualizar — ícone em anéis, título
+/// e texto, como o EstadoVazio.vue do site, em vez de uma frase solta.
 class EstadoVazio extends StatelessWidget {
-  const EstadoVazio(this.texto, {super.key});
+  const EstadoVazio({
+    super.key,
+    required this.icone,
+    required this.titulo,
+    required this.texto,
+  });
 
+  final IconData icone;
+  final String titulo;
   final String texto;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(32),
-      children: [Text(texto, textAlign: TextAlign.center)],
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 56),
+      children: [
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              width: 96,
+              height: 96,
+              decoration: const BoxDecoration(
+                color: Cores.campo50,
+                shape: BoxShape.circle,
+              ),
+            ),
+            Container(
+              width: 72,
+              height: 72,
+              decoration: const BoxDecoration(
+                color: Cores.campo100,
+                shape: BoxShape.circle,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.08),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+              child: Icon(icone, size: 28, color: Cores.campo600),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Text(
+          titulo,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          texto,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.black54, height: 1.4),
+        ),
+      ],
     );
   }
 }

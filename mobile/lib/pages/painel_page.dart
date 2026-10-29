@@ -29,8 +29,21 @@ class PainelPage extends StatelessWidget {
             for (final alerta in insumo.analise.alertas) (insumo, alerta),
         ]..sort((a, b) => a.$2.gravidade.index.compareTo(b.$2.gravidade.index));
 
+        if (insumos.isEmpty) {
+          return const EstadoVazio(
+            icone: Icons.eco_outlined,
+            titulo: 'Nenhum insumo cadastrado ainda',
+            texto:
+                'Quando o dono da fazenda cadastrar os insumos pelo site, os '
+                'alertas aparecem aqui.',
+          );
+        }
         if (alertas.isEmpty) {
-          return const EstadoVazio('Nenhum alerta. O estoque está em dia.');
+          return const EstadoVazio(
+            icone: Icons.check_circle_outline,
+            titulo: 'Tudo em dia',
+            texto: 'Nenhum alerta agora. O estoque está dentro do esperado.',
+          );
         }
 
         final porGravidade = <Gravidade, int>{};

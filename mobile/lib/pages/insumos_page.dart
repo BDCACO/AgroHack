@@ -18,7 +18,13 @@ class InsumosPage extends StatelessWidget {
       buscar: estoque.listarInsumos,
       construir: (context, insumos) {
         if (insumos.isEmpty) {
-          return const EstadoVazio('Nenhum insumo cadastrado ainda.');
+          return const EstadoVazio(
+            icone: Icons.inventory_2_outlined,
+            titulo: 'Nenhum insumo cadastrado',
+            texto:
+                'O dono da fazenda cadastra os insumos pelo site; depois é só '
+                'lançar as retiradas por aqui.',
+          );
         }
 
         final maisGraves = [

@@ -85,7 +85,13 @@ class _MovimentacoesPageState extends State<MovimentacoesPage> {
             construir: (context, dados) {
               final (movimentacoes, insumos, pendentes) = dados;
               if (movimentacoes.isEmpty && pendentes.isEmpty) {
-                return const EstadoVazio('Nenhuma movimentação lançada ainda.');
+                return const EstadoVazio(
+                  icone: Icons.swap_vert,
+                  titulo: 'Nenhuma movimentação lançada',
+                  texto:
+                      'Toda entrada ou saída é de um insumo já cadastrado. '
+                      'Toque em "Lançar" para registrar a primeira.',
+                );
               }
 
               final filtradas = _filtro == null
