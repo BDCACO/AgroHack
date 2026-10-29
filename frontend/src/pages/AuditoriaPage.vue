@@ -239,7 +239,7 @@ const valor = (dado: unknown) =>
             type="button"
             role="radio"
             class="rounded-md px-3 py-1 font-medium transition-colors"
-            :class="formato === opcao.valor ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600 hover:text-stone-900'"
+            :class="formato === opcao.valor ? 'bg-superficie text-stone-900 shadow-sm' : 'text-stone-600 hover:text-stone-900'"
             :aria-checked="formato === opcao.valor"
             :data-teste="`formato-${opcao.valor}`"
             @click="formato = opcao.valor"
