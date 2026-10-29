@@ -389,6 +389,19 @@ def test_planilha_modelo_vem_formatada_e_com_os_insumos(client: TestClient) -> N
     assert livro["Insumos cadastrados"]["A2"].value == "Ureia"
 
 
+def test_planilha_modelo_traz_as_marcas_preferenciais(client: TestClient) -> None:
+    client.post(
+        "/api/v1/insumos",
+        json={"nome": "Ureia", "unidade": "kg", "marcas_preferenciais": "Yara, Heringer"},
+    )
+    client.post("/api/v1/insumos", json={"nome": "Calcário", "unidade": "t"})
+
+    aba = baixar_modelo(client)["Insumos cadastrados"]
+
+    assert [c.value for c in aba[1]] == ["insumo", "unidade", "marcas preferenciais"]
+    assert [c.value for c in aba["C"][1:]] == [None, "Yara, Heringer"]
+
+
 def test_modelo_nao_vira_formula_nem_quebra_com_nome_estranho(
     client: TestClient, db: Session
 ) -> None:

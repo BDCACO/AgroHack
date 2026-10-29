@@ -76,6 +76,9 @@ class InsumoCadastro(DadosDoInsumo):
     # Fertilizante, defensivo, nutrição animal... (GET /categorias). Opcional, e como a
     # embalagem: o PUT sem ela mantém a gravada.
     categoria_id: int | None = None
+    # Texto livre ("Yara, Heringer"), para a mensagem de cotação. Como a categoria: o PUT
+    # sem ele mantém o gravado.
+    marcas_preferenciais: str | None = Field(default=None, min_length=1, max_length=2000)
 
 
 class InsumoResposta(_Insumo):
@@ -84,6 +87,7 @@ class InsumoResposta(_Insumo):
     carencia_dias: int | None
     categoria_id: int | None = None
     categoria: str | None = None  # o nome, para a tela não precisar de outra consulta
+    marcas_preferenciais: str | None = None
     estoque_atual: float
     # R$ por unidade, média das compras com preço ponderada pela quantidade. None sem
     # nenhuma compra com preço.

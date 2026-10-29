@@ -39,7 +39,13 @@ from app.services import auditoria, pedidos
 
 # Campos que vieram depois do site e do app: um PUT que não os manda (de uma versão que
 # não os conhece) mantém o que está gravado, em vez de apagá-los.
-_CAMPOS_OPCIONAIS_NOVOS = {"embalagem", "pedido_minimo", "carencia_dias", "categoria_id"}
+_CAMPOS_OPCIONAIS_NOVOS = {
+    "embalagem",
+    "pedido_minimo",
+    "carencia_dias",
+    "categoria_id",
+    "marcas_preferenciais",
+}
 # O que faz dois envios com o mesmo uuid serem o mesmo lançamento. Com as casas que o banco
 # guarda: 2,0004 kg vira 2 kg na coluna, e o reenvio de 2,0004 ainda é o mesmo lançamento.
 _CONTEUDO_DO_LANCAMENTO = {
@@ -529,6 +535,7 @@ def _cadastro(insumo: Insumo) -> dict[str, object]:
         "pedido_minimo": insumo.pedido_minimo,
         "carencia_dias": insumo.carencia_dias,
         "categoria_id": insumo.categoria_id,
+        "marcas_preferenciais": insumo.marcas_preferenciais,
     }
 
 
@@ -627,6 +634,7 @@ def _resposta(
         carencia_dias=insumo.carencia_dias,
         categoria_id=insumo.categoria_id,
         categoria=None if insumo.categoria is None else insumo.categoria.nome,
+        marcas_preferenciais=insumo.marcas_preferenciais,
         estoque_atual=estoque,
         custo_medio=None if custo_medio is None else round(custo_medio, 4),
         # Estoque negativo é registro faltando, não dívida: vale zero.

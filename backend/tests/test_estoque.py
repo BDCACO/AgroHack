@@ -352,6 +352,19 @@ def test_alterar_insumo_sem_os_campos_novos_mantem_embalagem(client: TestClient)
     assert (limpando.json()["embalagem"], limpando.json()["pedido_minimo"]) == (None, 100)
 
 
+def test_cadastro_com_marcas_preferenciais(client: TestClient) -> None:
+    insumo = criar(client, marcas_preferenciais="Yara, Heringer")
+    assert insumo["marcas_preferenciais"] == "Yara, Heringer"
+
+
+def test_alterar_insumo_sem_marcas_preferenciais_mantem_a_gravada(client: TestClient) -> None:
+    ureia = criar(client, marcas_preferenciais="Yara, Heringer")
+
+    sem = client.put(f"/api/v1/insumos/{ureia['id']}", json={"nome": "Ureia", "unidade": "kg"})
+
+    assert sem.json()["marcas_preferenciais"] == "Yara, Heringer"
+
+
 def test_preco_em_saida_explica_o_porque(client: TestClient) -> None:
     insumo = criar(client)
     corpo = {"insumo_id": insumo["id"], "tipo": "saida", "data": dia(0), "quantidade": 1}

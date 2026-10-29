@@ -166,6 +166,25 @@ describe('Reais no insumo', () => {
       expect.objectContaining({ nome: 'Ureia', unidade: 'kg', embalagem: 50, pedido_minimo: 100 }),
     )
   })
+
+  it('o cadastro manda as marcas preferenciais', async () => {
+    vi.mocked(api.criarInsumo).mockImplementation(async (dados) => ({ ...ureia(), ...dados }))
+    const { wrapper } = await montarEm('/insumos')
+
+    await wrapper.findAll('main button').find((b) => b.text() === 'Cadastrar insumo')!.trigger('click')
+    const form = new DOMWrapper(document.querySelector('[role="dialog"] [data-teste="form-insumo"]')!)
+    const campos = form.findAll('label')
+    const campo = (rotulo: string) => campos.find((l) => l.text().startsWith(rotulo))!.find('input')
+    await campo('Nome').setValue('Ureia')
+    await campo('Unidade').setValue('kg')
+    await campo('Marcas').setValue('Yara, Heringer')
+    await form.trigger('submit')
+    await flushPromises()
+
+    expect(api.criarInsumo).toHaveBeenCalledWith(
+      expect.objectContaining({ marcas_preferenciais: 'Yara, Heringer' }),
+    )
+  })
 })
 
 describe('GraficoDeEstoque', () => {

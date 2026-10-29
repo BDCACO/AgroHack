@@ -403,9 +403,10 @@ def _aba_de_instrucoes(aba: Worksheet) -> None:
 
 
 def _aba_de_insumos(aba: Worksheet, insumos: list[Insumo]) -> None:
-    titulos(aba, ["insumo", "unidade"])
+    titulos(aba, ["insumo", "unidade", "marcas preferenciais"])
     aba.column_dimensions["A"].width = 34
     aba.column_dimensions["B"].width = 11
+    aba.column_dimensions["C"].width = 30
     aba.freeze_panes = "A2"
     for numero, insumo in enumerate(insumos, start=2):
         for coluna, texto in enumerate((insumo.nome, insumo.unidade), start=1):
@@ -414,6 +415,10 @@ def _aba_de_insumos(aba: Worksheet, insumos: list[Insumo]) -> None:
             # nome começando com "=" é texto, não fórmula.
             celula.value = ILLEGAL_CHARACTERS_RE.sub("", texto)
             celula.data_type = "s"
+        if insumo.marcas_preferenciais:
+            marcas = aba.cell(numero, 3)
+            marcas.value = ILLEGAL_CHARACTERS_RE.sub("", insumo.marcas_preferenciais)
+            marcas.data_type = "s"
     if not insumos:
         aba["A2"] = "Nenhum insumo cadastrado ainda: os da planilha serão cadastrados."
         aba["A2"].font = fonte(italic=True, color=CINZA)

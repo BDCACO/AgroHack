@@ -57,6 +57,9 @@ export interface InsumoCadastro {
   carencia_dias: number | null
   // GET /categorias. Fora do envio, a API mantém a gravada.
   categoria_id?: number | null
+  // Texto livre ("Yara, Heringer"), para a mensagem de cotação. Fora do envio, a API
+  // mantém o gravado.
+  marcas_preferenciais?: string | null
 }
 
 export interface Insumo extends InsumoCadastro {
