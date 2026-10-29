@@ -115,16 +115,19 @@ describe('Talhões', () => {
     const { wrapper } = await montarEm('/talhoes')
 
     await wrapper.findAll('main button').find((b) => b.text() === 'Novo talhão')!.trigger('click')
-    const campos = wrapper.findAll('main form input')
+    // O formulário abre numa janela, que vai para o <body> (Teleport).
+    expect(document.querySelector('[role="dialog"] h2')?.textContent?.trim()).toBe('Novo talhão')
+    const form = new DOMWrapper(document.querySelector<HTMLElement>('[role="dialog"] [data-teste="form-talhao"]')!)
+    const campos = form.findAll('input')
     await campos[0]!.setValue('Pasto 1')
     await campos[1]!.setValue(45)
     await campos[2]!.setValue('Pasto')
-    await wrapper.find('main form').trigger('submit')
+    await form.trigger('submit')
     await flushPromises()
 
     expect(api.criarTalhao).toHaveBeenCalledWith({ nome: 'Pasto 1', area_ha: 45, cultura: 'Pasto' })
     expect(api.listarTalhoes).toHaveBeenCalledTimes(2)
-    expect(wrapper.find('main form').exists()).toBe(false)
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
   })
 
   it('talhão com aplicações não se remove: a frase da API aparece na janela', async () => {
