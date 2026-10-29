@@ -13,13 +13,16 @@ import { useSessaoStore } from '@/stores/sessao'
 declare module 'vue-router' {
   interface RouteMeta {
     titulo?: string
-    /** Presente = a rota aparece no menu lateral e na barra de baixo do celular, com este
-     * ícone. `curto` é o rótulo da barra de baixo, onde cabem uns 10 caracteres. */
-    menu?: { icone: NomeIcone; curto?: string }
+    /** Presente = a rota aparece no menu lateral, com este ícone. `barra`: também na barra de
+     * baixo do celular, que só tem lugar para as do dia a dia; as outras ficam em "Mais".
+     * `curto` é o rótulo da barra e do "Mais", onde cabem uns 10 caracteres. */
+    menu?: { icone: NomeIcone; curto?: string; barra?: boolean }
     /** Tela fora do menu que acende um item dele (o detalhe acende "Insumos"). */
     secao?: string
     /** Só para o dono: some do menu do funcionário, e o endereço digitado leva ao Painel. */
     soDono?: boolean
+    /** Só existe com login (usuários, auditoria): com a autenticação desligada, some do menu. */
+    comLogin?: boolean
   }
 }
 
@@ -32,6 +35,13 @@ const TalhoesPage = () => import('@/pages/TalhoesPage.vue')
 const TalhaoPage = () => import('@/pages/TalhaoPage.vue')
 const ImportarPage = () => import('@/pages/ImportarPage.vue')
 const SistemaPage = () => import('@/pages/SistemaPage.vue')
+const ComprasPage = () => import('@/pages/ComprasPage.vue')
+const RelatoriosPage = () => import('@/pages/RelatoriosPage.vue')
+const FornecedoresPage = () => import('@/pages/FornecedoresPage.vue')
+const FornecedorPage = () => import('@/pages/FornecedorPage.vue')
+const UsuariosPage = () => import('@/pages/UsuariosPage.vue')
+const AuditoriaPage = () => import('@/pages/AuditoriaPage.vue')
+const ContaPage = () => import('@/pages/ContaPage.vue')
 const NaoEncontradoPage = () => import('@/pages/NaoEncontradoPage.vue')
 const EntrarPage = () => import('@/pages/EntrarPage.vue')
 
@@ -43,6 +53,13 @@ const soDono: NavigationGuard = async () => {
   return sessao.podeGerir ? true : { name: 'painel' }
 }
 
+// Usuários, conta e auditoria só existem com login: sem ele, quem digita o endereço volta.
+const comLogin: NavigationGuard = async () => {
+  const sessao = useSessaoStore()
+  await sessao.iniciar()
+  return sessao.usuario ? true : { name: 'painel' }
+}
+
 // As telas do menu. A ORDEM aqui é a ordem do menu — o menu é derivado desta
 // lista, então registrar uma tela é um lugar só.
 const telas: RouteRecordRaw[] = [
@@ -50,25 +67,37 @@ const telas: RouteRecordRaw[] = [
     path: '',
     name: 'painel',
     component: PainelPage,
-    meta: { titulo: 'Painel', menu: { icone: 'painel' } },
+    meta: { titulo: 'Painel', menu: { icone: 'painel', barra: true } },
   },
   {
     path: 'insumos',
     name: 'insumos',
     component: InsumosPage,
-    meta: { titulo: 'Insumos', menu: { icone: 'insumos' } },
+    meta: { titulo: 'Insumos', menu: { icone: 'insumos', barra: true } },
   },
   {
     path: 'movimentacoes',
     name: 'movimentacoes',
     component: MovimentacoesPage,
-    meta: { titulo: 'Movimentações', menu: { icone: 'movimentacoes', curto: 'Movimentos' } },
+    meta: { titulo: 'Movimentações', menu: { icone: 'movimentacoes', curto: 'Movimentos', barra: true } },
+  },
+  {
+    path: 'compras',
+    name: 'compras',
+    component: ComprasPage,
+    meta: { titulo: 'Compras', menu: { icone: 'compras', barra: true } },
   },
   {
     path: 'talhoes',
     name: 'talhoes',
     component: TalhoesPage,
     meta: { titulo: 'Talhões', menu: { icone: 'talhoes' } },
+  },
+  {
+    path: 'relatorios',
+    name: 'relatorios',
+    component: RelatoriosPage,
+    meta: { titulo: 'Relatórios', menu: { icone: 'relatorios' } },
   },
   {
     path: 'importar',
@@ -82,6 +111,20 @@ const telas: RouteRecordRaw[] = [
     },
   },
   {
+    path: 'usuarios',
+    name: 'usuarios',
+    component: UsuariosPage,
+    beforeEnter: [comLogin, soDono],
+    meta: { titulo: 'Usuários', menu: { icone: 'usuarios' }, soDono: true, comLogin: true },
+  },
+  {
+    path: 'auditoria',
+    name: 'auditoria',
+    component: AuditoriaPage,
+    beforeEnter: [comLogin, soDono],
+    meta: { titulo: 'Auditoria', menu: { icone: 'auditoria' }, soDono: true, comLogin: true },
+  },
+  {
     path: 'sistema',
     name: 'sistema',
     component: SistemaPage,
@@ -92,6 +135,8 @@ const telas: RouteRecordRaw[] = [
 export interface ItemDeMenu {
   nome: string
   soDono: boolean
+  comLogin: boolean
+  barra: boolean
   rotulo: string
   rotuloCurto: string
   icone: NomeIcone
@@ -103,6 +148,8 @@ export const itensDeMenu: ItemDeMenu[] = telas.flatMap((tela) =>
         {
           nome: tela.name,
           soDono: Boolean(tela.meta.soDono),
+          comLogin: Boolean(tela.meta.comLogin),
+          barra: Boolean(tela.meta.menu.barra),
           rotulo: tela.meta.titulo ?? tela.name,
           rotuloCurto: tela.meta.menu.curto ?? tela.meta.titulo ?? tela.name,
           icone: tela.meta.menu.icone,
@@ -132,6 +179,26 @@ export const routes: RouteRecordRaw[] = [
         component: TalhaoPage,
         props: (rota) => ({ id: Number(rota.params.id) }),
         meta: { titulo: 'Talhão', secao: 'talhoes' },
+      },
+      {
+        path: 'compras/fornecedores',
+        name: 'fornecedores',
+        component: FornecedoresPage,
+        meta: { titulo: 'Fornecedores', secao: 'compras' },
+      },
+      {
+        path: 'compras/fornecedores/:id(\\d+)',
+        name: 'fornecedor',
+        component: FornecedorPage,
+        props: (rota) => ({ id: Number(rota.params.id) }),
+        meta: { titulo: 'Fornecedor', secao: 'compras' },
+      },
+      {
+        path: 'conta',
+        name: 'conta',
+        component: ContaPage,
+        beforeEnter: comLogin,
+        meta: { titulo: 'Minha conta' },
       },
       {
         path: ':caminho(.*)*',

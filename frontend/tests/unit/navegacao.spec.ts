@@ -9,6 +9,8 @@ import { listarInsumos } from '@/services/estoque'
 import type { Insumo } from '@/types/api'
 
 // O layout verifica a API ao montar; aqui a API não existe.
+// Movimentações carrega os fornecedores para a compra.
+vi.mock('@/services/compras', () => ({ listarFornecedores: vi.fn().mockResolvedValue([]) }))
 vi.mock('@/services/health', () => ({
   buscarHealth: vi.fn().mockResolvedValue({ status: 'ok' }),
   buscarReadiness: vi.fn().mockResolvedValue({ status: 'pronto', database: 'ok' }),
@@ -37,8 +39,12 @@ describe('navegação', () => {
       'Painel',
       'Insumos',
       'Movimentações',
+      'Compras',
       'Talhões',
+      'Relatórios',
       'Importar dados',
+      'Usuários',
+      'Auditoria',
       'Sistema',
     ])
   })
@@ -61,29 +67,73 @@ describe('navegação', () => {
     const { wrapper } = await montarEm('/')
 
     const links = wrapper.findAll('aside nav a')
-    expect(links.map((link) => link.text())).toEqual(itensDeMenu.map((item) => item.rotulo))
+    // Sem login, as telas que dependem dele (Usuários) ficam fora.
+    expect(links.map((link) => link.text())).toEqual(
+      itensDeMenu.filter((item) => !item.comLogin).map((item) => item.rotulo),
+    )
   })
 
-  it('no celular, a barra de baixo tem as mesmas telas, com rótulos que cabem nela', async () => {
+  it('o botão da barra do topo recolhe o menu aos ícones, e o navegador lembra', async () => {
+    localStorage.clear()
+    const { wrapper } = await montarEm('/')
+    const botao = wrapper.find('[data-teste="recolher-menu"]')
+    expect(botao.attributes('aria-expanded')).toBe('true')
+    expect(botao.attributes('aria-label')).toBe('Recolher o menu')
+
+    await botao.trigger('click')
+
+    expect(wrapper.find('aside').attributes('data-recolhido')).toBe('true')
+    expect(botao.attributes('aria-expanded')).toBe('false')
+    expect(botao.attributes('aria-label')).toBe('Abrir o menu')
+    // O nome de cada tela some da vista, mas continua para o leitor de tela e no "title".
+    const insumos = wrapper.findAll('aside nav a')[1]!
+    expect(insumos.text()).toBe('Insumos')
+    expect(insumos.find('[data-teste="rotulo-menu"]').classes()).toContain('sr-only')
+    expect(insumos.attributes('title')).toBe('Insumos')
+    expect(localStorage.getItem('campocerto.menu-recolhido')).toBe('1')
+    wrapper.unmount()
+
+    setActivePinia(createPinia())
+    const outra = await montarEm('/insumos')
+    expect(outra.wrapper.find('aside').attributes('data-recolhido')).toBe('true')
+    await outra.wrapper.find('[data-teste="recolher-menu"]').trigger('click')
+    expect(outra.wrapper.find('aside').attributes('data-recolhido')).toBeUndefined()
+    expect(localStorage.getItem('campocerto.menu-recolhido')).toBe('0')
+    localStorage.clear()
+  })
+
+  it('a barra do topo diz onde se está, com a volta para a seção numa página dentro dela', async () => {
+    const naSecao = await montarEm('/insumos')
+    expect(naSecao.wrapper.find('[data-teste="barra-do-topo"] nav').text()).toBe('Insumos')
+
+    setActivePinia(createPinia())
+    const dentro = await montarEm('/compras/fornecedores')
+    const caminho = dentro.wrapper.find('[data-teste="barra-do-topo"] nav')
+    expect(caminho.findAll('li').map((li) => li.text())).toEqual(['Compras', 'Fornecedores'])
+    expect(caminho.find('a').attributes('href')).toBe('/compras')
+  })
+
+  it('no celular, a barra de baixo tem as telas do dia a dia, com rótulos que cabem nela', async () => {
     const { wrapper } = await montarEm('/movimentacoes')
 
     const abas = wrapper.findAll('[data-teste="aba"]')
-    expect(abas.map((aba) => aba.text())).toEqual([
-      'Painel',
-      'Insumos',
-      'Movimentos',
-      'Talhões',
-      'Importar',
-      'Sistema',
-    ])
-    expect(abas.map((aba) => aba.attributes('aria-current'))).toEqual([
-      undefined,
-      undefined,
-      'page',
-      undefined,
-      undefined,
-      undefined,
-    ])
+    expect(abas.map((aba) => aba.text())).toEqual(
+      itensDeMenu.filter((item) => item.barra).map((item) => item.rotuloCurto),
+    )
+    expect(abas.map((aba) => aba.text())).toContain('Movimentos')
+    expect(abas.map((aba) => aba.attributes('aria-current'))).toContain('page')
+    expect(wrapper.find('[data-teste="aba-mais"]').text()).toBe('Mais')
+  })
+
+  it('o "Mais" do celular abre as outras telas, e acende quando se está numa delas', async () => {
+    const { wrapper } = await montarEm('/sistema', { attachTo: document.body })
+    expect(wrapper.find('[data-teste="aba-mais"]').classes()).toContain('text-white')
+
+    await wrapper.find('[data-teste="aba-mais"]').trigger('click')
+    const outras = [...document.querySelectorAll('[data-teste="menu-mais"] a')].map((a) => a.textContent?.trim())
+    expect(outras).toEqual(itensDeMenu.filter((item) => !item.barra && !item.comLogin).map((item) => item.rotulo))
+    expect(outras).toContain('Sistema')
+    wrapper.unmount()
   })
 
   it('a aba do Painel mostra quantos alertas urgentes há', async () => {
@@ -149,40 +199,12 @@ describe('navegação', () => {
     wrapper.unmount()
   })
 
-  it('o resumo de status do menu reflete a verificação', async () => {
+  it('a barra do topo leva ao código do projeto no GitHub, em outra aba', async () => {
     const { wrapper } = await montarEm('/')
 
-    expect(wrapper.find('[data-teste="resumo-status"]').text()).toBe('Sistema operando')
-  })
-
-  it('avisa quando há dados de demonstração, e só nesse caso', async () => {
-    const semDemo = await montarEm('/')
-    expect(semDemo.wrapper.find('[data-teste="aviso-demonstracao"]').exists()).toBe(false)
-
-    const insumoDeDemo: Insumo = {
-      id: 1,
-      nome: 'Ureia agrícola',
-      unidade: 'kg',
-      estoque_minimo: null,
-      prazo_reposicao_dias: null,
-      embalagem: null,
-      pedido_minimo: null,
-      carencia_dias: null,
-      custo_medio: null,
-      valor_em_estoque: null,
-      demonstracao: true,
-      estoque_atual: 0,
-      analise: {
-        consumo_diario: null,
-        cobertura_dias: null,
-        alertas: [],
-        reposicao: null,
-        limitacoes: [],
-      },
-    }
-    vi.mocked(listarInsumos).mockResolvedValueOnce([insumoDeDemo])
-    const comDemo = await montarEm('/insumos')
-
-    expect(comDemo.wrapper.find('[data-teste="aviso-demonstracao"]').exists()).toBe(true)
+    const link = wrapper.find('[data-teste="link-github"]')
+    expect(link.attributes('href')).toBe('https://github.com/BDCACO/AgroHack')
+    expect(link.attributes('target')).toBe('_blank')
+    expect(link.attributes('rel')).toContain('noopener')
   })
 })

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, useId, useTemplateRef } from 'vue'
 
-defineProps<{ titulo: string }>()
+// larga: para formulários de vários campos, que no computador ficam em duas colunas.
+defineProps<{ titulo: string; larga?: boolean }>()
 const emit = defineEmits<{ fechar: [] }>()
 
 const idDoTitulo = useId()
@@ -38,7 +39,8 @@ onBeforeUnmount(() => {
         role="dialog"
         aria-modal="true"
         :aria-labelledby="idDoTitulo"
-        class="cartao relative max-h-[90vh] w-full animate-surgir overflow-y-auto rounded-b-none p-5 shadow-xl sm:max-w-md sm:rounded-b-xl"
+        class="cartao relative max-h-[90vh] w-full animate-surgir overflow-y-auto rounded-b-none p-5 shadow-xl sm:rounded-b-xl"
+        :class="larga ? 'sm:max-w-2xl' : 'sm:max-w-md'"
       >
         <h2
           :id="idDoTitulo"

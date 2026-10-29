@@ -19,32 +19,63 @@ class CarregarDados<T> extends StatefulWidget {
 }
 
 class _CarregarDadosState<T> extends State<CarregarDados<T>> {
-  late Future<T> _dados = widget.buscar();
+  late Future<T> _carregando = widget.buscar();
+  T? _dados;
 
-  Future<void> _recarregar() {
-    final dados = widget.buscar();
-    setState(() => _dados = dados);
-    return dados.then((_) {}, onError: (_) {});
+  // Puxar para atualizar não troca a tela por um spinner: mantém os dados
+  // antigos à vista e só avisa, por SnackBar, se a atualização falhar.
+  Future<void> _recarregar() async {
+    try {
+      final dados = await widget.buscar();
+      if (mounted) setState(() => _dados = dados);
+    } catch (erro) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(erro is ApiError ? erro.mensagem : 'Algo deu errado.'),
+        ),
+      );
+    }
   }
+
+  void _tentarDeNovo() => setState(() => _carregando = widget.buscar());
 
   @override
   Widget build(BuildContext context) {
+    final dados = _dados;
+    if (dados != null) {
+      return RefreshIndicator(
+        onRefresh: _recarregar,
+        child: widget.construir(context, dados),
+      );
+    }
     return FutureBuilder<T>(
-      future: _dados,
+      future: _carregando,
       builder: (context, estado) {
+        final Widget filho;
         if (estado.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (estado.hasError) {
+          filho = const Center(
+            key: ValueKey('carregando'),
+            child: CircularProgressIndicator(),
+          );
+        } else if (estado.hasError) {
           final erro = estado.error;
-          return _Erro(
+          filho = _Erro(
+            key: const ValueKey('erro'),
             mensagem: erro is ApiError ? erro.mensagem : 'Algo deu errado.',
-            tentarDeNovo: _recarregar,
+            tentarDeNovo: _tentarDeNovo,
+          );
+        } else {
+          _dados = estado.data;
+          filho = RefreshIndicator(
+            key: const ValueKey('dados'),
+            onRefresh: _recarregar,
+            child: widget.construir(context, estado.data as T),
           );
         }
-        return RefreshIndicator(
-          onRefresh: _recarregar,
-          child: widget.construir(context, estado.data as T),
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: filho,
         );
       },
     );
@@ -52,7 +83,7 @@ class _CarregarDadosState<T> extends State<CarregarDados<T>> {
 }
 
 class _Erro extends StatelessWidget {
-  const _Erro({required this.mensagem, required this.tentarDeNovo});
+  const _Erro({super.key, required this.mensagem, required this.tentarDeNovo});
 
   final String mensagem;
   final VoidCallback tentarDeNovo;

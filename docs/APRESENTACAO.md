@@ -90,9 +90,9 @@ E os talhões (as retiradas da fazenda foram aplicadas neles; carências fictíc
    resíduo acima do permitido é recusada; o CampoCerto avisa antes da colheita. Na página do
    talhão, cada aplicação (data, insumo, quantidade, quem lançou) e o período para recortar a
    safra.
-9. **Fechamento.** O que vem depois: a tela de login no app e a de Usuários no site (a API já
-   tem dono e funcionário), sazonalidade da safra no consumo, o resumo em reais e os
-   talhões também no app, e os pedidos de compra nas telas do site e do app.
+9. **Fechamento.** O que vem depois: a tela de login no app (a API já tem dono e
+   funcionário), sazonalidade da safra no consumo, e no app o resumo em reais, os talhões e o
+   recebimento dos pedidos de compra, que no site já existem.
 
 **Ideia deixada de fora de propósito.** O pedido a caminho da demonstração poderia ser o da
 ureia, e o Painel já mostraria o alerta dela dizendo quando a carga chega. Mas isso tira o

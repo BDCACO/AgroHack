@@ -1,4 +1,5 @@
 import type {
+  FiltroDeMovimentacoes,
   Insumo,
   InsumoCadastro,
   InsumoDetalhe,
@@ -43,6 +44,21 @@ export async function buscarResumo(): Promise<Resumo> {
 export async function listarMovimentacoes(): Promise<Movimentacao[]> {
   const { data } = await http.get<Movimentacao[]>('/movimentacoes')
   return data
+}
+
+/** Com filtro, uma página por vez: o total com os mesmos filtros vem no cabeçalho
+ * X-Total-Count, para a tela dizer quantas há e oferecer as próximas. */
+export async function buscarMovimentacoes(
+  filtro: FiltroDeMovimentacoes,
+  limite = 50,
+  deslocamento = 0,
+): Promise<{ movimentacoes: Movimentacao[]; total: number }> {
+  const params = Object.fromEntries(Object.entries(filtro).filter(([, valor]) => valor))
+  const resposta = await http.get<Movimentacao[]>('/movimentacoes', {
+    params: { ...params, limite, deslocamento },
+  })
+  const total = Number(resposta.headers['x-total-count'])
+  return { movimentacoes: resposta.data, total: Number.isFinite(total) ? total : resposta.data.length }
 }
 
 export async function registrarMovimentacao(dados: MovimentacaoEntrada): Promise<Movimentacao> {

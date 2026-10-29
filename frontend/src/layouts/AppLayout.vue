@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import IconeSvg from '@/components/IconeSvg.vue'
+import JanelaModal from '@/components/JanelaModal.vue'
 import LogoCampoCerto from '@/components/LogoCampoCerto.vue'
 import { itensDeMenu } from '@/router'
 import { useEstoqueStore } from '@/stores/estoque'
@@ -16,8 +17,49 @@ const rota = useRoute()
 const router = useRouter()
 
 // O funcionário não vê o que é só do dono (importar planilha): menos telas que dão "peça ao dono".
-const menu = computed(() => itensDeMenu.filter((item) => !item.soDono || sessao.podeGerir))
+// Sem login (autenticação desligada), não há usuários nem trilha de quem fez o quê.
+const menu = computed(() =>
+  itensDeMenu.filter(
+    (item) => (!item.soDono || sessao.podeGerir) && (!item.comLogin || sessao.usuario),
+  ),
+)
+// A barra de baixo do celular tem lugar para umas cinco abas: as do dia a dia e o "Mais".
+const naBarra = computed(() => menu.value.filter((item) => item.barra))
+const noMais = computed(() => menu.value.filter((item) => !item.barra))
+const maisAberto = ref(false)
 const rotuloDoPapel = { dono: 'Dono', funcionario: 'Funcionário' } as const
+const REPOSITORIO = 'https://github.com/BDCACO/AgroHack'
+
+// O menu lateral recolhido fica só com os ícones: mais lugar para tabelas e gráficos. A
+// escolha é deste navegador; sem armazenamento (aba anônima, site bloqueado), começa aberto.
+const CHAVE_DO_MENU = 'campocerto.menu-recolhido'
+function lerRecolhido() {
+  try {
+    return localStorage.getItem(CHAVE_DO_MENU) === '1'
+  } catch {
+    return false
+  }
+}
+const recolhido = ref(lerRecolhido())
+function alternarMenu() {
+  recolhido.value = !recolhido.value
+  try {
+    localStorage.setItem(CHAVE_DO_MENU, recolhido.value ? '1' : '0')
+  } catch {
+    // Sem armazenamento, vale só até recarregar.
+  }
+}
+
+/** "Maria da Silva" vira "MS"; um nome só, a primeira letra. */
+const iniciais = (nome: string) => {
+  const partes = nome.trim().split(/\s+/)
+  return ((partes[0]?.[0] ?? '') + (partes.length > 1 ? (partes.at(-1)?.[0] ?? '') : '')).toUpperCase()
+}
+// Onde se está, na barra do topo: a seção do menu e, numa página dentro dela, o nome da página.
+const secaoAtual = computed(() => menu.value.find((item) => ativo(item.nome)))
+const paginaDentro = computed(() =>
+  secaoAtual.value && rota.name !== secaoAtual.value.nome ? rota.meta.titulo : undefined,
+)
 
 async function sair() {
   await sessao.sair()
@@ -38,6 +80,13 @@ watch(
 
 const ativo = (nome: string) => nome === (rota.meta.secao ?? rota.name)
 const indiceAtivo = computed(() => menu.value.findIndex((item) => ativo(item.nome)))
+// Na barra de baixo, tela que não está nela acende o "Mais", a última aba.
+const indiceNaBarra = computed(() => {
+  const indice = naBarra.value.findIndex((item) => ativo(item.nome))
+  return indice >= 0 ? indice : naBarra.value.length
+})
+// Fecha o "Mais" ao navegar por ele.
+watch(() => rota.fullPath, () => (maisAberto.value = false))
 
 // Tocar de novo na aba da tela em que já se está sobe para o topo, como nos apps.
 function tocarNaAba(nome: string, navegar: (evento: MouseEvent) => void, evento: MouseEvent) {
@@ -47,19 +96,12 @@ function tocarNaAba(nome: string, navegar: (evento: MouseEvent) => void, evento:
   window.scrollTo({ top: 0, behavior: reduzir ? 'auto' : 'smooth' })
 }
 
-const resumoStatus = {
-  verificando: { texto: 'Verificando sistema…', ponto: 'bg-stone-400 animate-pulse' },
-  operando: { texto: 'Sistema operando', ponto: 'bg-green-400' },
-  problema: { texto: 'Sistema com problema', ponto: 'bg-red-400' },
-  'nao-verificado': { texto: 'Sistema não verificado', ponto: 'bg-stone-400' },
-} as const
-
 // O número no item "Painel" do menu: o que não pode esperar fica à vista em qualquer tela.
 const urgentes = computed(() => estoque.alertas.filter((a) => a.alerta.gravidade === 'alta').length)
 
 onMounted(() => {
   status.verificar()
-  // O contador do menu e o aviso de demonstração valem em qualquer tela. A página monta
+  // O contador do menu vale em qualquer tela. A página monta
   // antes do layout: se ela já pediu os dados, não se pede de novo.
   if (!estoque.carregado && !estoque.carregando) estoque.carregar()
 })
@@ -96,15 +138,21 @@ onMounted(() => {
       </button>
     </header>
 
-    <!-- Menu lateral: só no desktop. -->
-    <aside class="inset-y-0 left-0 z-50 hidden w-64 flex-col bg-linear-to-b from-campo-900 to-campo-950 text-campo-50 lg:sticky lg:top-0 lg:flex lg:h-screen">
-      <div class="flex h-18 items-center justify-between px-5">
+    <!-- Menu lateral: só no desktop. Recolhido, fica só com os ícones; o nome de cada tela
+         continua para o leitor de tela e aparece ao parar o mouse em cima. -->
+    <aside
+      id="menu-lateral"
+      class="inset-y-0 left-0 z-50 hidden shrink-0 flex-col overflow-hidden bg-linear-to-b from-campo-900 to-campo-950 whitespace-nowrap text-campo-50 transition-[width] duration-300 ease-movimento lg:sticky lg:top-0 lg:flex lg:h-screen"
+      :class="recolhido ? 'w-18' : 'w-64'"
+      :data-recolhido="recolhido || undefined"
+    >
+      <div class="flex h-16 items-center px-5">
         <RouterLink
           :to="{ name: 'painel' }"
           class="text-white"
           aria-label="CampoCerto, ir para o Painel"
         >
-          <LogoCampoCerto com-nome />
+          <LogoCampoCerto :com-nome="!recolhido" />
         </RouterLink>
       </div>
 
@@ -132,19 +180,27 @@ onMounted(() => {
         >
           <a
             :href="href"
-            class="group relative flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors duration-150"
+            class="group relative flex h-10 items-center gap-3 rounded-lg px-3.5 text-sm font-medium transition-colors duration-150"
             :class="ativo(item.nome) ? 'text-white' : 'text-campo-100/80 hover:bg-white/5 hover:text-white'"
             :aria-current="ativo(item.nome) ? 'page' : undefined"
+            :title="recolhido ? item.rotulo : undefined"
             @click="navigate"
           >
             <IconeSvg
               :nome="item.icone"
               class="h-5 w-5 shrink-0 transition-transform duration-150 ease-chegada group-hover:scale-110"
             />
-            <span data-teste="rotulo-menu">{{ item.rotulo }}</span>
+            <span
+              :class="recolhido ? 'sr-only' : ''"
+              data-teste="rotulo-menu"
+            >{{ item.rotulo }}</span>
+            <!-- Recolhido, o número de urgentes vira um selo no canto do ícone. -->
             <span
               v-if="item.nome === 'painel' && urgentes"
-              class="ml-auto rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white"
+              class="rounded-full bg-red-500 text-xs font-bold text-white"
+              :class="recolhido
+                ? 'absolute top-0.5 right-1 min-w-4 px-1 text-center text-[10px] leading-4 ring-2 ring-campo-900'
+                : 'ml-auto px-2 py-0.5'"
               data-teste="urgentes-menu"
             >
               {{ urgentes }}<span class="sr-only">{{ urgentes === 1 ? ' urgente' : ' urgentes' }}</span>
@@ -152,73 +208,134 @@ onMounted(() => {
           </a>
         </RouterLink>
       </nav>
-
-      <!-- Quem está usando. Sem login (API de desenvolvimento com a autenticação desligada),
-           o caminho para entrar. -->
-      <div
-        v-if="sessao.usuario"
-        class="mx-3 mb-2 flex items-center gap-2 px-3 py-1"
-        data-teste="sessao"
-      >
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium text-white">
-            {{ sessao.usuario.nome }}
-          </p>
-          <p class="text-xs text-campo-100/70">
-            {{ rotuloDoPapel[sessao.usuario.papel] }}
-          </p>
-        </div>
-        <button
-          type="button"
-          class="rounded-md px-2 py-1 text-xs font-semibold text-campo-100 transition-colors hover:bg-white/10 hover:text-white"
-          @click="sair"
-        >
-          Sair
-        </button>
-      </div>
-      <RouterLink
-        v-else
-        :to="{ name: 'entrar' }"
-        class="mx-3 mb-2 px-3 py-1 text-xs font-medium text-campo-100/70 hover:text-white"
-      >
-        Entrar com login
-      </RouterLink>
-      <RouterLink
-        :to="{ name: 'sistema' }"
-        class="mx-3 mb-4 flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-campo-100/80 transition-colors hover:bg-white/5 hover:text-white"
-        data-teste="resumo-status"
-      >
-        <span
-          class="h-2 w-2 rounded-full"
-          :class="resumoStatus[status.situacao].ponto"
-          aria-hidden="true"
-        />
-        {{ resumoStatus[status.situacao].texto }}
-      </RouterLink>
     </aside>
 
     <!-- No celular, a barra de baixo ocupa o fim da tela: o conteúdo termina antes dela. -->
     <div class="flex min-w-0 flex-1 flex-col max-lg:pb-[calc(4rem+env(safe-area-inset-bottom))]">
+      <!-- Barra do topo, no desktop: o botão que recolhe o menu, onde se está, o status do
+           sistema e quem está usando. Fica presa no alto ao rolar. -->
+      <header
+        class="sticky top-0 z-30 hidden h-16 items-center gap-3 border-b border-stone-200/80 bg-white/85 px-4 backdrop-blur lg:flex"
+        data-teste="barra-do-topo"
+      >
+        <button
+          type="button"
+          class="grid size-10 place-items-center rounded-lg text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900"
+          :aria-label="recolhido ? 'Abrir o menu' : 'Recolher o menu'"
+          :title="recolhido ? 'Abrir o menu' : 'Recolher o menu'"
+          :aria-expanded="!recolhido"
+          aria-controls="menu-lateral"
+          data-teste="recolher-menu"
+          @click="alternarMenu"
+        >
+          <IconeSvg
+            nome="recolher"
+            class="h-5 w-5 transition-transform duration-300 ease-movimento"
+            :class="recolhido ? 'rotate-180' : ''"
+          />
+        </button>
+        <nav
+          v-if="secaoAtual"
+          aria-label="Você está em"
+          class="min-w-0"
+        >
+          <ol class="flex items-center gap-1.5 text-sm">
+            <li class="truncate">
+              <RouterLink
+                v-if="paginaDentro"
+                :to="{ name: secaoAtual.nome }"
+                class="text-stone-500 hover:text-campo-700 hover:underline"
+              >
+                {{ secaoAtual.rotulo }}
+              </RouterLink>
+              <span
+                v-else
+                class="font-medium text-stone-800"
+                aria-current="page"
+              >{{ secaoAtual.rotulo }}</span>
+            </li>
+            <li
+              v-if="paginaDentro"
+              class="flex items-center gap-1.5 truncate font-medium text-stone-800"
+              aria-current="page"
+            >
+              <IconeSvg
+                nome="seta"
+                class="h-4 w-4 shrink-0 text-stone-400"
+              />
+              {{ paginaDentro }}
+            </li>
+          </ol>
+        </nav>
+
+        <div class="ml-auto flex items-center gap-2">
+          <!-- O código do projeto, aberto: em outra aba, para não perder a tela em que se está. -->
+          <a
+            :href="REPOSITORIO"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex items-center gap-2 rounded-full border border-stone-200 px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-50 hover:text-stone-900"
+            data-teste="link-github"
+          >
+            <IconeSvg
+              nome="github"
+              class="h-4 w-4"
+            />
+            GitHub<span class="sr-only"> (abre em outra aba)</span>
+          </a>
+
+          <!-- Quem está usando: o nome leva a Minha conta. Sem login (API de desenvolvimento
+               com a autenticação desligada), o caminho para entrar. -->
+          <div
+            v-if="sessao.usuario"
+            class="flex items-center gap-1 border-l border-stone-200 pl-2"
+            data-teste="sessao"
+          >
+            <RouterLink
+              :to="{ name: 'conta' }"
+              class="flex items-center gap-2.5 rounded-lg py-1 pr-2 pl-1 transition-colors hover:bg-stone-100"
+              :class="rota.name === 'conta' ? 'bg-stone-100' : ''"
+              :aria-current="rota.name === 'conta' ? 'page' : undefined"
+              title="Minha conta: senha e aparelhos"
+            >
+              <span
+                class="grid size-8 place-items-center rounded-full bg-campo-700 text-xs font-semibold text-white"
+                aria-hidden="true"
+              >{{ iniciais(sessao.usuario.nome) }}</span>
+              <span class="text-left leading-tight">
+                <span class="block max-w-40 truncate text-sm font-medium text-stone-900">{{ sessao.usuario.nome }}</span>
+                <span class="block text-xs text-stone-500">{{ rotuloDoPapel[sessao.usuario.papel] }}</span>
+              </span>
+            </RouterLink>
+            <button
+              type="button"
+              class="grid size-9 place-items-center rounded-lg text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900"
+              aria-label="Sair"
+              title="Sair"
+              @click="sair"
+            >
+              <IconeSvg
+                nome="sair"
+                class="h-5 w-5"
+              />
+            </button>
+          </div>
+          <RouterLink
+            v-else
+            :to="{ name: 'entrar' }"
+            class="botao-secundario py-1.5 text-sm"
+          >
+            Entrar com login
+          </RouterLink>
+        </div>
+      </header>
+
       <main
         id="conteudo"
         ref="conteudo"
         tabindex="-1"
-        class="mx-auto w-full max-w-6xl flex-1 px-4 py-6 focus:outline-none sm:px-6 lg:px-10 lg:py-10"
+        class="mx-auto w-full max-w-6xl flex-1 px-4 py-6 focus:outline-none sm:px-6 lg:px-10 lg:py-8"
       >
-        <!-- Dado fictício nunca aparece sem aviso: é o que separa demonstração de invenção. -->
-        <p
-          v-if="estoque.insumos.some((insumo) => insumo.demonstracao)"
-          role="note"
-          class="mb-6 animate-surgir rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-          data-teste="aviso-demonstracao"
-        >
-          <!-- No celular, o curto: o comando de apagar é para quem roda o sistema. O espaço fica
-               dentro de cada versão, colado ao texto dela. -->
-          <strong>Dados de demonstração.</strong><span class="sm:hidden"> Fazenda fictícia, para apresentar o sistema.</span>
-          <span class="max-sm:hidden"> Parte dos insumos e movimentações foi gerada
-            para apresentar o sistema e não vem de uma fazenda real. Para apagar:
-            <code>make demo-limpar</code>.</span>
-        </p>
         <!-- Páginas têm mais de um elemento na raiz: o div dá à transição um só a animar. -->
         <RouterView v-slot="{ Component, route: atual }">
           <Transition
@@ -244,19 +361,19 @@ onMounted(() => {
     >
       <div
         class="relative mx-auto grid max-w-xl"
-        :style="{ gridTemplateColumns: `repeat(${menu.length}, minmax(0, 1fr))` }"
+        :style="{ gridTemplateColumns: `repeat(${naBarra.length + 1}, minmax(0, 1fr))` }"
       >
         <!-- Como no menu lateral: um destaque só, que desliza até a aba nova. -->
         <span
           class="pointer-events-none absolute top-2 left-0 flex justify-center transition-[translate,opacity] duration-300 ease-movimento"
-          :class="indiceAtivo < 0 ? 'opacity-0' : ''"
-          :style="{ width: `${100 / menu.length}%`, translate: `calc(${Math.max(indiceAtivo, 0)} * 100%) 0` }"
+          :class="indiceAtivo < 0 && rota.name !== 'conta' ? 'opacity-0' : ''"
+          :style="{ width: `${100 / (naBarra.length + 1)}%`, translate: `calc(${indiceNaBarra} * 100%) 0` }"
           aria-hidden="true"
         >
           <span class="h-8 w-14 rounded-full bg-white/15" />
         </span>
         <RouterLink
-          v-for="item in menu"
+          v-for="item in naBarra"
           :key="item.nome"
           v-slot="{ href, navigate }"
           :to="{ name: item.nome }"
@@ -292,7 +409,72 @@ onMounted(() => {
             <span>{{ item.rotuloCurto }}</span>
           </a>
         </RouterLink>
+        <button
+          type="button"
+          class="group relative flex h-16 flex-col items-center justify-start gap-1 pt-2 text-[11px] leading-none font-medium transition-colors duration-150 [-webkit-tap-highlight-color:transparent]"
+          :class="indiceNaBarra === naBarra.length && (indiceAtivo >= 0 || rota.name === 'conta') ? 'text-white' : 'active:text-white'"
+          aria-haspopup="dialog"
+          data-teste="aba-mais"
+          @click="maisAberto = true"
+        >
+          <span class="relative flex h-8 w-14 items-center justify-center">
+            <IconeSvg
+              nome="mais"
+              class="h-6 w-6 transition-transform duration-150 ease-chegada group-active:scale-90"
+            />
+            <span
+              v-if="noMais.some((item) => item.nome === 'sistema') && status.situacao === 'problema'"
+              class="absolute top-0.5 right-3.5 size-2.5 rounded-full bg-red-400 ring-2 ring-campo-900"
+            >
+              <span class="sr-only">, sistema com problema</span>
+            </span>
+          </span>
+          <span>Mais</span>
+        </button>
       </div>
     </nav>
+
+    <!-- O resto das telas, no celular: sobe do pé da tela, perto do dedo. -->
+    <JanelaModal
+      v-if="maisAberto"
+      titulo="Mais"
+      @fechar="maisAberto = false"
+    >
+      <ul
+        class="-mx-2 grid gap-1"
+        data-teste="menu-mais"
+      >
+        <li
+          v-for="item in noMais"
+          :key="item.nome"
+        >
+          <RouterLink
+            :to="{ name: item.nome }"
+            class="flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium text-stone-700 active:bg-stone-100"
+            :class="ativo(item.nome) ? 'bg-campo-50 text-campo-800' : ''"
+          >
+            <IconeSvg
+              :nome="item.icone"
+              class="h-5 w-5 shrink-0 text-campo-700"
+            />
+            {{ item.rotulo }}
+          </RouterLink>
+        </li>
+        <li v-if="sessao.usuario">
+          <RouterLink
+            :to="{ name: 'conta' }"
+            class="flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm font-medium text-stone-700 active:bg-stone-100"
+            :class="rota.name === 'conta' ? 'bg-campo-50 text-campo-800' : ''"
+          >
+            <IconeSvg
+              nome="conta"
+              class="h-5 w-5 shrink-0 text-campo-700"
+            />
+            Minha conta
+            <span class="ml-auto truncate text-xs font-normal text-stone-500">{{ sessao.usuario.nome }}</span>
+          </RouterLink>
+        </li>
+      </ul>
+    </JanelaModal>
   </div>
 </template>
