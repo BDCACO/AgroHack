@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import IconeSvg from '@/components/IconeSvg.vue'
 import JanelaModal from '@/components/JanelaModal.vue'
 import LogoCampoCerto from '@/components/LogoCampoCerto.vue'
+import MenuDoPerfil from '@/components/MenuDoPerfil.vue'
 import { itensDeMenu } from '@/router'
 import { useEstoqueStore } from '@/stores/estoque'
 import { useSessaoStore } from '@/stores/sessao'
@@ -28,7 +29,6 @@ const menu = computed(() =>
 const naBarra = computed(() => menu.value.filter((item) => item.barra))
 const noMais = computed(() => menu.value.filter((item) => !item.barra))
 const maisAberto = ref(false)
-const rotuloDoPapel = { dono: 'Dono', funcionario: 'Funcionário' } as const
 const REPOSITORIO = 'https://github.com/BDCACO/AgroHack'
 
 // O menu lateral recolhido fica só com os ícones: mais lugar para tabelas e gráficos. A
@@ -51,11 +51,6 @@ function alternarMenu() {
   }
 }
 
-/** "Maria da Silva" vira "MS"; um nome só, a primeira letra. */
-const iniciais = (nome: string) => {
-  const partes = nome.trim().split(/\s+/)
-  return ((partes[0]?.[0] ?? '') + (partes.length > 1 ? (partes.at(-1)?.[0] ?? '') : '')).toUpperCase()
-}
 // Onde se está, na barra do topo: a seção do menu e, numa página dentro dela, o nome da página.
 // O título vem da página (o nome do insumo, e não "Insumo"); enquanto ela carrega, o da rota.
 const tituloAtual = computed(() =>
@@ -314,40 +309,17 @@ onMounted(() => {
             GitHub<span class="sr-only"> (abre em outra aba)</span>
           </a>
 
-          <!-- Quem está usando: o nome leva a Configurações (perfil, senha, aparelhos). Sem login (API de desenvolvimento
-               com a autenticação desligada), o caminho para entrar. -->
+          <!-- Quem está usando: o clique abre o menu com o perfil (Configurações) e o "Sair". Sem
+               login (API de desenvolvimento com a autenticação desligada), o caminho para entrar. -->
           <div
             v-if="sessao.usuario"
-            class="flex items-center gap-1 border-l border-stone-200 pl-2"
+            class="border-l border-stone-200 pl-2"
             data-teste="sessao"
           >
-            <RouterLink
-              :to="{ name: 'configuracoes' }"
-              class="flex items-center gap-2.5 rounded-lg py-1 pr-2 pl-1 transition-colors hover:bg-stone-100"
-              :class="rota.name === 'configuracoes' ? 'bg-stone-100' : ''"
-              title="Configurações: perfil, senha, aparelhos e tema"
-            >
-              <span
-                class="grid size-8 place-items-center rounded-full bg-campo-600 text-xs font-semibold text-white"
-                aria-hidden="true"
-              >{{ iniciais(sessao.usuario.nome) }}</span>
-              <span class="text-left leading-tight">
-                <span class="block max-w-40 truncate text-sm font-medium text-stone-900">{{ sessao.usuario.nome }}</span>
-                <span class="block text-xs text-stone-500">{{ rotuloDoPapel[sessao.usuario.papel] }}</span>
-              </span>
-            </RouterLink>
-            <button
-              type="button"
-              class="grid size-9 place-items-center rounded-lg text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900"
-              aria-label="Sair"
-              title="Sair"
-              @click="sair"
-            >
-              <IconeSvg
-                nome="sair"
-                class="h-5 w-5"
-              />
-            </button>
+            <MenuDoPerfil
+              :usuario="sessao.usuario"
+              @sair="sair"
+            />
           </div>
           <RouterLink
             v-else

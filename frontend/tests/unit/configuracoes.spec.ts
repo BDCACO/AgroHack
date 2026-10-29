@@ -74,10 +74,47 @@ beforeEach(() => {
 afterEach(() => escolherTema('claro'))
 
 describe('Configurações', () => {
-  it('o nome na barra do topo leva a Configurações; Minha conta e Sistema levam até lá', async () => {
+  it('o menu do perfil, na barra do topo, mostra quem é e leva a Configurações', async () => {
+    const { wrapper, router } = await montarEm('/')
+    const botao = wrapper.find('[data-teste="abrir-perfil"]')
+    expect(botao.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('[data-teste="menu-perfil"]').exists()).toBe(false)
+
+    await botao.trigger('click')
+
+    expect(botao.attributes('aria-expanded')).toBe('true')
+    const menu = wrapper.find('[data-teste="menu-perfil"]')
+    expect(menu.text()).toMatch(/Dona Maria\s*maria · Dono/)
+    // O foco vai para a primeira opção: dá para seguir pelo teclado.
+    expect(document.activeElement).toBe(wrapper.find('[data-teste="ir-perfil"]').element)
+
+    await wrapper.find('[data-teste="ir-perfil"]').trigger('click')
+    // Configurações vem por import() dinâmico: a navegação leva mais que um flush.
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('configuracoes'), { timeout: 5000 })
+    await flushPromises()
+    expect(wrapper.find('[data-teste="menu-perfil"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('o menu do perfil fecha com Esc, devolvendo o foco ao botão, e com o clique fora', async () => {
+    const { wrapper } = await montarEm('/')
+    const botao = wrapper.find('[data-teste="abrir-perfil"]')
+
+    await botao.trigger('click')
+    await wrapper.find('[data-teste="menu-perfil"]').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('[data-teste="menu-perfil"]').exists()).toBe(false)
+    expect(document.activeElement).toBe(botao.element)
+
+    await botao.trigger('click')
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    await flushPromises()
+    expect(wrapper.find('[data-teste="menu-perfil"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('Minha conta e Sistema, os endereços antigos, levam a Configurações', async () => {
     const { wrapper, router } = await montarEm('/')
 
-    expect(wrapper.find('[data-teste="sessao"] a').attributes('href')).toBe('/configuracoes')
     await router.push('/conta')
     await flushPromises()
     expect(router.currentRoute.value.name).toBe('configuracoes')

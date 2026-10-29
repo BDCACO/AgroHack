@@ -214,7 +214,9 @@ describe('login no site', () => {
     const { wrapper, router } = await montarEm('/entrar')
     await entrarComo(wrapper, 'maria')
 
-    await wrapper.find('[data-teste="sessao"] button').trigger('click')
+    // O "Sair" fica no menu do perfil, na barra do topo.
+    await wrapper.find('[data-teste="abrir-perfil"]').trigger('click')
+    await wrapper.find('[data-teste="sair"]').trigger('click')
     await flushPromises()
 
     expect(pedidos.some((p) => p.url === '/auth/sair')).toBe(true)
