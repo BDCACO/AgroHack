@@ -83,6 +83,8 @@ MATRIZ = {
     ("PUT", "/api/v1/pedidos/{pedido_id}"): DONO,
     ("POST", "/api/v1/pedidos/{pedido_id}/cancelar"): DONO,
     ("POST", "/api/v1/analises"): DONO,
+    ("GET", "/api/v1/configuracao"): DONO,
+    ("PUT", "/api/v1/configuracao"): DONO,
     ("GET", "/api/v1/usuarios"): GESTAO,
     ("POST", "/api/v1/usuarios"): GESTAO,
     ("PUT", "/api/v1/usuarios/{usuario_id}"): GESTAO,

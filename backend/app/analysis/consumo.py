@@ -71,6 +71,7 @@ def analisar(
     lotes: Iterable[Lote] = (),
     custo_medio: float | None = None,
     a_caminho: Iterable[Encomenda] = (),
+    meses_de_safra: Iterable[int] = (),
 ) -> Analise:
     """Analisa o insumo na data de referência.
 
@@ -79,10 +80,14 @@ def analisar(
     opcional: com ele, os alertas e a reposição dizem também quanto dinheiro está em jogo.
     `a_caminho` é o que já foi pedido e não chegou: a reposição o desconta, para não mandar
     comprar de novo, e o alerta de falta diz se ele chega antes de o estoque acabar.
+    `meses_de_safra` (1 a 12) é o calendário da fazenda inteira; vazio desliga a
+    sazonalidade e a análise sai como sempre saiu.
     """
     a_caminho = [e for e in a_caminho if e.quantidade > 0]
+    meses_de_safra = set(meses_de_safra)
+    entressafra = bool(meses_de_safra) and referencia.month not in meses_de_safra
     alertas = alertas_de_validade(lotes, referencia, insumo.unidade, custo_medio)
-    if (alerta := alerta_estoque_minimo(insumo)) is not None:
+    if (alerta := alerta_estoque_minimo(insumo, entressafra)) is not None:
         alertas.append(alerta)
     limitacoes = []
     if insumo.estoque_minimo is None:
@@ -122,11 +127,35 @@ def analisar(
 
     dias_janela = min(JANELA_CONSUMO_DIAS, dias_historico)
     inicio_janela = referencia - timedelta(days=dias_janela - 1)
-    consumo = sum(r.quantidade for r in retiradas if r.data >= inicio_janela) / dias_janela
-    limitacoes.append(
-        f"Consumo é a média dos últimos {dias_legivel(dias_janela)}: não antecipa a "
-        "sazonalidade da safra nem mudanças de manejo."
-    )
+    if meses_de_safra:
+        # Só os dias do mesmo período (safra ou entressafra) que hoje: misturar os dois
+        # numa média só traria para a entressafra o ritmo alto da safra (e vice-versa).
+        # O próprio dia de referência está sempre na janela e é desse período, então
+        # sempre há ao menos um dia para dividir.
+        dias_do_periodo = sum(
+            1
+            for i in range(dias_janela)
+            if ((inicio_janela + timedelta(days=i)).month in meses_de_safra) != entressafra
+        )
+        consumo = (
+            sum(
+                r.quantidade
+                for r in retiradas
+                if r.data >= inicio_janela and (r.data.month in meses_de_safra) != entressafra
+            )
+            / dias_do_periodo
+        )
+        periodo = "entressafra" if entressafra else "safra"
+        limitacoes.append(
+            f"Consumo é a média dos dias de {periodo} nos últimos {dias_legivel(dias_janela)}: "
+            "não antecipa mudanças de manejo dentro da mesma época."
+        )
+    else:
+        consumo = sum(r.quantidade for r in retiradas if r.data >= inicio_janela) / dias_janela
+        limitacoes.append(
+            f"Consumo é a média dos últimos {dias_legivel(dias_janela)}: não antecipa a "
+            "sazonalidade da safra nem mudanças de manejo."
+        )
     if consumo == 0:
         return resultado(consumo=0.0)
 

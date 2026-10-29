@@ -93,16 +93,23 @@ class Alerta:
     valor: float | None = None
 
 
-def alerta_estoque_minimo(insumo: Insumo) -> Alerta | None:
+def alerta_estoque_minimo(insumo: Insumo, entressafra: bool = False) -> Alerta | None:
     if insumo.estoque_minimo is None or insumo.estoque_atual >= insumo.estoque_minimo:
         return None
     minimo = quantidade_legivel(insumo.estoque_minimo, insumo.unidade)
     if insumo.estoque_atual <= 0:
-        return Alerta("abaixo_do_minimo", "alta", f"Estoque zerado; o mínimo definido é {minimo}.")
-    atual = quantidade_legivel(insumo.estoque_atual, insumo.unidade)
-    return Alerta(
-        "abaixo_do_minimo", "media", f"Estoque atual de {atual}, abaixo do mínimo de {minimo}."
-    )
+        texto = f"Estoque zerado; o mínimo definido é {minimo}."
+        gravidade: Gravidade = "alta"
+    else:
+        atual = quantidade_legivel(insumo.estoque_atual, insumo.unidade)
+        texto = f"Estoque atual de {atual}, abaixo do mínimo de {minimo}."
+        gravidade = "media"
+    if entressafra:
+        gravidade = "baixa"
+        texto += (
+            " É entressafra: sem urgência agora, mas fique de olho conforme a safra se aproxima."
+        )
+    return Alerta("abaixo_do_minimo", gravidade, texto)
 
 
 def alertas_de_validade(
