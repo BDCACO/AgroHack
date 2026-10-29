@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from functools import cache
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
@@ -66,6 +67,14 @@ class SessaoInvalida(Exception):
 
 
 class SenhaAtualIncorreta(Exception):
+    pass
+
+
+class SenhaAtualFaltando(Exception):
+    pass
+
+
+class LoginEmUso(Exception):
     pass
 
 
@@ -202,6 +211,45 @@ def trocar_senha(
         db, origem, "usuario.senha_trocada", "usuario", usuario.id, {"login": usuario.login}
     )
     db.commit()
+
+
+def alterar_perfil(
+    db: Session,
+    sessao: Sessao,
+    nome: str | None,
+    login: str | None,
+    senha_atual: str | None,
+    origem: auditoria.Origem,
+) -> Usuario:
+    """O próprio nome e o próprio login. O login novo pede a senha atual, contada como
+    tentativa de login (quem pegou o celular com a sessão aberta não testa senhas por aqui
+    sem limite). As sessões continuam: o token não depende do login."""
+    usuario = sessao.usuario
+    db.refresh(usuario, with_for_update=True)
+    antes = {"nome": usuario.nome, "login": usuario.login}
+    if login is not None and login != usuario.login:
+        if senha_atual is None:
+            db.rollback()
+            raise SenhaAtualFaltando
+        if not _conferir_contando_erros(db, usuario, senha_atual, origem, "senha_atual_incorreta"):
+            db.commit()
+            raise SenhaAtualIncorreta
+        usuario.login = login
+    if nome is not None:
+        usuario.nome = nome
+    try:
+        db.flush()
+    except IntegrityError as erro:
+        db.rollback()
+        raise LoginEmUso from erro
+    # O login trocado é o mesmo que "outra pessoa entra agora com outro nome": fica na trilha.
+    depois = {"nome": usuario.nome, "login": usuario.login}
+    if mudou := auditoria.diferencas(antes, depois):
+        auditoria.registrar(
+            db, origem, "usuario.alterado", "usuario", usuario.id, {"login": usuario.login, **mudou}
+        )
+    db.commit()
+    return usuario
 
 
 def revogar_sessoes(db: Session, usuario_id: int, exceto: int | None = None) -> None:
