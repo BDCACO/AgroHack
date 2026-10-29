@@ -67,6 +67,10 @@ async function montar() {
   await router.isReady()
   const wrapper = mount(App, { global: { plugins: [router] } })
   await flushPromises()
+  // Com a máquina ocupada (a suíte inteira em paralelo), uma rodada não basta para a página,
+  // carregada sob demanda, montar e pedir o relatório: espera-se o filtro aparecer.
+  await vi.waitFor(() => expect(wrapper.find('[data-teste="agrupar"]').exists()).toBe(true))
+  await flushPromises()
   return wrapper
 }
 
