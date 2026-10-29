@@ -7,6 +7,7 @@ import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import { useFornecedoresStore } from '@/stores/fornecedores'
 import type { Pedido, PedidoEntrada } from '@/types/api'
 
+import IconeSvg from './IconeSvg.vue'
 import JanelaModal from './JanelaModal.vue'
 
 /** O pedido novo (vazio ou vindo da sugestão) ou a alteração de um aberto, numa janela. */
@@ -202,14 +203,20 @@ async function salvar() {
             >
             <span class="rotulo">Preço{{ unidade(linha) ? ` (R$/${unidade(linha)})` : '' }}</span>
           </label>
+          <!-- A lixeira, com o nome para o leitor de tela e ao parar o mouse em cima. -->
           <button
             type="button"
-            class="botao-perigo px-3"
+            class="grid size-11 place-items-center justify-self-end rounded-lg text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:text-stone-300 disabled:hover:bg-transparent"
             :disabled="form.linhas.length === 1"
             :aria-label="`Tirar o item ${indice + 1}`"
+            :title="`Tirar o item ${indice + 1}`"
+            data-teste="tirar-item"
             @click="form.linhas.splice(indice, 1)"
           >
-            Tirar
+            <IconeSvg
+              nome="lixeira"
+              class="h-5 w-5"
+            />
           </button>
         </div>
         <div>

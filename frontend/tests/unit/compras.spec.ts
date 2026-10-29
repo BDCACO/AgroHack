@@ -199,6 +199,21 @@ describe('Compras', () => {
     wrapper.unmount()
   })
 
+  it('a lixeira tira a linha do pedido, e não deixa tirar a última', async () => {
+    const { wrapper } = await montarEm('/compras')
+
+    await botao(wrapper, 'Novo pedido')!.trigger('click')
+    const form = formularioNaJanela()
+    expect(form.find('[data-teste="tirar-item"]').attributes('disabled')).toBeDefined()
+    await form.findAll('button').find((b) => b.text() === '+ Outro insumo')!.trigger('click')
+    const lixeiras = form.findAll('[data-teste="tirar-item"]')
+    expect(lixeiras.map((b) => b.attributes('aria-label'))).toEqual(['Tirar o item 1', 'Tirar o item 2'])
+
+    await lixeiras[1]!.trigger('click')
+    expect(form.findAll('[data-teste="linha-pedido"]')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
   it('o pedido novo fecha com Cancelar ou Esc, sem pedir nada à API', async () => {
     const { wrapper } = await montarEm('/compras')
 
