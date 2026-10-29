@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { nextTick, onMounted, reactive, ref, useTemplateRef } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import ConfirmarRemocao from '@/components/ConfirmarRemocao.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import IconeSvg from '@/components/IconeSvg.vue'
+import JanelaModal from '@/components/JanelaModal.vue'
 import { reais } from '@/formatos'
 import { mensagemDeErro } from '@/stores/estoque'
 import { useSessaoStore } from '@/stores/sessao'
@@ -23,7 +24,6 @@ const aberto = ref(false)
 const editandoId = ref<number>()
 const salvando = ref(false)
 const erroDoForm = ref<string | null>(null)
-const tituloDoForm = useTemplateRef<HTMLElement>('tituloDoForm')
 const emRemocao = ref<Talhao | null>(null)
 
 function abrir(talhao?: Talhao) {
@@ -33,8 +33,8 @@ function abrir(talhao?: Talhao) {
   )
   editandoId.value = talhao?.id
   erroDoForm.value = null
+  // Numa janela: quem tocou em "Alterar" no fim da lista não perde o lugar.
   aberto.value = true
-  nextTick(() => tituloDoForm.value?.focus())
 }
 
 async function salvar() {
@@ -61,7 +61,6 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
 <template>
   <CabecalhoDePagina
     titulo="Talhões"
-    descricao="Onde cada insumo foi aplicado: até quando não colher (carência) e quanto custou por hectare."
   >
     <template #acoes>
       <button
@@ -75,81 +74,81 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
     </template>
   </CabecalhoDePagina>
 
-  <form
+  <JanelaModal
     v-if="aberto"
-    class="cartao mt-2 mb-6 grid animate-surgir items-end gap-4 p-5 sm:grid-cols-3"
-    @submit.prevent="salvar"
+    :titulo="editandoId === undefined ? 'Novo talhão' : 'Alterar talhão'"
+    @fechar="aberto = false"
   >
-    <h2
-      ref="tituloDoForm"
-      tabindex="-1"
-      class="scroll-mt-4 text-base font-semibold text-stone-900 focus:outline-none sm:col-span-3"
+    <form
+      class="grid gap-4"
+      data-teste="form-talhao"
+      @submit.prevent="salvar"
     >
-      {{ editandoId === undefined ? 'Novo talhão' : 'Alterar talhão' }}
-    </h2>
-    <label class="flutuante">
-      <input
-        v-model="form.nome"
-        required
-        maxlength="120"
-        placeholder="Talhão Norte"
-        class="campo"
+      <label class="flutuante">
+        <input
+          v-model="form.nome"
+          autofocus
+          required
+          maxlength="120"
+          placeholder="Talhão Norte"
+          class="campo"
+        >
+        <span class="rotulo">Nome</span>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model.number="form.area"
+          type="number"
+          required
+          min="0.01"
+          step="any"
+          placeholder=" "
+          class="campo"
+        >
+        <span class="rotulo">Área, em hectares</span>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model="form.cultura"
+          maxlength="60"
+          list="culturas"
+          placeholder="Soja"
+          class="campo"
+        >
+        <span class="rotulo">Cultura <span class="font-normal text-stone-500">(opcional)</span></span>
+        <datalist id="culturas">
+          <option value="Soja" />
+          <option value="Milho" />
+          <option value="Café" />
+          <option value="Pasto" />
+          <option value="Feijão" />
+        </datalist>
+      </label>
+      <p
+        v-if="erroDoForm"
+        role="alert"
+        class="text-sm text-red-700"
       >
-      <span class="rotulo">Nome</span>
-    </label>
-    <label class="flutuante">
-      <input
-        v-model.number="form.area"
-        type="number"
-        required
-        min="0.01"
-        step="any"
-        placeholder=" "
-        class="campo"
-      >
-      <span class="rotulo">Área, em hectares</span>
-    </label>
-    <label class="flutuante">
-      <input
-        v-model="form.cultura"
-        maxlength="60"
-        list="culturas"
-        placeholder="Soja"
-        class="campo"
-      >
-      <span class="rotulo">Cultura <span class="font-normal text-stone-500">(opcional)</span></span>
-      <datalist id="culturas">
-        <option value="Soja" />
-        <option value="Milho" />
-        <option value="Café" />
-        <option value="Pasto" />
-        <option value="Feijão" />
-      </datalist>
-    </label>
-    <p
-      v-if="erroDoForm"
-      role="alert"
-      class="text-sm text-red-700 sm:col-span-3"
-    >
-      {{ erroDoForm }}
-    </p>
-    <div class="flex gap-2 sm:col-span-3">
-      <button
-        type="submit"
-        class="botao-primario"
-        :disabled="salvando"
-      >
-        {{ salvando ? 'Salvando…' : 'Salvar' }}
-      </button>
-      <button
-        type="button"
-        class="botao-texto text-stone-700 hover:bg-stone-100"
-        @click="aberto = false"
-      >
-        Cancelar
-      </button>
-    </div>
-  </form>
+        {{ erroDoForm }}
+      </p>
+      <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          class="botao-secundario"
+          @click="aberto = false"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          class="botao-primario"
+          :disabled="salvando"
+        >
+          {{ salvando ? 'Salvando…' : 'Salvar' }}
+        </button>
+      </div>
+    </form>
+  </JanelaModal>
 
   <p
     v-if="talhoes.erro"
@@ -160,7 +159,7 @@ const dataBr = (data: string) => data.split('-').reverse().join('/')
   </p>
 
   <EstadoVazio
-    v-else-if="talhoes.carregado && !talhoes.talhoes.length && !aberto"
+    v-else-if="talhoes.carregado && !talhoes.talhoes.length"
     icone="talhoes"
     titulo="Nenhum talhão cadastrado"
     :texto="sessao.podeGerir

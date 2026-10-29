@@ -6,7 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import App from '@/App.vue'
 import { routes } from '@/router'
 import { ApiError } from '@/services/http'
-import { buscarRelatorioPorPeriodo } from '@/services/relatorios'
+import { baixarRelatorioPorPeriodo, buscarRelatorioPorPeriodo } from '@/services/relatorios'
 import type { PeriodoDoRelatorio, RelatorioPorPeriodo } from '@/types/api'
 
 vi.mock('@/services/health', () => ({
@@ -19,7 +19,7 @@ vi.mock('@/services/estoque', async (original) => ({
   listarMovimentacoes: vi.fn().mockResolvedValue([]),
 }))
 vi.mock('@/services/compras', () => ({ listarFornecedores: vi.fn().mockResolvedValue([]) }))
-vi.mock('@/services/relatorios', () => ({ buscarRelatorioPorPeriodo: vi.fn() }))
+vi.mock('@/services/relatorios', () => ({ buscarRelatorioPorPeriodo: vi.fn(), baixarRelatorioPorPeriodo: vi.fn() }))
 
 // O ECharts não desenha no jsdom; o que importa é a configuração que recebe.
 const setOption = vi.fn()
@@ -66,6 +66,10 @@ async function montar() {
   await router.push('/relatorios')
   await router.isReady()
   const wrapper = mount(App, { global: { plugins: [router] } })
+  await flushPromises()
+  // Com a máquina ocupada (a suíte inteira em paralelo), uma rodada não basta para a página,
+  // carregada sob demanda, montar e pedir o relatório: espera-se o filtro aparecer.
+  await vi.waitFor(() => expect(wrapper.find('[data-teste="agrupar"]').exists()).toBe(true))
   await flushPromises()
   return wrapper
 }
@@ -124,6 +128,38 @@ describe('Relatórios', () => {
     await flushPromises()
     expect(buscarRelatorioPorPeriodo).toHaveBeenLastCalledWith(
       expect.objectContaining({ agrupar: 'semana', desde: '2026-10-01' }),
+    )
+  })
+
+  it('baixa em PDF e em Excel, com os filtros da tela', async () => {
+    vi.mocked(baixarRelatorioPorPeriodo).mockResolvedValue()
+    const wrapper = await montar()
+    await wrapper.find('[data-teste="agrupar"]').setValue('semana')
+    await wrapper.find('[data-teste="desde"]').setValue('2026-10-01')
+    await flushPromises()
+
+    await wrapper.find('[data-teste="baixar-pdf"]').trigger('click')
+    await flushPromises()
+    expect(baixarRelatorioPorPeriodo).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agrupar: 'semana', desde: '2026-10-01' }),
+      'pdf',
+    )
+    await wrapper.find('[data-teste="baixar-excel"]').trigger('click')
+    await flushPromises()
+    expect(baixarRelatorioPorPeriodo).toHaveBeenLastCalledWith(expect.objectContaining({ agrupar: 'semana' }), 'xlsx')
+  })
+
+  it('o arquivo recusado mostra a frase da API ao lado do botão', async () => {
+    vi.mocked(baixarRelatorioPorPeriodo).mockRejectedValue(
+      new ApiError(422, { detail: 'O período começa depois de terminar: troque as datas.' }),
+    )
+    const wrapper = await montar()
+
+    await wrapper.find('[data-teste="baixar-pdf"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('header [role="alert"], main [role="alert"]').text()).toBe(
+      'O período começa depois de terminar: troque as datas.',
     )
   })
 

@@ -156,7 +156,6 @@ const quantidade = (valor: number, unidade: string) =>
 <template>
   <CabecalhoDePagina
     titulo="Importar dados"
-    descricao="Carregar de uma vez o histórico de compras e retiradas que já está numa planilha."
   />
 
   <div class="mt-6 grid gap-6 lg:grid-cols-5">

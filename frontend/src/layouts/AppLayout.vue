@@ -9,6 +9,7 @@ import { itensDeMenu } from '@/router'
 import { useEstoqueStore } from '@/stores/estoque'
 import { useSessaoStore } from '@/stores/sessao'
 import { useStatusSistemaStore } from '@/stores/statusSistema'
+import { tituloDaPagina } from '@/tituloDaPagina'
 
 const status = useStatusSistemaStore()
 const estoque = useEstoqueStore()
@@ -56,9 +57,13 @@ const iniciais = (nome: string) => {
   return ((partes[0]?.[0] ?? '') + (partes.length > 1 ? (partes.at(-1)?.[0] ?? '') : '')).toUpperCase()
 }
 // Onde se está, na barra do topo: a seção do menu e, numa página dentro dela, o nome da página.
+// O título vem da página (o nome do insumo, e não "Insumo"); enquanto ela carrega, o da rota.
+const tituloAtual = computed(() =>
+  tituloDaPagina.value?.caminho === rota.path ? tituloDaPagina.value.titulo : rota.meta.titulo,
+)
 const secaoAtual = computed(() => menu.value.find((item) => ativo(item.nome)))
 const paginaDentro = computed(() =>
-  secaoAtual.value && rota.name !== secaoAtual.value.nome ? rota.meta.titulo : undefined,
+  secaoAtual.value && rota.name !== secaoAtual.value.nome ? tituloAtual.value : undefined,
 )
 
 async function sair() {
@@ -116,17 +121,26 @@ onMounted(() => {
       Pular para o conteúdo
     </a>
 
-    <!-- Barra superior do celular e do tablet: só a marca. Rola junto com a página; quem
-         fica sempre à mão é a barra de baixo. No app instalado, desce abaixo do relógio. -->
+    <!-- Barra superior do celular e do tablet: a marca e o título da página, que dentro dela
+         não aparece. Rola junto com a página; quem fica sempre à mão é a barra de baixo. No
+         app instalado, desce abaixo do relógio. -->
     <header
-      class="flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center bg-campo-900 px-4 pt-[env(safe-area-inset-top)] text-white lg:hidden"
+      class="flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-3 bg-campo-900 px-4 pt-[env(safe-area-inset-top)] text-white lg:hidden"
     >
       <RouterLink
         :to="{ name: 'painel' }"
+        class="shrink-0"
         aria-label="CampoCerto, ir para o Painel"
       >
-        <LogoCampoCerto com-nome />
+        <LogoCampoCerto />
       </RouterLink>
+      <p
+        class="min-w-0 truncate text-lg font-semibold"
+        aria-hidden="true"
+        data-teste="titulo-celular"
+      >
+        {{ tituloAtual }}
+      </p>
       <button
         v-if="sessao.usuario"
         type="button"
@@ -239,7 +253,7 @@ onMounted(() => {
           aria-label="Você está em"
           class="min-w-0"
         >
-          <ol class="flex items-center gap-1.5 text-sm">
+          <ol class="flex items-center gap-1.5 text-lg">
             <li class="truncate">
               <RouterLink
                 v-if="paginaDentro"
@@ -250,23 +264,30 @@ onMounted(() => {
               </RouterLink>
               <span
                 v-else
-                class="font-medium text-stone-800"
+                class="font-semibold text-stone-900"
                 aria-current="page"
               >{{ secaoAtual.rotulo }}</span>
             </li>
             <li
               v-if="paginaDentro"
-              class="flex items-center gap-1.5 truncate font-medium text-stone-800"
+              class="flex min-w-0 items-center gap-1.5 font-semibold text-stone-900"
               aria-current="page"
             >
               <IconeSvg
                 nome="seta"
-                class="h-4 w-4 shrink-0 text-stone-400"
+                class="h-5 w-5 shrink-0 text-stone-400"
               />
-              {{ paginaDentro }}
+              <span class="truncate">{{ paginaDentro }}</span>
             </li>
           </ol>
         </nav>
+        <p
+          v-else-if="tituloAtual"
+          class="truncate text-lg font-semibold text-stone-900"
+          aria-hidden="true"
+        >
+          {{ tituloAtual }}
+        </p>
 
         <div class="ml-auto flex items-center gap-2">
           <!-- O código do projeto, aberto: em outra aba, para não perder a tela em que se está. -->

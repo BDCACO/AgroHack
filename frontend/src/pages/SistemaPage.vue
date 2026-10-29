@@ -10,7 +10,6 @@ const status = useStatusSistemaStore()
 <template>
   <CabecalhoDePagina
     titulo="Sistema"
-    descricao="Situação dos serviços que o CampoCerto usa."
   >
     <template #acoes>
       <button

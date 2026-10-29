@@ -335,6 +335,14 @@ Com dezenas de insumos e anos de movimentações, a lista inteira deixa de servi
   sabem: compras e perdas sem preço, consumo sem valor, o custo médio de hoje (e não o da época),
   e o que os filtros de talhão e de fornecedor deixam de fora (compra e perda não são de talhão;
   consumo e perda não são de fornecedor).
+- **Em arquivo** (`GET /relatorios/periodo.xlsx` e `.pdf`, `app/services/relatorio_por_periodo_em_arquivo.py`):
+  o mesmo relatório, com os mesmos parâmetros e as mesmas recusas (a validação é uma dependência
+  dos três), para baixar da tela. O Excel tem o resumo com o recorte pelo nome, cada período
+  (com o gráfico de barras até 62 períodos), consumo por insumo, por categoria e por fornecedor,
+  uma aba cada; o PDF A4, os totais, o gráfico nas cores da tela e as tabelas. O PDF sai do
+  `fpdf2`, só Python: sem programa do sistema (wkhtmltopdf, navegador), a imagem continua a slim.
+  A fonte de base do PDF não tem emoji nem outras escritas: num nome digitado, viram "?", em vez
+  de derrubar o arquivo.
 - **Puro e sem N+1.** As somas moram no domínio (`app/domain/relatorio_por_periodo.py`), testadas
   com listas. O serviço faz três consultas qualquer que seja o período ou o número de insumos (as
   movimentações do período, com o fornecedor junto; os insumos com a categoria; as compras com
@@ -538,7 +546,7 @@ dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Dec
 |---|---|---|
 | Pública | qualquer um | `GET /health`, `GET /ready`, `/docs` e `/openapi.json` (fora de produção), `POST /auth/entrar` |
 | Sessão | qualquer usuário logado, sobre si | `POST /auth/sair`, `GET /auth/eu`, `PUT /auth/senha`, `GET /auth/sessoes`, `DELETE /auth/sessoes/{id}`, `POST /auth/sessoes/encerrar-outras` (exigem login mesmo desligada) |
-| Funcionário | funcionário e dono | `GET /insumos`, `GET /insumos/{id}`, `GET /movimentacoes`, `GET /talhoes`, `GET /talhoes/{id}`, `GET /resumo`, `GET /categorias`, `GET /relatorios/periodo`, `GET /fornecedores`, `GET /fornecedores/{id}`, `GET /pedidos`, `GET /pedidos/{id}`, `GET /pedidos/sugestao`; `POST /movimentacoes`, `POST /movimentacoes/lote`, `POST /insumos/{id}/inventario`, `POST /pedidos/{id}/receber` |
+| Funcionário | funcionário e dono | `GET /insumos`, `GET /insumos/{id}`, `GET /movimentacoes`, `GET /talhoes`, `GET /talhoes/{id}`, `GET /resumo`, `GET /categorias`, `GET /relatorios/periodo` (e `.xlsx`, `.pdf`), `GET /fornecedores`, `GET /fornecedores/{id}`, `GET /pedidos`, `GET /pedidos/{id}`, `GET /pedidos/sugestao`; `POST /movimentacoes`, `POST /movimentacoes/lote`, `POST /insumos/{id}/inventario`, `POST /pedidos/{id}/receber` |
 | Dono | só o dono | `POST`/`PUT`/`DELETE /insumos`, `DELETE /movimentacoes/{id}`, `POST`/`PUT`/`DELETE /talhoes`, `POST`/`PUT`/`DELETE /categorias`, `POST`/`PUT`/`DELETE /fornecedores`, `POST /pedidos`, `PUT /pedidos/{id}`, `POST /pedidos/{id}/cancelar`, `POST /importacoes`, `GET /importacoes/modelo.xlsx`, `GET /relatorio.xlsx`, `POST /analises` |
 | Gestão | só o dono, sempre com login | `GET /usuarios`, `POST /usuarios`, `PUT /usuarios/{id}`, `PUT /usuarios/{id}/senha`, `GET /usuarios/{id}/sessoes`, `DELETE /usuarios/{id}/sessoes/{sessao_id}`, `POST /usuarios/{id}/sessoes/encerrar`, `GET /auditoria` |
 
@@ -914,6 +922,7 @@ segurança, registro do pedido, limite de escritas por IP, limite do corpo. Deci
 | `GET /api/v1/categorias` · `POST /api/v1/categorias` | As categorias pelo nome, com quantos `insumos` cada uma tem / cadastra (`nome`). `409` para nome repetido |
 | `PUT /api/v1/categorias/{id}` · `DELETE /api/v1/categorias/{id}` | Renomeia / remove a categoria sem insumo; com algum, `409` dizendo quantos |
 | `GET /api/v1/relatorios/periodo` | Por `mes`, `semana` ou `dia`, de `desde` a `ate` (padrão: os últimos 12 meses), com filtros `categoria_id`, `insumo_id`, `talhao_id` e `fornecedor_id`: cada período (zerado se vazio) com o consumo por insumo, o gasto, as perdas e os totais por categoria e por fornecedor; o `total` e as `limitacoes`. `422` para período invertido, mais de 400 períodos ou data fora de 01/01/1900 a 31/12/2999 (nas pontas do ano 1 e do 9999, o mês, a semana ou o dia seguinte não existem) |
+| `GET /api/v1/relatorios/periodo.xlsx` · `.pdf` | O mesmo relatório, nos mesmos parâmetros, em Excel (uma aba por recorte, com o gráfico) ou em PDF A4 para imprimir. Do funcionário, como a tela |
 | `DELETE /api/v1/insumos/{id}` | Remove o insumo cadastrado por engano, com as movimentações dele. `409` se ele foi aplicado em algum talhão: a rastreabilidade e a carência não somem com ele (remova antes as aplicações) |
 | `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (no mesmo dia, pelo id). Filtros opcionais: `insumo_id`, `tipo`, `motivo` (`nenhum` = retirada para uso ou compra), `categoria_id`, `talhao_id`, `fornecedor_id`, `usuario_id`, `desde`/`ate` e `busca`; página com `limite` e `deslocamento`, e o total no cabeçalho `X-Total-Count`; cada uma com `usuario_id` e `lancado_por` (quem lançou; `null` sem login), `fornecedor_id` e `comprado_de` (de quem foi a compra) e `item_do_pedido_id` (o pedido que ela recebeu) |
 | `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo; entrada pode trazer `valor_unitario` (R$ por unidade); a compra pode trazer `fornecedor_id`; a retirada para uso pode trazer `talhao_id` (onde foi aplicada). `422` para data futura, validade ou preço em saída, preço zero ou negativo, descarte em entrada, talhão fora da retirada para uso, fornecedor fora da compra, insumo, talhão ou fornecedor inexistente. Com `uuid` (opcional, gerado pelo app), reenviar devolve o já gravado com `200`; o mesmo uuid com outro conteúdo é `409` |
@@ -1238,4 +1247,5 @@ tecnologias que não se aplicam.
 Decididas desde a versão anterior deste documento: a autenticação existe (dono e funcionário,
 obrigatória em produção, seção 2); a importação de planilha existe (Excel e
 CSV, seção 2); o ECharts entrou com o gráfico do insumo; o Pandas não entrou, porque nem o motor de
-análise nem a importação precisaram; o `openpyxl` entrou para ler e gerar `.xlsx`.
+análise nem a importação precisaram; o `openpyxl` entrou para ler e gerar `.xlsx`, e o `fpdf2`
+para o relatório por período em PDF.

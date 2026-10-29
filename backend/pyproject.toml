@@ -20,6 +20,9 @@ dependencies = [
     # entidades) num .xlsx enviado por upload.
     "defusedxml>=0.7.1,<0.8.0",
     "argon2-cffi>=25.1.0,<26.0.0",
+    # O relatório por período em PDF. Só Python, sem programa do sistema (wkhtmltopdf,
+    # navegador): a imagem continua a slim.
+    "fpdf2>=2.8,<3",
 ]
 
 [dependency-groups]

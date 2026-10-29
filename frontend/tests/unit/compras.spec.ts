@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -128,6 +128,8 @@ async function montarEm(caminho: string) {
 }
 const botao = (wrapper: ReturnType<typeof mount>, texto: string) =>
   wrapper.findAll('main button').find((b) => b.text() === texto)
+const formularioNaJanela = () =>
+  new DOMWrapper(document.querySelector<HTMLElement>('[role="dialog"] [data-teste="formulario-pedido"]')!)
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -165,7 +167,9 @@ describe('Compras', () => {
 
     expect(wrapper.find('[data-teste="grupo-sugerido"]').text()).toContain('Pedir hoje')
     await botao(wrapper, 'Fazer este pedido')!.trigger('click')
-    const form = wrapper.find('[data-teste="formulario-pedido"]')
+    // O formulário abre numa janela, que vai para o <body> (Teleport).
+    const form = formularioNaJanela()
+    expect(document.querySelector('[role="dialog"] h2')?.textContent?.trim()).toBe('Novo pedido de compra')
     expect((form.find('[data-teste="fornecedor"]').element as HTMLSelectElement).value).toBe('7')
     expect(form.find('[data-teste="estimado"]').text()).toMatch(/R\$\s2\.212,00/)
     await form.find('[data-teste="previsao"]').setValue('2026-11-05')
@@ -180,6 +184,7 @@ describe('Compras', () => {
       }),
     )
     expect(wrapper.find('[data-teste="aviso"]').text()).toContain('Pedido nº 3 feito.')
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
     // Pedido feito muda o "a caminho" do insumo: o estoque recarrega.
     expect(estoque.listarInsumos).toHaveBeenCalledTimes(2)
     wrapper.unmount()
@@ -189,8 +194,38 @@ describe('Compras', () => {
     const { wrapper } = await montarEm('/compras')
 
     await botao(wrapper, 'Novo pedido')!.trigger('click')
-    const opcoes = wrapper.findAll('[data-teste="formulario-pedido"] [data-teste="fornecedor"] option').map((o) => o.text())
+    const opcoes = formularioNaJanela().findAll('[data-teste="fornecedor"] option').map((o) => o.text())
     expect(opcoes).toEqual(['Sem fornecedor cadastrado', 'Agro Ariquemes'])
+    wrapper.unmount()
+  })
+
+  it('a lixeira tira a linha do pedido, e não deixa tirar a última', async () => {
+    const { wrapper } = await montarEm('/compras')
+
+    await botao(wrapper, 'Novo pedido')!.trigger('click')
+    const form = formularioNaJanela()
+    expect(form.find('[data-teste="tirar-item"]').attributes('disabled')).toBeDefined()
+    await form.findAll('button').find((b) => b.text() === '+ Outro insumo')!.trigger('click')
+    const lixeiras = form.findAll('[data-teste="tirar-item"]')
+    expect(lixeiras.map((b) => b.attributes('aria-label'))).toEqual(['Tirar o item 1', 'Tirar o item 2'])
+
+    await lixeiras[1]!.trigger('click')
+    expect(form.findAll('[data-teste="linha-pedido"]')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('o pedido novo fecha com Cancelar ou Esc, sem pedir nada à API', async () => {
+    const { wrapper } = await montarEm('/compras')
+
+    await botao(wrapper, 'Novo pedido')!.trigger('click')
+    await formularioNaJanela().findAll('button').find((b) => b.text() === 'Cancelar')!.trigger('click')
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+
+    await botao(wrapper, 'Novo pedido')!.trigger('click')
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(document.querySelector('[role="dialog"]')).toBeNull()
+    expect(api.criarPedido).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 

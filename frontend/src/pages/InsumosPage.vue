@@ -115,7 +115,6 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
 <template>
   <CabecalhoDePagina
     titulo="Insumos"
-    descricao="Produtos em estoque: quantidade atual, mínimo e prazo de reposição."
   >
     <template #acoes>
       <button
@@ -454,25 +453,25 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
       <table class="w-full text-left text-sm">
         <thead class="bg-stone-50/80 text-xs tracking-wide text-stone-500 uppercase">
           <tr>
-            <th class="px-4 py-3 font-semibold">
+            <th class="px-3 py-3 xl:px-4 font-semibold">
               Insumo
             </th>
-            <th class="px-4 py-3 text-right font-semibold">
+            <th class="px-3 py-3 xl:px-4 text-right font-semibold">
               Estoque atual
             </th>
-            <th class="px-4 py-3 text-right font-semibold">
+            <th class="px-3 py-3 xl:px-4 text-right font-semibold">
               Valor em estoque
             </th>
-            <th class="px-4 py-3 text-right font-semibold">
+            <th class="px-3 py-3 xl:px-4 text-right font-semibold">
               Mínimo
             </th>
-            <th class="px-4 py-3 text-right font-semibold">
+            <th class="px-3 py-3 xl:px-4 text-right font-semibold">
               Prazo
             </th>
-            <th class="px-4 py-3 font-semibold">
+            <th class="px-3 py-3 xl:px-4 font-semibold">
               Situação
             </th>
-            <th class="px-4 py-3">
+            <th class="px-3 py-3 xl:px-4">
               <span class="sr-only">Ações</span>
             </th>
           </tr>
@@ -483,7 +482,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
             :key="insumo.id"
             class="transition-colors hover:bg-stone-50/70"
           >
-            <td class="px-4 py-3 font-medium text-stone-800">
+            <td class="px-3 py-3 xl:px-4 font-medium text-stone-800">
               <RouterLink
                 :to="{ name: 'insumo', params: { id: insumo.id } }"
                 class="hover:text-campo-700 hover:underline"
@@ -496,7 +495,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
               >{{ insumo.categoria }}</span>
             </td>
             <td
-              class="px-4 py-3 text-right tabular-nums"
+              class="px-3 py-3 xl:px-4 text-right whitespace-nowrap tabular-nums"
               :class="insumo.estoque_atual < 0 ? 'text-red-700' : ''"
             >
               {{ numero(insumo.estoque_atual) }} {{ insumo.unidade }}
@@ -509,22 +508,22 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
             </td>
             <!-- Sem compra com preço, não há custo médio: um traço, e não R$ 0,00. -->
             <td
-              class="px-4 py-3 text-right tabular-nums text-stone-600"
+              class="px-3 py-3 xl:px-4 text-right whitespace-nowrap tabular-nums text-stone-600"
               :title="insumo.custo_medio === null ? undefined : `Custo médio: ${reais(insumo.custo_medio)}/${insumo.unidade}`"
             >
               {{ insumo.valor_em_estoque === null ? '—' : reais(insumo.valor_em_estoque) }}
             </td>
-            <td class="px-4 py-3 text-right tabular-nums text-stone-600">
+            <td class="px-3 py-3 xl:px-4 text-right whitespace-nowrap tabular-nums text-stone-600">
               {{ insumo.estoque_minimo === null ? '—' : `${numero(insumo.estoque_minimo)} ${insumo.unidade}` }}
             </td>
-            <td class="px-4 py-3 text-right tabular-nums text-stone-600">
+            <td class="px-3 py-3 xl:px-4 text-right whitespace-nowrap tabular-nums text-stone-600">
               {{ insumo.prazo_reposicao_dias === null ? '—' : `${insumo.prazo_reposicao_dias} dias` }}
             </td>
-            <td class="px-4 py-3">
+            <td class="px-3 py-3 xl:px-4">
               <!-- A API já ordena os alertas do mais grave para o mais leve. -->
               <SeloDeGravidade :gravidade="insumo.analise.alertas[0]?.gravidade ?? null" />
             </td>
-            <td class="px-4 py-3 text-right">
+            <td class="px-3 py-3 xl:px-4 text-right">
               <button
                 v-if="sessao.podeGerir"
                 type="button"

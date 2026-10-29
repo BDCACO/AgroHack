@@ -144,7 +144,6 @@ async function cancelar() {
 <template>
   <CabecalhoDePagina
     titulo="Compras"
-    descricao="Do que pedir à revenda até a carga chegar: o pedido feito já entra na conta da reposição, e o recebimento vira entrada no estoque."
   >
     <template #acoes>
       <RouterLink
