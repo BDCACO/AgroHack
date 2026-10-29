@@ -1,18 +1,48 @@
 <script setup lang="ts">
-import { nextTick, onMounted, reactive, ref, useTemplateRef } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
+import GerenciarCategorias from '@/components/GerenciarCategorias.vue'
 import IconeSvg from '@/components/IconeSvg.vue'
+import JanelaModal from '@/components/JanelaModal.vue'
 import SeloDeGravidade from '@/components/SeloDeGravidade.vue'
-import { reais } from '@/formatos'
+import { dataBr, reais } from '@/formatos'
+import { useCategoriasStore } from '@/stores/categorias'
 import { mensagemDeErro, useEstoqueStore } from '@/stores/estoque'
 import { useSessaoStore } from '@/stores/sessao'
-import type { Insumo } from '@/types/api'
+import type { Gravidade, Insumo } from '@/types/api'
 
 const estoque = useEstoqueStore()
 const sessao = useSessaoStore()
-onMounted(() => estoque.carregar())
+const categorias = useCategoriasStore()
+onMounted(() => Promise.all([estoque.carregar(), categorias.carregar()]))
+const gerenciandoCategorias = ref(false)
+
+// Os filtros ficam no navegador: a lista inteira já veio (uma fazenda tem dezenas de
+// insumos, não milhares) e filtrar aqui responde a cada letra digitada.
+const filtro = reactive({
+  busca: '',
+  categoria: '' as number | '' | 'sem',
+  situacao: '' as Gravidade | 'sem' | '',
+})
+/** Como a API compara na busca: sem maiúsculas nem acentos ("ureia" acha "Uréia"). */
+const comoSeBusca = (texto: string) =>
+  texto.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().trim()
+const filtrados = computed(() => {
+  const busca = comoSeBusca(filtro.busca)
+  return estoque.insumos.filter((insumo) => {
+    if (busca && !comoSeBusca(insumo.nome).includes(busca)) return false
+    if (filtro.categoria === 'sem' && insumo.categoria_id) return false
+    if (typeof filtro.categoria === 'number' && insumo.categoria_id !== filtro.categoria) return false
+    const pior = insumo.analise.alertas[0]?.gravidade
+    if (filtro.situacao === 'sem' && pior) return false
+    if (filtro.situacao && filtro.situacao !== 'sem' && pior !== filtro.situacao) return false
+    return true
+  })
+})
+const filtrando = computed(() => Boolean(filtro.busca || filtro.categoria !== '' || filtro.situacao))
+const limparFiltros = () => Object.assign(filtro, { busca: '', categoria: '', situacao: '' })
 
 // Input numérico vazio vale '' no v-model; '' = "não informado" (null na API).
 const vazio = {
@@ -23,13 +53,13 @@ const vazio = {
   embalagem: '' as number | '',
   pedido_minimo: '' as number | '',
   carencia: '' as number | '',
+  categoria: '' as number | '',
 }
 const form = reactive({ ...vazio })
 const aberto = ref(false)
 const editandoId = ref<number>()
 const salvando = ref(false)
 const erroDoForm = ref<string | null>(null)
-const tituloDoForm = useTemplateRef<HTMLElement>('tituloDoForm')
 
 function abrir(insumo?: Insumo) {
   Object.assign(
@@ -43,15 +73,15 @@ function abrir(insumo?: Insumo) {
           embalagem: insumo.embalagem ?? '',
           pedido_minimo: insumo.pedido_minimo ?? '',
           carencia: insumo.carencia_dias ?? '',
+          categoria: insumo.categoria_id ?? '',
         }
       : vazio,
   )
   editandoId.value = insumo?.id
   erroDoForm.value = null
+  // Numa janela, e não no alto da página: quem tocou em "Alterar" lá embaixo da lista não perde
+  // o lugar, e ao fechar o foco volta para o botão.
   aberto.value = true
-  // O formulário abre no alto da página. Quem tocou em "Alterar" lá embaixo da lista (no
-  // celular, quase sempre) é levado até ele, e o leitor de tela anuncia o título.
-  nextTick(() => tituloDoForm.value?.focus())
 }
 
 async function salvar() {
@@ -67,6 +97,7 @@ async function salvar() {
         embalagem: form.embalagem === '' ? null : form.embalagem,
         pedido_minimo: form.pedido_minimo === '' ? null : form.pedido_minimo,
         carencia_dias: form.carencia === '' ? null : form.carencia,
+        categoria_id: form.categoria === '' ? null : form.categoria,
       },
       editandoId.value,
     )
@@ -88,6 +119,14 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
   >
     <template #acoes>
       <button
+        v-if="sessao.podeGerir"
+        type="button"
+        class="botao-secundario"
+        @click="gerenciandoCategorias = true"
+      >
+        Categorias
+      </button>
+      <button
         v-if="estoque.insumos.length && sessao.podeGerir"
         type="button"
         class="botao-primario"
@@ -98,132 +137,156 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
     </template>
   </CabecalhoDePagina>
 
-  <form
+  <JanelaModal
     v-if="aberto"
-    class="cartao mt-2 mb-6 grid animate-surgir gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4"
-    @submit.prevent="salvar"
+    :titulo="editandoId === undefined ? 'Novo insumo' : 'Alterar insumo'"
+    larga
+    @fechar="aberto = false"
   >
-    <h2
-      ref="tituloDoForm"
-      tabindex="-1"
-      class="scroll-mt-4 text-base font-semibold text-stone-900 focus:outline-none sm:col-span-2 lg:col-span-4"
+    <form
+      class="grid gap-4 sm:grid-cols-2"
+      data-teste="form-insumo"
+      @submit.prevent="salvar"
     >
-      {{ editandoId === undefined ? 'Novo insumo' : 'Alterar insumo' }}
-    </h2>
-    <label class="text-sm font-medium text-stone-700">
-      Nome
-      <input
-        v-model="form.nome"
-        required
-        maxlength="120"
-        placeholder="Ureia agrícola"
-        class="campo"
+      <label class="flutuante">
+        <input
+          v-model="form.nome"
+          autofocus
+          required
+          maxlength="120"
+          placeholder="Ureia agrícola"
+          class="campo"
+        >
+        <span class="rotulo">Nome</span>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model="form.unidade"
+          required
+          maxlength="20"
+          list="unidades"
+          placeholder="kg"
+          class="campo"
+        >
+        <span class="rotulo">Unidade</span>
+        <datalist id="unidades">
+          <option value="kg" />
+          <option value="L" />
+          <option value="t" />
+          <option value="sc" />
+          <option value="dose" />
+          <option value="un" />
+        </datalist>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model.number="form.estoque_minimo"
+          type="number"
+          min="0"
+          step="any"
+          placeholder=" "
+          class="campo"
+        >
+        <span class="rotulo">Estoque mínimo <span class="font-normal text-stone-500">(opcional)</span></span>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model.number="form.prazo"
+          type="number"
+          min="0"
+          max="365"
+          step="1"
+          placeholder=" "
+          class="campo"
+        >
+        <span class="rotulo">Prazo de entrega, em dias <span class="font-normal text-stone-500">(opcional)</span></span>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model.number="form.embalagem"
+          type="number"
+          min="0.001"
+          step="any"
+          placeholder="50"
+          class="campo"
+        >
+        <span class="rotulo">Embalagem, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span></span>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model.number="form.pedido_minimo"
+          type="number"
+          min="0"
+          step="any"
+          placeholder=" "
+          class="campo"
+        >
+        <span class="rotulo">Pedido mínimo, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span></span>
+      </label>
+      <label class="flutuante">
+        <input
+          v-model.number="form.carencia"
+          type="number"
+          min="0"
+          max="365"
+          step="1"
+          placeholder=" "
+          class="campo"
+        >
+        <span class="rotulo">Carência, em dias <span class="font-normal text-stone-500">(defensivos)</span></span>
+      </label>
+      <label class="flutuante">
+        <select
+          v-model.number="form.categoria"
+          class="campo"
+          data-teste="categoria"
+        >
+          <option value="">
+            Sem categoria
+          </option>
+          <option
+            v-for="categoria in categorias.categorias"
+            :key="categoria.id"
+            :value="categoria.id"
+          >
+            {{ categoria.nome }}
+          </option>
+        </select>
+        <span class="rotulo">Categoria</span>
+      </label>
+      <p class="text-xs text-stone-500 sm:col-span-2">
+        O mínimo dispara o alerta de estoque baixo e vira margem de segurança na reposição. O prazo
+        é quanto o fornecedor leva para entregar; sem ele, a análise assume 15 dias e avisa. Com a
+        embalagem (50 para o saco de 50 kg) e o pedido mínimo da revenda, a reposição sai em
+        embalagens fechadas. O preço entra ao lançar cada compra, em Movimentações. A carência é
+        quantos dias depois de aplicar se pode colher ou abater (está na bula ou no receituário);
+        0 se não tem, como a ureia. Com ela, os talhões avisam até quando não colher.
+      </p>
+      <p
+        v-if="erroDoForm"
+        role="alert"
+        class="text-sm text-red-700 sm:col-span-2"
       >
-    </label>
-    <label class="text-sm font-medium text-stone-700">
-      Unidade
-      <input
-        v-model="form.unidade"
-        required
-        maxlength="20"
-        list="unidades"
-        placeholder="kg"
-        class="campo"
-      >
-      <datalist id="unidades">
-        <option value="kg" />
-        <option value="L" />
-        <option value="t" />
-        <option value="sc" />
-        <option value="dose" />
-        <option value="un" />
-      </datalist>
-    </label>
-    <label class="text-sm font-medium text-stone-700">
-      Estoque mínimo <span class="font-normal text-stone-500">(opcional)</span>
-      <input
-        v-model.number="form.estoque_minimo"
-        type="number"
-        min="0"
-        step="any"
-        class="campo"
-      >
-    </label>
-    <label class="text-sm font-medium text-stone-700">
-      Prazo de entrega, em dias <span class="font-normal text-stone-500">(opcional)</span>
-      <input
-        v-model.number="form.prazo"
-        type="number"
-        min="0"
-        max="365"
-        step="1"
-        class="campo"
-      >
-    </label>
-    <label class="text-sm font-medium text-stone-700">
-      Embalagem, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span>
-      <input
-        v-model.number="form.embalagem"
-        type="number"
-        min="0.001"
-        step="any"
-        placeholder="50"
-        class="campo"
-      >
-    </label>
-    <label class="text-sm font-medium text-stone-700">
-      Pedido mínimo, em {{ form.unidade || 'unidades' }} <span class="font-normal text-stone-500">(opcional)</span>
-      <input
-        v-model.number="form.pedido_minimo"
-        type="number"
-        min="0"
-        step="any"
-        class="campo"
-      >
-    </label>
-    <label class="text-sm font-medium text-stone-700">
-      Carência, em dias <span class="font-normal text-stone-500">(defensivos)</span>
-      <input
-        v-model.number="form.carencia"
-        type="number"
-        min="0"
-        max="365"
-        step="1"
-        class="campo"
-      >
-    </label>
-    <p class="text-xs text-stone-500 sm:col-span-2 lg:col-span-4">
-      O mínimo dispara o alerta de estoque baixo e vira margem de segurança na reposição. O prazo
-      é quanto o fornecedor leva para entregar; sem ele, a análise assume 15 dias e avisa. Com a
-      embalagem (50 para o saco de 50 kg) e o pedido mínimo da revenda, a reposição sai em
-      embalagens fechadas. O preço entra ao lançar cada compra, em Movimentações. A carência é
-      quantos dias depois de aplicar se pode colher ou abater (está na bula ou no receituário);
-      0 se não tem, como a ureia. Com ela, os talhões avisam até quando não colher.
-    </p>
-    <p
-      v-if="erroDoForm"
-      role="alert"
-      class="text-sm text-red-700 sm:col-span-2 lg:col-span-4"
-    >
-      {{ erroDoForm }}
-    </p>
-    <div class="flex gap-2 sm:col-span-2 lg:col-span-4">
-      <button
-        type="submit"
-        class="botao-primario"
-        :disabled="salvando"
-      >
-        {{ salvando ? 'Salvando…' : 'Salvar' }}
-      </button>
-      <button
-        type="button"
-        class="botao-texto text-stone-700 hover:bg-stone-100"
-        @click="aberto = false"
-      >
-        Cancelar
-      </button>
-    </div>
-  </form>
+        {{ erroDoForm }}
+      </p>
+      <div class="flex flex-col-reverse gap-2 sm:col-span-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          class="botao-secundario"
+          @click="aberto = false"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          class="botao-primario"
+          :disabled="salvando"
+        >
+          {{ salvando ? 'Salvando…' : 'Salvar' }}
+        </button>
+      </div>
+    </form>
+  </JanelaModal>
 
   <p
     v-if="estoque.erro"
@@ -234,7 +297,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
   </p>
 
   <EstadoVazio
-    v-else-if="estoque.carregado && !estoque.insumos.length && !aberto"
+    v-else-if="estoque.carregado && !estoque.insumos.length"
     icone="insumos"
     titulo="Nenhum insumo cadastrado"
     :texto="sessao.podeGerir
@@ -252,11 +315,89 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
   </EstadoVazio>
 
   <template v-else-if="estoque.insumos.length">
+    <div
+      class="mb-3 grid gap-3 sm:grid-cols-[2fr_1fr_1fr]"
+      role="search"
+      aria-label="Filtrar insumos"
+    >
+      <label class="flutuante">
+        <input
+          v-model="filtro.busca"
+          type="search"
+          placeholder="ureia"
+          class="campo"
+          data-teste="busca"
+        >
+        <span class="rotulo">Buscar pelo nome</span>
+      </label>
+      <label class="flutuante">
+        <select
+          v-model="filtro.categoria"
+          class="campo"
+          data-teste="filtro-categoria"
+        >
+          <option value="">
+            Todas
+          </option>
+          <option
+            v-for="categoria in categorias.categorias"
+            :key="categoria.id"
+            :value="categoria.id"
+          >
+            {{ categoria.nome }}
+          </option>
+          <option value="sem">
+            Sem categoria
+          </option>
+        </select>
+        <span class="rotulo">Categoria</span>
+      </label>
+      <label class="flutuante">
+        <select
+          v-model="filtro.situacao"
+          class="campo"
+          data-teste="filtro-situacao"
+        >
+          <option value="">
+            Todas
+          </option>
+          <option value="alta">
+            Urgente
+          </option>
+          <option value="media">
+            Atenção
+          </option>
+          <option value="baixa">
+            Observar
+          </option>
+          <option value="sem">
+            Sem alertas
+          </option>
+        </select>
+        <span class="rotulo">Situação</span>
+      </label>
+    </div>
+    <p
+      v-if="filtrando"
+      class="mb-3 flex flex-wrap items-center gap-2 text-sm text-stone-600"
+      role="status"
+      data-teste="contagem"
+    >
+      {{ filtrados.length === 1 ? '1 insumo' : `${filtrados.length} insumos` }} de {{ estoque.insumos.length }}
+      <button
+        type="button"
+        class="botao-texto px-2 py-0.5"
+        @click="limparFiltros"
+      >
+        Limpar filtros
+      </button>
+    </p>
+
     <!-- No celular, um cartão por insumo no lugar da tabela, que não cabe sem rolar para o
      lado. Tocar no insumo abre a página dele; "Alterar" fica à mão do polegar. -->
     <ul class="cartao animate-surgir divide-y divide-stone-100 md:hidden">
       <li
-        v-for="insumo in estoque.insumos"
+        v-for="insumo in filtrados"
         :key="insumo.id"
         class="relative flex items-center gap-2 py-3 pr-2 pl-4 transition-colors active:bg-stone-50"
         data-teste="insumo-celular"
@@ -275,6 +416,14 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
             >{{ numero(insumo.estoque_atual) }} {{ insumo.unidade }}</span>
             em estoque<template v-if="insumo.valor_em_estoque !== null">
               · {{ reais(insumo.valor_em_estoque) }}
+            </template>
+          </p>
+          <p
+            v-if="insumo.em_pedido"
+            class="mt-0.5 text-xs font-medium text-sky-800"
+          >
+            + {{ numero(insumo.em_pedido) }} {{ insumo.unidade }} a caminho<template v-if="insumo.chegada_prevista">
+              , até {{ dataBr(insumo.chegada_prevista) }}
             </template>
           </p>
           <p class="mt-0.5 text-xs text-stone-500 tabular-nums">
@@ -330,7 +479,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         </thead>
         <tbody class="divide-y divide-stone-100">
           <tr
-            v-for="insumo in estoque.insumos"
+            v-for="insumo in filtrados"
             :key="insumo.id"
             class="transition-colors hover:bg-stone-50/70"
           >
@@ -341,12 +490,22 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
               >
                 {{ insumo.nome }}
               </RouterLink>
+              <span
+                v-if="insumo.categoria"
+                class="block text-xs font-normal text-stone-500"
+              >{{ insumo.categoria }}</span>
             </td>
             <td
               class="px-4 py-3 text-right tabular-nums"
               :class="insumo.estoque_atual < 0 ? 'text-red-700' : ''"
             >
               {{ numero(insumo.estoque_atual) }} {{ insumo.unidade }}
+              <!-- Pedido à revenda e ainda não chegou: a reposição já desconta. -->
+              <span
+                v-if="insumo.em_pedido"
+                class="block text-xs font-medium text-sky-800"
+                :title="insumo.chegada_prevista ? `Chega até ${dataBr(insumo.chegada_prevista)}` : undefined"
+              >+ {{ numero(insumo.em_pedido) }} a caminho</span>
             </td>
             <!-- Sem compra com preço, não há custo médio: um traço, e não R$ 0,00. -->
             <td
@@ -379,5 +538,16 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         </tbody>
       </table>
     </div>
+    <p
+      v-if="filtrando && !filtrados.length"
+      class="mt-3 text-sm text-stone-500"
+    >
+      Nenhum insumo com esses filtros.
+    </p>
   </template>
+
+  <GerenciarCategorias
+    v-if="gerenciandoCategorias"
+    @fechar="gerenciandoCategorias = false"
+  />
 </template>

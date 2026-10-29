@@ -87,6 +87,40 @@ void main() {
     expect(find.text('Conectado'), findsOneWidget);
   });
 
+  testWidgets('atualizar com a API fora mantém os dados e avisa', (
+    tester,
+  ) async {
+    // O Painel também busca /v1/insumos ao abrir o app: a 1ª chamada é dele,
+    // a 2ª é o primeiro carregamento da aba Insumos, só a 3ª (atualizar) falha.
+    var chamadas = 0;
+    final client = MockClient((pedido) async {
+      if (pedido.url.path != '/v1/insumos') return http.Response('', 404);
+      chamadas++;
+      if (chamadas > 2) throw http.ClientException('sem rede');
+      return http.Response.bytes(
+        utf8.encode(jsonEncode([insumoComAlerta, insumoSemAlerta])),
+        200,
+      );
+    });
+    await tester.pumpWidget(
+      CampoCertoApp(api: ClienteApi(client: client, baseUrl: 'http://api/v1')),
+    );
+    await tester.pumpAndSettle();
+    await _irPara(tester, 'Insumos');
+
+    final indicador = tester.widget<RefreshIndicator>(
+      find.byType(RefreshIndicator),
+    );
+    await indicador.onRefresh();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ureia'), findsOneWidget);
+    expect(
+      find.text('Sem resposta do servidor. Tente de novo em instantes.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('lançar uma movimentação nova aparece na lista ao voltar', (
     tester,
   ) async {

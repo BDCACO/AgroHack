@@ -19,6 +19,7 @@ class InsumosPage extends StatelessWidget {
           return const EstadoVazio('Nenhum insumo cadastrado ainda.');
         }
         return ListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: insumos.length,
           itemBuilder: (context, i) {
             final insumo = insumos[i];

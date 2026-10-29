@@ -1,4 +1,4 @@
-import type { Entrada, Usuario } from '@/types/api'
+import type { Entrada, Sessao, Usuario } from '@/types/api'
 
 import { http } from './http'
 import { guardarToken, lerToken } from './token'
@@ -21,4 +21,23 @@ export async function buscarEu(): Promise<Usuario> {
 
 export async function sair(): Promise<void> {
   await http.post('/auth/sair')
+}
+
+/** Troca a própria senha; os outros aparelhos saem, este continua. */
+export async function trocarSenha(senhaAtual: string, senhaNova: string): Promise<void> {
+  await http.put('/auth/senha', { senha_atual: senhaAtual, senha_nova: senhaNova })
+}
+
+export async function listarMinhasSessoes(): Promise<Sessao[]> {
+  const { data } = await http.get<Sessao[]>('/auth/sessoes')
+  return data
+}
+
+export async function encerrarMinhaSessao(id: number): Promise<void> {
+  await http.delete(`/auth/sessoes/${id}`)
+}
+
+export async function encerrarOutrasSessoes(): Promise<number> {
+  const { data } = await http.post<{ encerradas: number }>('/auth/sessoes/encerrar-outras')
+  return data.encerradas
 }

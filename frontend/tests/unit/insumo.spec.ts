@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -151,14 +151,15 @@ describe('Reais no insumo', () => {
     const { wrapper } = await montarEm('/insumos')
 
     await wrapper.findAll('main button').find((b) => b.text() === 'Cadastrar insumo')!.trigger('click')
-    const campos = wrapper.findAll('main form label')
+    const form = new DOMWrapper(document.querySelector('[role="dialog"] [data-teste="form-insumo"]')!)
+    const campos = form.findAll('label')
     const campo = (rotulo: string) => campos.find((l) => l.text().startsWith(rotulo))!.find('input')
     await campo('Nome').setValue('Ureia')
     await campo('Unidade').setValue('kg')
     expect(campos.find((l) => l.text().startsWith('Embalagem'))!.text()).toContain('Embalagem, em kg')
     await campo('Embalagem').setValue(50)
     await campo('Pedido mínimo').setValue(100)
-    await wrapper.find('main form').trigger('submit')
+    await form.trigger('submit')
     await flushPromises()
 
     expect(api.criarInsumo).toHaveBeenCalledWith(
