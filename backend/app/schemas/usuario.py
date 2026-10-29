@@ -77,6 +77,32 @@ class UsuarioAlteracao(BaseModel):
     ativo: bool | None = None
 
 
+class AlteracaoDoPerfil(BaseModel):
+    """O próprio nome e o próprio login; o que não vier fica como está. Trocar o login pede a
+    senha atual: é com ele que se entra, e quem pegou o celular com a sessão aberta não pode
+    trocá-lo para tomar a conta."""
+
+    nome: str | None = Field(
+        default=None, min_length=1, max_length=120, pattern=SEM_CARACTERE_DE_CONTROLE
+    )
+    login: str | None = Field(default=None, pattern=r"^[a-z0-9._-]{2,40}$")
+    senha_atual: str | None = Field(default=None, min_length=1, max_length=SENHA_MAXIMA)
+
+    @field_validator("nome")
+    @classmethod
+    def _nome_aparado(cls, nome: str | None) -> str | None:
+        if nome is None:
+            return None
+        if not nome.strip():
+            raise ValueError("o nome não pode ficar em branco")
+        return nome.strip()
+
+    @field_validator("login", mode="before")
+    @classmethod
+    def _login_normalizado(cls, login: object) -> object:
+        return login.strip().lower() if isinstance(login, str) else login
+
+
 class RedefinicaoDeSenha(BaseModel):
     senha_nova: str = Field(min_length=SENHA_MINIMA, max_length=SENHA_MAXIMA)
 

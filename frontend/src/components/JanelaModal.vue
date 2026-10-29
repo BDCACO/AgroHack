@@ -28,7 +28,7 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <!-- No celular, a janela sobe do pé da tela, perto do dedo; no computador, fica no meio. -->
-    <div class="fixed inset-0 z-50 flex items-end justify-center bg-stone-900/40 sm:items-center sm:p-4">
+    <div class="fixed inset-0 z-50 flex items-end justify-center bg-black/45 sm:items-center sm:p-4">
       <div
         class="absolute inset-0"
         aria-hidden="true"

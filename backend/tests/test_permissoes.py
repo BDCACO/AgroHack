@@ -40,6 +40,7 @@ MATRIZ = {
     ("POST", "/api/v1/auth/sair"): SESSAO,
     ("GET", "/api/v1/auth/eu"): SESSAO,
     ("PUT", "/api/v1/auth/senha"): SESSAO,
+    ("PUT", "/api/v1/auth/eu"): SESSAO,
     ("GET", "/api/v1/auth/sessoes"): SESSAO,
     ("DELETE", "/api/v1/auth/sessoes/{sessao_id}"): SESSAO,
     ("POST", "/api/v1/auth/sessoes/encerrar-outras"): SESSAO,

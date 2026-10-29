@@ -42,7 +42,7 @@ async function entrar() {
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col items-center justify-center bg-linear-to-b from-campo-900 to-campo-950 px-4 py-10">
+  <div class="flex min-h-screen flex-col items-center justify-center bg-linear-to-b from-mata-900 to-mata-950 px-4 py-10">
     <div class="mb-6 text-white">
       <LogoCampoCerto com-nome />
     </div>

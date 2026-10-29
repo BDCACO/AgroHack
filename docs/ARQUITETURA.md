@@ -905,6 +905,7 @@ segurança, registro do pedido, limite de escritas por IP, limite do corpo. Deci
 | `GET /api/v1/health` | Liveness: o processo está no ar. Não toca o banco |
 | `POST /api/v1/auth/entrar` | `{login, senha, dispositivo?}` → `{token, expira_em, usuario: {id, nome, login, papel}}`. O token vem uma vez só e vale 30 dias sem uso, renovados com o uso até 90 dias desde o login (o `expira_em` do login é o primeiro prazo). Recusa sempre com o mesmo `401`; tentativas demais do mesmo IP, `429` com `Retry-After` |
 | `POST /api/v1/auth/sair` · `GET /api/v1/auth/eu` | Encerra a sessão deste token (`204`) / quem está logado |
+| `PUT /api/v1/auth/eu` | `{nome?, login?, senha_atual?}`: o próprio nome e o próprio login (o que não vier fica). O login novo pede `senha_atual`, contada como tentativa de login (sem ela, `400`; errada, `400`); login repetido é `409`. As sessões continuam; entra na trilha como `usuario.alterado`. O papel não muda por aqui |
 | `PUT /api/v1/auth/senha` | `{senha_atual, senha_nova}` (mínimo 8): troca a própria senha e encerra as sessões dos outros aparelhos (`204`); senha atual errada é `400` |
 | `GET /api/v1/auth/sessoes` | As sessões ativas do próprio usuário, a usada por último primeiro: `id`, `dispositivo`, `ip` (do login), `criada_em`, `ultimo_uso_em` (de 5 em 5 minutos), `expira_em` e `atual` (a deste pedido). Nunca o token |
 | `DELETE /api/v1/auth/sessoes/{id}` | Encerra uma sessão sua, e só ela (`204`); a de outro usuário, a encerrada e a vencida são `404`, como a que não existe. A deste pedido é o mesmo que sair |
@@ -957,9 +958,9 @@ segurança, registro do pedido, limite de escritas por IP, limite do corpo. Deci
 |---|---|
 | `src/main.ts` | Instala Pinia e Router, importa o CSS |
 | `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só. `menu.barra` põe a tela na barra de baixo do celular; `soDono` e `comLogin` a escondem do funcionário e do site sem login |
-| `src/layouts/` | `AppLayout`: no desktop, menu lateral fixo, que recolhe aos ícones (o navegador lembra), e a barra do topo (o botão de recolher, a seção e a página em que se está, o link do código no GitHub, quem está logado, que leva a Minha conta, e "Sair"); no celular e no tablet, a barra de baixo (as telas do dia a dia e o "Mais", com as outras e "Minha conta") |
-| `src/pages/` | Uma página por rota: Painel (alertas, talhões em carência à parte, estoque em reais do `GET /resumo`, reposição com o custo e a lista de compras para o WhatsApp, limitações), Insumos (cadastro, com embalagem, pedido mínimo, carência e categoria; busca e filtros; o que está a caminho; Categorias, do dono), página do insumo (`/insumos/:id`: resumo com custo médio e valor em estoque, gráfico, alertas, movimentações, remover), Movimentações (entradas, com o preço e o fornecedor da compra, e saídas, com o talhão onde foi aplicado; filtros na API, com o total e "Carregar mais"), Compras (sugestão por revenda que vira pedido, pedidos por situação, receber a carga, cancelar), Fornecedores (`/compras/fornecedores`) e a página de cada um (preço médio pago por insumo, últimas compras), Talhões (cadastro, carência e custo por hectare), página do talhão (`/talhoes/:id`: carência, consumo por insumo, aplicações, recorte por período), Relatórios (gasto, consumo e perdas em reais por mês, semana ou dia; por categoria e por fornecedor), Importar dados (Excel ou CSV, com prévia), Usuários e Auditoria (do dono, com login), Minha conta (`/conta`: trocar a senha, aparelhos conectados), Sistema |
-| `src/components/` | Reutilizáveis (o `BotaoDeDownload` recebe a função que baixa): `BotaoDeDownload`, `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `ConfirmarRemocao`, `EstadoVazio`, `FormularioDePedido` e `ReceberPedido` (de Compras), `GerenciarCategorias`, `GraficoDeEstoque`, `GraficoPorPeriodo`, `IconeSvg`, `IndicadorDeStatus`, `JanelaModal`, `ListaDeSessoes` (Minha conta e Usuários), `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
+| `src/layouts/` | `AppLayout`: no desktop, menu lateral fixo, que recolhe aos ícones (o navegador lembra), e a barra do topo (o botão de recolher, a seção e a página em que se está, com o título dela, que dentro da página não aparece; o link do código no GitHub; quem está logado, que leva a Configurações; e "Sair"); no celular e no tablet, o cabeçalho com o título da página e a barra de baixo (as telas do dia a dia e o "Mais", com as outras) |
+| `src/pages/` | Uma página por rota: Painel (alertas, talhões em carência à parte, estoque em reais do `GET /resumo`, reposição com o custo e a lista de compras para o WhatsApp, limitações), Insumos (cadastro, com embalagem, pedido mínimo, carência e categoria; busca e filtros; o que está a caminho; Categorias, do dono), página do insumo (`/insumos/:id`: resumo com custo médio e valor em estoque, gráfico, alertas, movimentações, remover), Movimentações (entradas, com o preço e o fornecedor da compra, e saídas, com o talhão onde foi aplicado; filtros na API, com o total e "Carregar mais"), Compras (sugestão por revenda que vira pedido, pedidos por situação, receber a carga, cancelar), Fornecedores (`/compras/fornecedores`) e a página de cada um (preço médio pago por insumo, últimas compras), Talhões (cadastro, carência e custo por hectare), página do talhão (`/talhoes/:id`: carência, consumo por insumo, aplicações, recorte por período), Relatórios (gasto, consumo e perdas em reais por mês, semana ou dia; por categoria e por fornecedor), Importar dados (Excel ou CSV, com prévia), Usuários e Auditoria (do dono, com login), Configurações (o tema, se a API e o banco estão no ar, o próprio perfil, a senha e os aparelhos conectados; `/conta` e `/sistema` levam até lá) |
+| `src/components/` | Reutilizáveis (o `BotaoDeDownload` recebe a função que baixa): `BotaoDeDownload`, `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `ConfirmarRemocao`, `EstadoVazio`, `FormularioDePedido` e `ReceberPedido` (de Compras), `GerenciarCategorias`, `GraficoDeEstoque`, `GraficoPorPeriodo`, `IconeSvg`, `IndicadorDeStatus`, `JanelaModal`, `ListaDeSessoes` (Configurações e Usuários), `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
 | `src/stores/` | Pinia: estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração; `sessao` guarda quem está logado e decide `podeGerir`; `talhoes`, `fornecedores` e `categorias` servem às escolhas de várias telas |
 | `src/services/http.ts` | **Cliente HTTP único** (Axios). Põe o token em todo pedido, avisa o App no `401` e normaliza erro em `ApiError` |
 | `src/services/token.ts` | O token da sessão no `localStorage` (na memória, se o navegador não deixar guardar) |
@@ -1000,9 +1001,12 @@ leva ao Painel.
   desativar (com confirmação; a recusa do último dono vem da API), reativar, definir senha nova
   (derruba as sessões dele e desfaz o bloqueio) e os aparelhos de cada um, com "Encerrar" e
   "Encerrar todos", sem desativá-lo.
-- **Minha conta** (todos): trocar a senha (a repetição se confere no navegador; os outros
-  aparelhos saem) e "Onde você está conectado", com o aparelho, o último uso em palavras e o IP;
-  este aparelho vem marcado e sem "Encerrar" (para ele, é "Sair").
+- **Configurações** (todos): o tema (claro, escuro ou igual ao aparelho) e se a API e o banco
+  estão no ar valem também sem login. Com login: o próprio nome e o login (`PUT /auth/eu`; o
+  campo da senha atual só aparece quando o login mudou), trocar a senha (a repetição se confere
+  no navegador; os outros aparelhos saem) e "Onde você está conectado", com o aparelho, o
+  último uso em palavras e o IP; este aparelho vem marcado e sem "Encerrar" (para ele, é
+  "Sair").
 - **Auditoria** (só do dono): a lista de `GET /auditoria`, com a ação em palavras, sobre o quê,
   quem (ou "Comando no servidor", ou "Sem login" no login recusado), o aparelho e o IP, e, aberto,
   o que foi guardado em `dados`. Filtros por grupo de ação, por pessoa e por período, uma página
@@ -1014,7 +1018,17 @@ negócio: mostra o que a API calculou.
 ### Design e movimento
 
 Visual calmo e terroso: verde de lavoura (`campo`, de 50 a 950) como cor da marca, terra e
-palha (`terra`) como acento quente, fundo de pedra clara, cartões brancos. Fonte **Plus Jakarta
+palha (`terra`) como acento quente, fundo de pedra clara, cartões brancos.
+
+**Tema escuro** (Configurações > Aparência; `src/tema.ts`, aplicado pelo `index.html` antes de
+a página aparecer): em vez de um `dark:` em cada classe, as cores mudam de valor com
+`data-tema="escuro"`. Os cinzas (`stone`) se invertem; nas cores de destaque, o fundo clarinho
+(50 a 200) vira um tom escuro da mesma cor e a letra escura (700 a 950) vira o tom claro; os
+tons do meio (400 a 600: botões, pontos, barras) ficam. Por isso o fundo de bloco é
+`bg-superficie`, e não `bg-white` (o branco da letra do botão não escurece), e o fundo do menu,
+do cabeçalho do celular e da barra de baixo é a `mata`, com a paleta original dentro deles
+(classe `cromo`). Os gráficos trocam a cor da letra e da grade por código (o ECharts não lê
+CSS). Fonte **Plus Jakarta
 Sans** (`@fontsource-variable`), embutida no app: funciona sem internet, como numa apresentação.
 Tudo mora em `main.css`: as cores, a fonte, as curvas e durações de animação e os componentes
 base. Botão e cartão são classes (`.botao-primario`, `.cartao`...), não estilo repetido em cada
@@ -1055,7 +1069,7 @@ entrada (360 px de largura). Abaixo de 1024 px:
 
 - **Barra de baixo** no lugar do menu lateral: as telas do dia a dia (Painel, Insumos,
   Movimentações e Compras, `meta.menu.barra`) ao alcance do polegar, com o número de urgentes
-  no Painel, e o "Mais", que sobe do pé da tela com as outras e Minha conta, e acende quando se
+  no Painel, e o "Mais", que sobe do pé da tela com as outras (Configurações entre elas), e acende quando se
   está numa delas. O rótulo curto vem da rota (`meta.menu.curto`). Tocar de novo
   na aba da tela atual sobe para o topo; trocar de tela começa do topo, e o "voltar" do
   celular devolve a rolagem. Com o teclado aberto num campo de texto, a barra some para não
@@ -1208,7 +1222,7 @@ tecnologias que não se aplicam.
 
 ## 7. Próximas decisões (pendentes)
 
-1. **Login no app.** O site já tem o login com papéis, Usuários, Minha conta e Auditoria
+1. **Login no app.** O site já tem o login com papéis, Usuários, Configurações e Auditoria
    (seção 3); o app ainda não tem a tela de login nem manda o token (seção 4), por isso a
    autenticação fica desligada no desenvolvimento. Com ela desligada,
    qualquer um que alcance a tela lê e altera tudo (as portas da API e do banco ficam só em
@@ -1240,7 +1254,7 @@ tecnologias que não se aplicam.
    `429`, e as telas mostrarem o `id_da_requisicao` do `500` e do `503` ("informe ao suporte o
    código ..."). O app pode mandar o próprio `X-Request-ID` (o uuid do envio) para o mesmo
    código aparecer no celular e no log do servidor.
-9. **Sessões no app.** O site já tem "Onde você está conectado" em Minha conta e os aparelhos
+9. **Sessões no app.** O site já tem "Onde você está conectado" em Configurações e os aparelhos
    de cada um em Usuários (seção 3); o app, quando tiver login, precisa ao menos de "Sair" que
    encerre a sessão no servidor.
 

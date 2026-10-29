@@ -160,15 +160,16 @@ describe('login no site', () => {
     apiComLogin({ maria: dono })
     const { wrapper, router } = await montarEm('/insumos')
 
-    // A tela de entrada vem por import() dinâmico: a navegação leva mais que um flush.
-    await vi.waitFor(() => expect(wrapper.find('input[type="password"]').exists()).toBe(true))
+    // A tela de entrada vem por import() dinâmico: a navegação leva mais que um flush (e,
+    // com a suíte inteira em paralelo, mais que o segundo padrão do waitFor).
+    await vi.waitFor(() => expect(wrapper.find('input[type="password"]').exists()).toBe(true), { timeout: 5000 })
     expect(router.currentRoute.value.name).toBe('entrar')
     expect(router.currentRoute.value.query.volta).toBe('/insumos')
 
     await entrarComo(wrapper, 'maria')
 
     expect(lerToken()).toBe('token-maria')
-    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/insumos'))
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/insumos'), { timeout: 5000 })
     await flushPromises()
     expect(wrapper.find('[data-teste="sessao"]').text()).toMatch(/Dona Maria\s*Dono/)
     expect(wrapper.text()).toContain('Ureia agrícola')
@@ -213,7 +214,9 @@ describe('login no site', () => {
     const { wrapper, router } = await montarEm('/entrar')
     await entrarComo(wrapper, 'maria')
 
-    await wrapper.find('[data-teste="sessao"] button').trigger('click')
+    // O "Sair" fica no menu do perfil, na barra do topo.
+    await wrapper.find('[data-teste="abrir-perfil"]').trigger('click')
+    await wrapper.find('[data-teste="sair"]').trigger('click')
     await flushPromises()
 
     expect(pedidos.some((p) => p.url === '/auth/sair')).toBe(true)
@@ -252,7 +255,7 @@ describe('o funcionário', () => {
     expect(wrapper.findAll('[data-teste="aba"]').map((aba) => aba.text())).not.toContain('Importar')
     await wrapper.find('[data-teste="aba-mais"]').trigger('click')
     const mais = [...document.querySelectorAll('[data-teste="menu-mais"] a')].map((a) => a.textContent)
-    expect(mais.join(' ')).toContain('Sistema')
+    expect(mais.join(' ')).toContain('Configurações')
     expect(mais.join(' ')).not.toContain('Importar')
   })
 
