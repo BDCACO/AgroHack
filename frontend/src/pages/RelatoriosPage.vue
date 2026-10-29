@@ -94,7 +94,7 @@ const plural = (n: number, um: string, varios: string) => (n === 1 ? `1 ${um}` :
   </CabecalhoDePagina>
 
   <form
-    class="cartao mb-6 grid animate-surgir gap-4 p-5 sm:grid-cols-3 lg:grid-cols-6"
+    class="cartao mb-6 grid animate-surgir gap-4 p-5 sm:grid-cols-3 xl:grid-cols-6"
     aria-label="Filtros do relatório"
     @submit.prevent
   >
@@ -271,7 +271,9 @@ const plural = (n: number, um: string, varios: string) => (n === 1 ? `1 ${um}` :
       <GraficoPorPeriodo :periodos="relatorio.periodos" />
     </section>
 
-    <div class="mt-6 grid gap-6 lg:grid-cols-2">
+    <!-- grid-cols-1, e não a coluna automática: no celular, o cartão cabe na tela e o nome
+         quebra a linha, em vez de a tabela empurrar a página para o lado. -->
+    <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
       <section class="cartao p-5">
         <h2 class="text-base font-semibold text-stone-900">
           Consumo por insumo
@@ -295,10 +297,10 @@ const plural = (n: number, um: string, varios: string) => (n === 1 ? `1 ${um}` :
               <td class="py-2 font-medium text-stone-800">
                 {{ item.insumo }}
               </td>
-              <td class="py-2 text-right tabular-nums">
+              <td class="py-2 pl-3 text-right whitespace-nowrap tabular-nums">
                 {{ numero(item.quantidade) }} {{ item.unidade }}
               </td>
-              <td class="py-2 text-right font-semibold tabular-nums">
+              <td class="py-2 pl-3 text-right font-semibold whitespace-nowrap tabular-nums">
                 {{ item.valor === null ? '—' : reais(item.valor) }}
               </td>
             </tr>
@@ -316,47 +318,51 @@ const plural = (n: number, um: string, varios: string) => (n === 1 ? `1 ${um}` :
         >
           Nada no período.
         </p>
-        <table
+        <!-- Quatro colunas em reais não cabem num celular pequeno: a tabela rola de lado
+             dentro do cartão, e a página não. -->
+        <div
           v-else
-          class="mt-2 w-full text-left text-sm"
+          class="-mx-5 mt-2 overflow-x-auto px-5"
         >
-          <thead class="text-xs tracking-wide text-stone-500 uppercase">
-            <tr>
-              <th class="py-1.5 font-semibold">
-                Categoria
-              </th>
-              <th class="py-1.5 text-right font-semibold">
-                Gasto
-              </th>
-              <th class="py-1.5 text-right font-semibold">
-                Consumo
-              </th>
-              <th class="py-1.5 text-right font-semibold">
-                Perdas
-              </th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-stone-100">
-            <tr
-              v-for="categoria in porCategoria"
-              :key="categoria.categoria_id ?? 'sem'"
-              data-teste="categoria"
-            >
-              <td class="py-2 font-medium text-stone-800">
-                {{ categoria.categoria ?? 'Sem categoria' }}
-              </td>
-              <td class="py-2 text-right tabular-nums">
-                {{ reais(categoria.gasto) }}
-              </td>
-              <td class="py-2 text-right tabular-nums">
-                {{ reais(categoria.consumo) }}
-              </td>
-              <td class="py-2 text-right tabular-nums">
-                {{ reais(categoria.perdas) }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+          <table class="w-full text-left text-sm whitespace-nowrap">
+            <thead class="text-xs tracking-wide text-stone-500 uppercase">
+              <tr>
+                <th class="py-1.5 font-semibold">
+                  Categoria
+                </th>
+                <th class="py-1.5 text-right font-semibold">
+                  Gasto
+                </th>
+                <th class="py-1.5 text-right font-semibold">
+                  Consumo
+                </th>
+                <th class="py-1.5 text-right font-semibold">
+                  Perdas
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-stone-100">
+              <tr
+                v-for="categoria in porCategoria"
+                :key="categoria.categoria_id ?? 'sem'"
+                data-teste="categoria"
+              >
+                <td class="py-2 font-medium text-stone-800">
+                  {{ categoria.categoria ?? 'Sem categoria' }}
+                </td>
+                <td class="py-2 text-right tabular-nums">
+                  {{ reais(categoria.gasto) }}
+                </td>
+                <td class="py-2 text-right tabular-nums">
+                  {{ reais(categoria.consumo) }}
+                </td>
+                <td class="py-2 text-right tabular-nums">
+                  {{ reais(categoria.perdas) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <h2 class="mt-6 text-base font-semibold text-stone-900">
           Por fornecedor
