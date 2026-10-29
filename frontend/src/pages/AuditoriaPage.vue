@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'
 
+import { dadosLegiveis } from '@/auditoriaLegivel'
 import CabecalhoDePagina from '@/components/CabecalhoDePagina.vue'
+import DadosLegiveis from '@/components/DadosLegiveis.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import { dataHora } from '@/formatos'
 import { listarEventos } from '@/services/auditoria'
@@ -102,6 +104,30 @@ onMounted(async () => {
 })
 watch(filtro, () => buscar())
 
+// Os dados de cada registro: em palavras, para o dono, ou como a API guardou, para quem vai
+// conferir campo a campo. A escolha é deste navegador.
+type Formato = 'legivel' | 'tecnico'
+const CHAVE_DO_FORMATO = 'campocerto.auditoria-formato'
+function lerFormato(): Formato {
+  try {
+    return localStorage.getItem(CHAVE_DO_FORMATO) === 'tecnico' ? 'tecnico' : 'legivel'
+  } catch {
+    return 'legivel'
+  }
+}
+const formato = ref<Formato>(lerFormato())
+watch(formato, (escolhido) => {
+  try {
+    localStorage.setItem(CHAVE_DO_FORMATO, escolhido)
+  } catch {
+    // Sem armazenamento, vale só até recarregar.
+  }
+})
+const FORMATOS: { valor: Formato; rotulo: string }[] = [
+  { valor: 'legivel', rotulo: 'Fácil de ler' },
+  { valor: 'tecnico', rotulo: 'Técnico' },
+]
+
 const quem = (evento: EventoDeAuditoria) =>
   evento.feito_por ?? (evento.origem === 'terminal' ? 'Comando no servidor' : 'Sem login')
 /** Cada dado numa linha; o que for lista ou objeto, em JSON curto. */
@@ -193,13 +219,37 @@ const valor = (dado: unknown) =>
   />
 
   <template v-else-if="carregado">
-    <p
-      class="mb-2 text-sm text-stone-600"
-      role="status"
-      data-teste="contagem"
-    >
-      {{ total === 1 ? '1 registro' : `${total} registros` }}
-    </p>
+    <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <p
+        class="text-sm text-stone-600"
+        role="status"
+        data-teste="contagem"
+      >
+        {{ total === 1 ? '1 registro' : `${total} registros` }}
+      </p>
+      <div
+        class="flex items-center gap-2 text-sm text-stone-600"
+        role="radiogroup"
+        aria-label="Como mostrar o que foi registrado"
+      >
+        <span class="hidden sm:inline">Mostrar os dados:</span>
+        <div class="inline-flex rounded-lg bg-stone-100 p-0.5">
+          <button
+            v-for="opcao in FORMATOS"
+            :key="opcao.valor"
+            type="button"
+            role="radio"
+            class="rounded-md px-3 py-1 font-medium transition-colors"
+            :class="formato === opcao.valor ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600 hover:text-stone-900'"
+            :aria-checked="formato === opcao.valor"
+            :data-teste="`formato-${opcao.valor}`"
+            @click="formato = opcao.valor"
+          >
+            {{ opcao.rotulo }}
+          </button>
+        </div>
+      </div>
+    </div>
     <ol class="cartao animate-surgir divide-y divide-stone-100">
       <li
         v-for="evento in eventos"
@@ -237,7 +287,18 @@ const valor = (dado: unknown) =>
           <summary class="cursor-pointer text-campo-700">
             Ver o que foi registrado
           </summary>
-          <dl class="mt-2 grid gap-x-4 gap-y-1 rounded-lg bg-stone-50 p-3 sm:grid-cols-[max-content_1fr]">
+          <div
+            v-if="formato === 'legivel'"
+            class="mt-2 rounded-lg bg-stone-50 p-3"
+            data-teste="dados-legiveis"
+          >
+            <DadosLegiveis :linhas="dadosLegiveis(evento.dados)" />
+          </div>
+          <dl
+            v-else
+            class="mt-2 grid gap-x-4 gap-y-1 rounded-lg bg-stone-50 p-3 sm:grid-cols-[max-content_1fr]"
+            data-teste="dados-tecnicos"
+          >
             <template
               v-for="(dado, chave) in evento.dados"
               :key="chave"
