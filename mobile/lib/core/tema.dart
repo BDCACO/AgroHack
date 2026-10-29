@@ -53,9 +53,15 @@ ThemeData temaDoApp({bool solForte = false}) {
     primary: Cores.campo600,
     secondary: Cores.terra700,
   );
+  final fundo = solForte ? Colors.white : Cores.campo50;
   return ThemeData(
     colorScheme: esquema,
-    scaffoldBackgroundColor: solForte ? Colors.white : Cores.campo50,
+    scaffoldBackgroundColor: fundo,
+    // O pacote `animations` (PageTransitionSwitcher/SharedAxisTransition, usado
+    // na troca de aba) pinta o fundo da transição com canvasColor quando
+    // ninguém passa `fillColor` — sem isso, ele cai no cinza-rosado padrão do
+    // Material 3 em vez do fundo da marca.
+    canvasColor: fundo,
     extensions: [ModoCampo(solForte: solForte)],
     // Cabeçalho com cor sólida da marca, não só texto escuro num fundo claro.
     // O mesmo verde-900 do header/barra-inferior do site (lá, campo-600 é só

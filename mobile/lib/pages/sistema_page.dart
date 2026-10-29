@@ -94,7 +94,11 @@ class _ModoSolForte extends StatelessWidget {
       valueListenable: notificador,
       builder: (context, ligado, _) => Card(
         child: SwitchListTile(
-          secondary: const Icon(Icons.wb_sunny_outlined),
+          secondary: CircleAvatar(
+            backgroundColor: fundoDoCirculo(context, Cores.campo600),
+            foregroundColor: corDoIcone(context, Cores.campo600),
+            child: const Icon(Icons.wb_sunny_outlined),
+          ),
           title: const Text('Modo sol forte'),
           subtitle: const Text(
             'Bordas sólidas e mais contraste, pra enxergar a tela no sol do '
