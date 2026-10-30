@@ -60,6 +60,8 @@ function ureia(): InsumoDetalhe {
         quantidade: 70,
         justificativa: 'Pedir hoje 70 kg.',
         custo_estimado: null,
+        embalagens: null,
+        entregar_ate: '2000-01-08',
       },
       limitacoes: [],
     },

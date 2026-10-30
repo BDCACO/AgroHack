@@ -33,6 +33,8 @@ function item(insumoParcial: Partial<Insumo>, reposicaoParcial: Partial<Reposica
     quantidade: 300,
     justificativa: '',
     custo_estimado: null,
+    embalagens: null,
+    entregar_ate: '2026-11-05',
     ...reposicaoParcial,
   }
 }
@@ -51,25 +53,34 @@ describe('mensagemDeCotacao', () => {
     expect(mensagem).not.toContain('Qualquer marca')
   })
 
-  it('com embalagem, diz quantas fecham a quantidade pedida', () => {
-    const mensagem = mensagemDeCotacao([item({ embalagem: 50 })], HOJE)
-
-    expect(mensagem).toContain('(6 embalagens de 50 kg)')
-  })
-
-  it('usa a cobertura de dias como data limite de entrega', () => {
-    const mensagem = mensagemDeCotacao([item({})], HOJE)
-
-    // cobertura_dias: 7, a partir de 29/10/2026 cai em 05/11/2026.
-    expect(mensagem).toContain('Entregar até 05/11/2026');
-  })
-
-  it('sem cobertura calculável, não inventa uma data de entrega', () => {
+  it('com embalagem, usa o número de embalagens que a API calculou', () => {
+    // 1,1 L em frascos de 0,1 L: a divisão no navegador daria 12 (11,000000000000002).
     const mensagem = mensagemDeCotacao(
-      [item({ analise: { consumo_diario: null, cobertura_dias: null, alertas: [], reposicao: null, limitacoes: [] } })],
+      [item({ unidade: 'L', embalagem: 0.1 }, { quantidade: 1.1, embalagens: 11 })],
       HOJE,
     )
 
-    expect(mensagem).not.toContain('Entregar até')
+    expect(mensagem).toContain('1,1 L (11 embalagens de 0,1 L)')
+  })
+
+  it('uma embalagem só vai no singular', () => {
+    const mensagem = mensagemDeCotacao([item({ embalagem: 300 }, { embalagens: 1 })], HOJE)
+
+    expect(mensagem).toContain('(1 embalagem de 300 kg)')
+  })
+
+  it('o prazo de entrega é o da API, não a cobertura somada ao relógio do navegador', () => {
+    // Cobertura de 6,5 dias às 23h: somada ao relógio cairia em 05/11; a API diz 04/11.
+    const mensagem = mensagemDeCotacao(
+      [
+        item(
+          { analise: { consumo_diario: 1, cobertura_dias: 6.5, alertas: [], reposicao: null, limitacoes: [] } },
+          { entregar_ate: '2026-11-04' },
+        ),
+      ],
+      new Date('2026-10-29T23:00:00'),
+    )
+
+    expect(mensagem).toContain('Entregar até 04/11/2026')
   })
 })
