@@ -8,7 +8,7 @@ from datetime import date
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, String, Uuid, false
+from sqlalchemy import CheckConstraint, ForeignKey, Index, Numeric, String, Text, Uuid, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -61,6 +61,9 @@ class Insumo(Base):
     # Dias mínimos entre aplicar e colher ou abater (a bula do defensivo). 0 = não tem;
     # vazio = não informada, e a carência do talhão diz que não a considerou.
     carencia_dias: Mapped[int | None]
+    # Marcas ou especificações aceitas na compra (texto livre, "Yara, Heringer"): vai na
+    # mensagem de cotação, para a revenda saber o que pode e o que não pode mandar.
+    marcas_preferenciais: Mapped[str | None] = mapped_column(Text)
     # O código de barras de fábrica da embalagem: o app ensina o vínculo na primeira
     # leitura que não reconhece, e reconhece sozinho da próxima vez.
     codigo_de_barras: Mapped[str | None] = mapped_column(String(64), unique=True)

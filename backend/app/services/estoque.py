@@ -44,6 +44,7 @@ _CAMPOS_OPCIONAIS_NOVOS = {
     "pedido_minimo",
     "carencia_dias",
     "categoria_id",
+    "marcas_preferenciais",
     "codigo_de_barras",
 }
 # O que faz dois envios com o mesmo uuid serem o mesmo lançamento. Com as casas que o banco
@@ -553,6 +554,7 @@ def _cadastro(insumo: Insumo) -> dict[str, object]:
         "pedido_minimo": insumo.pedido_minimo,
         "carencia_dias": insumo.carencia_dias,
         "categoria_id": insumo.categoria_id,
+        "marcas_preferenciais": insumo.marcas_preferenciais,
         "codigo_de_barras": insumo.codigo_de_barras,
     }
 
@@ -659,6 +661,7 @@ def _resposta(
         codigo_de_barras=insumo.codigo_de_barras,
         categoria_id=insumo.categoria_id,
         categoria=None if insumo.categoria is None else insumo.categoria.nome,
+        marcas_preferenciais=insumo.marcas_preferenciais,
         estoque_atual=estoque,
         custo_medio=None if custo_medio is None else round(custo_medio, 4),
         # Estoque negativo é registro faltando, não dívida: vale zero.

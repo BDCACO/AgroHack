@@ -174,6 +174,7 @@ def test_insumo_removido_guarda_o_cadastro_as_movimentacoes_e_os_pedidos(
         "pedido_minimo": None,
         "carencia_dias": None,
         "categoria_id": None,
+        "marcas_preferenciais": None,
         "codigo_de_barras": None,
         "categoria": None,
         "demonstracao": False,

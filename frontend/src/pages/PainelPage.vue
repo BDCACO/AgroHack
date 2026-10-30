@@ -8,6 +8,7 @@ import NumeroRolante from '@/components/NumeroRolante.vue'
 import EstadoVazio from '@/components/EstadoVazio.vue'
 import IconeSvg, { type NomeIcone } from '@/components/IconeSvg.vue'
 import BotaoDeDownload from '@/components/BotaoDeDownload.vue'
+import { mensagemDeCotacao } from '@/cotacao'
 import { reais } from '@/formatos'
 import { baixarRelatorio } from '@/services/estoque'
 import { useEstoqueStore } from '@/stores/estoque'
@@ -133,22 +134,9 @@ const cartoesEmReais = computed(() => {
 const dataBr = (data: string) => data.split('-').reverse().join('/')
 const quando = (r: Reposicao) => (r.pedir_hoje ? 'pedir hoje' : `pedir até ${dataBr(r.pedir_em)}`)
 
-// O pedido à revenda costuma sair pelo WhatsApp: a lista vai pronta, em texto. O que é
-// para pedir já vem separado do que ainda dá para esperar — a quantidade destes vale
-// para a data indicada, não para hoje.
-const listaDeCompras = computed(() => {
-  const item = (r: (typeof reposicoes.value)[number]) =>
-    `- ${r.insumo.nome}: ${r.quantidade.toLocaleString('pt-BR')} ${r.insumo.unidade}`
-  const agora = reposicoes.value.filter((r) => r.pedir_hoje)
-  const depois = reposicoes.value.filter((r) => !r.pedir_hoje)
-  return [
-    `Lista de compras (CampoCerto, ${hoje.toLocaleDateString('pt-BR')})`,
-    ...(agora.length ? ['', 'Pedir agora:', ...agora.map(item)] : []),
-    ...(depois.length
-      ? ['', 'Próximos pedidos:', ...depois.map((r) => `${item(r)} até ${dataBr(r.pedir_em)}`)]
-      : []),
-  ].join('\n')
-})
+// O pedido à revenda costuma sair pelo WhatsApp: a lista vai pronta, em texto, com a
+// marca de preferência de cada insumo e até quando o estoque aguenta.
+const listaDeCompras = computed(() => mensagemDeCotacao(reposicoes.value, hoje))
 const linkWhatsApp = computed(() => `https://wa.me/?text=${encodeURIComponent(listaDeCompras.value)}`)
 // A área de transferência só existe em HTTPS ou localhost; fora disso, fica o WhatsApp.
 const podeCopiar = typeof navigator !== 'undefined' && Boolean(navigator.clipboard)
