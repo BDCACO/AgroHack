@@ -277,3 +277,37 @@ class InsumoDetalhe {
   historico; // um ponto por dia com movimentação, do mais antigo
   final List<Movimentacao> movimentacoes; // as mais recentes primeiro
 }
+
+class Usuario {
+  const Usuario({
+    required this.id,
+    required this.nome,
+    required this.login,
+    required this.papel,
+  });
+
+  factory Usuario.fromJson(Json json) => Usuario(
+    id: json['id'] as int,
+    nome: json['nome'] as String,
+    login: json['login'] as String,
+    papel: json['papel'] as String,
+  );
+
+  final int id;
+  final String nome;
+  final String login;
+  final String papel; // "dono" ou "funcionario"
+}
+
+/// O que `POST /auth/entrar` devolve: o token da sessão e quem entrou.
+class Entrada {
+  const Entrada({required this.token, required this.usuario});
+
+  factory Entrada.fromJson(Json json) => Entrada(
+    token: json['token'] as String,
+    usuario: Usuario.fromJson(json['usuario'] as Json),
+  );
+
+  final String token;
+  final Usuario usuario;
+}

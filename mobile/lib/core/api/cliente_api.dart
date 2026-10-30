@@ -46,27 +46,45 @@ class ClienteApi {
 
   static const _timeout = Duration(seconds: 10);
 
-  Future<Object?> get(String caminho, {Set<int> aceitos = const {200}}) =>
-      _enviar(() => _client.get(_uri(caminho)), aceitos);
+  // O portão de login guarda o token aqui e lê quando a API diz que a sessão
+  // não vale mais, pra voltar à tela de entrar.
+  String? token;
+  void Function()? aoPerderSessao;
 
-  Future<Object?> post(String caminho, Object corpo) => _enviar(
-    () => _client.post(_uri(caminho), headers: _json, body: jsonEncode(corpo)),
-    const {200, 201},
+  Future<Object?> get(String caminho, {Set<int> aceitos = const {200}}) =>
+      _enviar(caminho, () => _client.get(_uri(caminho), headers: _cabecalhos()), aceitos);
+
+  Future<Object?> post(
+    String caminho, [
+    Object corpo = const {},
+    Set<int> aceitos = const {200, 201},
+  ]) => _enviar(
+    caminho,
+    () => _client.post(_uri(caminho), headers: _cabecalhos(), body: jsonEncode(corpo)),
+    aceitos,
   );
 
   Future<Object?> put(String caminho, Object corpo) => _enviar(
-    () => _client.put(_uri(caminho), headers: _json, body: jsonEncode(corpo)),
+    caminho,
+    () => _client.put(_uri(caminho), headers: _cabecalhos(), body: jsonEncode(corpo)),
     const {200},
   );
 
-  Future<void> delete(String caminho) =>
-      _enviar(() => _client.delete(_uri(caminho)), const {200, 204});
+  Future<void> delete(String caminho) => _enviar(
+    caminho,
+    () => _client.delete(_uri(caminho), headers: _cabecalhos()),
+    const {200, 204},
+  );
 
-  static const _json = {'Content-Type': 'application/json'};
+  Map<String, String> _cabecalhos() => {
+    'Content-Type': 'application/json',
+    if (token != null) 'Authorization': 'Bearer $token',
+  };
 
   Uri _uri(String caminho) => Uri.parse('$_baseUrl$caminho');
 
   Future<Object?> _enviar(
+    String caminho,
     Future<http.Response> Function() chamada,
     Set<int> aceitos,
   ) async {
@@ -83,6 +101,10 @@ class ClienteApi {
 
     final corpo = _decodificar(resposta);
     if (!aceitos.contains(resposta.statusCode)) {
+      // Sessão perdida: não no próprio login, que já devolve a mensagem certa.
+      if (resposta.statusCode == 401 && caminho != '/auth/entrar') {
+        aoPerderSessao?.call();
+      }
       throw ApiError(resposta.statusCode, corpo);
     }
     return corpo;
