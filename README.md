@@ -1,17 +1,66 @@
+<div align="center">
+
+<img src="frontend/public/favicon.svg" alt="Logo do CampoCerto" width="96">
+
 # CampoCerto
 
-Plataforma de gestão inteligente de insumos rurais, feita para o **AGROHACK 2026/2, IFRO Campus Ariquemes**.
+**Gestão inteligente de insumos rurais: o estoque da fazenda dizendo o que fazer hoje.**
+
+Feito para o **AGROHACK 2026/2, IFRO Campus Ariquemes**.
+
+![Vue 3](https://img.shields.io/badge/Vue_3-TypeScript-42b883?logo=vuedotjs&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-Python_3.14-009688?logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-336791?logo=postgresql&logoColor=white)
+![Flutter](https://img.shields.io/badge/Flutter-Android_e_iOS-02569B?logo=flutter&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+
+<img src="docs/imagens/painel.png" alt="Painel do CampoCerto com os alertas do dia e quanto tempo o estoque de cada insumo dura" width="900">
+
+</div>
 
 Transforma registros de compras, retiradas e estoque em informação para decisão: estoque abaixo
 do mínimo, risco de falta, vencimento próximo, excesso, baixa movimentação, consumo incomum e
 reposição estimada, sempre com justificativa e limitações explícitas.
 
-> **Estado atual:** cadastro de insumos e lançamento de entradas e saídas pela tela ou por
-> planilha do Excel ou CSV (com planilha modelo formatada e prévia antes de gravar); o Painel
-> mostra os alertas do motor de análise com a justificativa de cada um, a reposição estimada
-> (com lista de compras para o WhatsApp) e as limitações. Cada insumo tem uma página com o
-> gráfico do estoque e a projeção de quando acaba. Tudo sai num relatório em Excel, que também
-> é a cópia de segurança das movimentações.
+## O que ele faz
+
+- **Painel do dia:** os alertas separados em urgentes, atenção e observar, cada um com a
+  justificativa; quanto tempo o estoque de cada insumo dura e se acaba antes da entrega.
+- **Página de cada insumo:** o gráfico do estoque ao longo do tempo, com a projeção de quando
+  acaba e a reposição sugerida.
+- **Compras:** sugestão do que pedir, separada por revenda, com lista de compras para o
+  WhatsApp, e o acompanhamento dos pedidos até chegarem.
+- **Lançamento rápido:** entradas e saídas pela tela ou por planilha do Excel ou CSV (com
+  planilha modelo e prévia antes de gravar); no app, pelo leitor de código de barras.
+- **Talhões e calendário de safra:** onde cada insumo foi aplicado, e um motor de análise que
+  não confunde a entressafra com o ritmo da safra.
+- **Relatórios** em Excel e PDF, que também servem de cópia de segurança.
+- **Login com papéis** (dono e funcionário), trilha de auditoria e tema escuro.
+- **App para celular** em Flutter, usando a mesma API.
+
+## Telas
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/imagens/insumo.png" alt="Página de um insumo com o gráfico do estoque e a projeção"><br><sub><b>Insumo:</b> o estoque ao longo do tempo e para onde ele vai.</sub></td>
+    <td width="50%"><img src="docs/imagens/compras.png" alt="Tela de compras com a sugestão por revenda e os pedidos a caminho"><br><sub><b>Compras:</b> o que pedir hoje e os pedidos a caminho.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/imagens/movimentacoes.png" alt="Lançamento e lista de movimentações"><br><sub><b>Movimentações:</b> lançar uma saída leva segundos.</sub></td>
+    <td><img src="docs/imagens/painel-escuro.png" alt="Painel no tema escuro"><br><sub><b>Tema escuro</b>, escolhido em Configurações.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/imagens/configuracoes.png" alt="Configurações com aparência, calendário de safra, perfil e situação do sistema"><br><sub><b>Configurações:</b> aparência, calendário de safra, perfil e a situação do sistema.</sub></td>
+    <td><img src="docs/imagens/entrar.png" alt="Tela de login"><br><sub><b>Entrar:</b> cada pessoa com o seu login e o seu papel.</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/imagens/celular-painel.png" alt="Painel no navegador do celular, com a barra de abas embaixo" width="280"><br>
+  <sub>No celular, o site vira um app com abas embaixo.</sub>
+</p>
+
+> Os prints usam a fazenda **fictícia** do `make demo` (veja [Demonstração](#demonstração)).
 
 ## Stack
 
@@ -57,8 +106,8 @@ papéis e tempos-limite".
 | http://localhost:8000/api/v1/health | Liveness da API |
 | http://localhost:8000/api/v1/ready | API + banco |
 
-A página inicial mostra a situação da API e do banco: é a verificação visual de que as três
-partes estão conectadas.
+Em **Configurações**, o cartão Sistema mostra a situação da API e do banco: é a verificação
+visual de que as três partes estão conectadas.
 
 Sem `make`? Os alvos são atalhos de `docker compose`: `docker compose up --build`.
 
@@ -75,8 +124,7 @@ make up
 make usuario-dono LOGIN=maria NOME="Dona Maria"   # a senha é pedida no terminal
 ```
 
-O dono entra pelo site e, por enquanto, cadastra os funcionários em `POST /api/v1/usuarios`
-(pelo `/docs`, botão Authorize, até a tela de Usuários existir). Quem pode o quê está em
+O dono entra pelo site e cadastra os funcionários na tela **Usuários**. Quem pode o quê está em
 [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md), "Autenticação e papéis".
 
 ## Demonstração
