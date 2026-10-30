@@ -45,7 +45,7 @@ describe('navegação', () => {
       'Importar dados',
       'Usuários',
       'Auditoria',
-      'Sistema',
+      'Configurações',
     ])
   })
 
@@ -55,7 +55,7 @@ describe('navegação', () => {
     ['/movimentacoes', 'Movimentações'],
     ['/talhoes', 'Talhões'],
     ['/importar', 'Importar dados'],
-    ['/sistema', 'Sistema'],
+    ['/configuracoes', 'Configurações'],
     ['/nao-existe', 'Página não encontrada'],
   ])('%s renderiza a página "%s"', async (caminho, titulo) => {
     const { wrapper } = await montarEm(caminho)
@@ -105,6 +105,9 @@ describe('navegação', () => {
   it('a barra do topo diz onde se está, com a volta para a seção numa página dentro dela', async () => {
     const naSecao = await montarEm('/insumos')
     expect(naSecao.wrapper.find('[data-teste="barra-do-topo"] nav').text()).toBe('Insumos')
+    // O título fica só na barra (e no cabeçalho do celular); o h1 da página, para o leitor de tela.
+    expect(naSecao.wrapper.find('main h1').classes()).toContain('sr-only')
+    expect(naSecao.wrapper.find('[data-teste="titulo-celular"]').text()).toBe('Insumos')
 
     setActivePinia(createPinia())
     const dentro = await montarEm('/compras/fornecedores')
@@ -126,13 +129,13 @@ describe('navegação', () => {
   })
 
   it('o "Mais" do celular abre as outras telas, e acende quando se está numa delas', async () => {
-    const { wrapper } = await montarEm('/sistema', { attachTo: document.body })
+    const { wrapper } = await montarEm('/configuracoes', { attachTo: document.body })
     expect(wrapper.find('[data-teste="aba-mais"]').classes()).toContain('text-white')
 
     await wrapper.find('[data-teste="aba-mais"]').trigger('click')
     const outras = [...document.querySelectorAll('[data-teste="menu-mais"] a')].map((a) => a.textContent?.trim())
     expect(outras).toEqual(itensDeMenu.filter((item) => !item.barra && !item.comLogin).map((item) => item.rotulo))
-    expect(outras).toContain('Sistema')
+    expect(outras).toContain('Configurações')
     wrapper.unmount()
   })
 

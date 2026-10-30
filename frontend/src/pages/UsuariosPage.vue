@@ -146,7 +146,6 @@ const bloqueado = (usuario: UsuarioCompleto) =>
 <template>
   <CabecalhoDePagina
     titulo="Usuários"
-    descricao="Quem entra no CampoCerto. Cada funcionário tem o próprio login, e as movimentações dizem quem lançou."
   >
     <template #acoes>
       <button
@@ -228,7 +227,7 @@ const bloqueado = (usuario: UsuarioCompleto) =>
       v-if="!editando"
       class="text-xs text-stone-500 sm:col-span-2 lg:col-span-4"
     >
-      Passe o login e a senha inicial para a pessoa. Ela troca a senha depois, em Minha conta.
+      Passe o login e a senha inicial para a pessoa. Ela troca a senha depois, em Configurações.
     </p>
     <p
       v-if="erroDoForm"

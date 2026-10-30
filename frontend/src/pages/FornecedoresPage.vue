@@ -82,7 +82,6 @@ function whatsapp(telefone: string): string | null {
 <template>
   <CabecalhoDePagina
     titulo="Fornecedores"
-    descricao="As revendas de onde vêm os insumos. O preço pago a cada uma fica guardado, para comparar na próxima compra."
   >
     <template #acoes>
       <RouterLink

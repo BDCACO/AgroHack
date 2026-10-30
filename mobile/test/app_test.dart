@@ -54,6 +54,52 @@ void main() {
     expect(find.text('Urgente'), findsOneWidget);
   });
 
+  testWidgets('Painel sem insumo nenhum pede para cadastrar pelo site', (
+    tester,
+  ) async {
+    final client = MockClient((pedido) async {
+      final corpo = switch (pedido.url.path) {
+        '/v1/insumos' => <Object>[],
+        '/v1/ready' => {'status': 'pronto', 'database': 'ok'},
+        _ => null,
+      };
+      return corpo == null
+          ? http.Response('', 404)
+          : http.Response.bytes(utf8.encode(jsonEncode(corpo)), 200);
+    });
+    await tester.pumpWidget(
+      CampoCertoApp(
+        api: ClienteApi(client: client, baseUrl: 'http://api/v1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nenhum insumo cadastrado ainda'), findsOneWidget);
+  });
+
+  testWidgets('Painel com insumos e sem alertas mostra "Tudo em dia"', (
+    tester,
+  ) async {
+    final client = MockClient((pedido) async {
+      final corpo = switch (pedido.url.path) {
+        '/v1/insumos' => [insumoSemAlerta],
+        '/v1/ready' => {'status': 'pronto', 'database': 'ok'},
+        _ => null,
+      };
+      return corpo == null
+          ? http.Response('', 404)
+          : http.Response.bytes(utf8.encode(jsonEncode(corpo)), 200);
+    });
+    await tester.pumpWidget(
+      CampoCertoApp(
+        api: ClienteApi(client: client, baseUrl: 'http://api/v1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tudo em dia'), findsOneWidget);
+  });
+
   testWidgets('Insumos mostra o estoque com separador de milhar', (
     tester,
   ) async {
@@ -98,6 +144,25 @@ void main() {
 
     expect(find.text('No ar'), findsOneWidget);
     expect(find.text('Conectado'), findsOneWidget);
+  });
+
+  testWidgets('ligar o modo sol forte troca o fundo da tela pra branco', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app());
+    await tester.pumpAndSettle();
+    await _irPara(tester, 'Sistema');
+
+    Color? fundo() =>
+        Theme.of(tester.element(find.byType(Scaffold).first))
+            .scaffoldBackgroundColor;
+
+    expect(fundo(), isNot(Colors.white));
+
+    await tester.tap(find.widgetWithText(SwitchListTile, 'Modo sol forte'));
+    await tester.pumpAndSettle();
+
+    expect(fundo(), Colors.white);
   });
 
   testWidgets('atualizar com a API fora mantém os dados e avisa', (

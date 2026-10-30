@@ -128,18 +128,23 @@ class InsumoCadastro {
     required this.unidade,
     this.estoqueMinimo,
     this.prazoReposicaoDias,
+    this.codigoDeBarras,
   });
 
   final String nome;
   final String unidade;
   final double? estoqueMinimo;
   final int? prazoReposicaoDias;
+  final String? codigoDeBarras;
 
   Json toJson() => {
     'nome': nome,
     'unidade': unidade,
     'estoque_minimo': estoqueMinimo,
     'prazo_reposicao_dias': prazoReposicaoDias,
+    // Omitido quando nulo: um PUT sem o campo mantém o código já vinculado
+    // (a API só o substitui quando a chave vem no corpo).
+    if (codigoDeBarras != null) 'codigo_de_barras': codigoDeBarras,
   };
 }
 
@@ -150,6 +155,7 @@ class Insumo extends InsumoCadastro {
     required super.unidade,
     super.estoqueMinimo,
     super.prazoReposicaoDias,
+    super.codigoDeBarras,
     required this.demonstracao,
     required this.estoqueAtual,
     required this.analise,
@@ -161,6 +167,7 @@ class Insumo extends InsumoCadastro {
     unidade: json['unidade'] as String,
     estoqueMinimo: _numeroOuNulo(json['estoque_minimo']),
     prazoReposicaoDias: json['prazo_reposicao_dias'] as int?,
+    codigoDeBarras: json['codigo_de_barras'] as String?,
     demonstracao:
         json['demonstracao'] as bool, // gerado por `make demo`: não é dado real
     estoqueAtual: _numero(json['estoque_atual']),

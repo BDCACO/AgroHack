@@ -335,6 +335,14 @@ Com dezenas de insumos e anos de movimentações, a lista inteira deixa de servi
   sabem: compras e perdas sem preço, consumo sem valor, o custo médio de hoje (e não o da época),
   e o que os filtros de talhão e de fornecedor deixam de fora (compra e perda não são de talhão;
   consumo e perda não são de fornecedor).
+- **Em arquivo** (`GET /relatorios/periodo.xlsx` e `.pdf`, `app/services/relatorio_por_periodo_em_arquivo.py`):
+  o mesmo relatório, com os mesmos parâmetros e as mesmas recusas (a validação é uma dependência
+  dos três), para baixar da tela. O Excel tem o resumo com o recorte pelo nome, cada período
+  (com o gráfico de barras até 62 períodos), consumo por insumo, por categoria e por fornecedor,
+  uma aba cada; o PDF A4, os totais, o gráfico nas cores da tela e as tabelas. O PDF sai do
+  `fpdf2`, só Python: sem programa do sistema (wkhtmltopdf, navegador), a imagem continua a slim.
+  A fonte de base do PDF não tem emoji nem outras escritas: num nome digitado, viram "?", em vez
+  de derrubar o arquivo.
 - **Puro e sem N+1.** As somas moram no domínio (`app/domain/relatorio_por_periodo.py`), testadas
   com listas. O serviço faz três consultas qualquer que seja o período ou o número de insumos (as
   movimentações do período, com o fornecedor junto; os insumos com a categoria; as compras com
@@ -538,7 +546,7 @@ dois papéis: o **dono** e o **funcionário** (o peão que lança no campo). Dec
 |---|---|---|
 | Pública | qualquer um | `GET /health`, `GET /ready`, `/docs` e `/openapi.json` (fora de produção), `POST /auth/entrar` |
 | Sessão | qualquer usuário logado, sobre si | `POST /auth/sair`, `GET /auth/eu`, `PUT /auth/senha`, `GET /auth/sessoes`, `DELETE /auth/sessoes/{id}`, `POST /auth/sessoes/encerrar-outras` (exigem login mesmo desligada) |
-| Funcionário | funcionário e dono | `GET /insumos`, `GET /insumos/{id}`, `GET /movimentacoes`, `GET /talhoes`, `GET /talhoes/{id}`, `GET /resumo`, `GET /categorias`, `GET /relatorios/periodo`, `GET /fornecedores`, `GET /fornecedores/{id}`, `GET /pedidos`, `GET /pedidos/{id}`, `GET /pedidos/sugestao`; `POST /movimentacoes`, `POST /movimentacoes/lote`, `POST /insumos/{id}/inventario`, `POST /pedidos/{id}/receber` |
+| Funcionário | funcionário e dono | `GET /insumos`, `GET /insumos/{id}`, `GET /movimentacoes`, `GET /talhoes`, `GET /talhoes/{id}`, `GET /resumo`, `GET /categorias`, `GET /relatorios/periodo` (e `.xlsx`, `.pdf`), `GET /fornecedores`, `GET /fornecedores/{id}`, `GET /pedidos`, `GET /pedidos/{id}`, `GET /pedidos/sugestao`; `POST /movimentacoes`, `POST /movimentacoes/lote`, `POST /insumos/{id}/inventario`, `POST /pedidos/{id}/receber` |
 | Dono | só o dono | `POST`/`PUT`/`DELETE /insumos`, `DELETE /movimentacoes/{id}`, `POST`/`PUT`/`DELETE /talhoes`, `POST`/`PUT`/`DELETE /categorias`, `POST`/`PUT`/`DELETE /fornecedores`, `POST /pedidos`, `PUT /pedidos/{id}`, `POST /pedidos/{id}/cancelar`, `POST /importacoes`, `GET /importacoes/modelo.xlsx`, `GET /relatorio.xlsx`, `POST /analises` |
 | Gestão | só o dono, sempre com login | `GET /usuarios`, `POST /usuarios`, `PUT /usuarios/{id}`, `PUT /usuarios/{id}/senha`, `GET /usuarios/{id}/sessoes`, `DELETE /usuarios/{id}/sessoes/{sessao_id}`, `POST /usuarios/{id}/sessoes/encerrar`, `GET /auditoria` |
 
@@ -897,6 +905,7 @@ segurança, registro do pedido, limite de escritas por IP, limite do corpo. Deci
 | `GET /api/v1/health` | Liveness: o processo está no ar. Não toca o banco |
 | `POST /api/v1/auth/entrar` | `{login, senha, dispositivo?}` → `{token, expira_em, usuario: {id, nome, login, papel}}`. O token vem uma vez só e vale 30 dias sem uso, renovados com o uso até 90 dias desde o login (o `expira_em` do login é o primeiro prazo). Recusa sempre com o mesmo `401`; tentativas demais do mesmo IP, `429` com `Retry-After` |
 | `POST /api/v1/auth/sair` · `GET /api/v1/auth/eu` | Encerra a sessão deste token (`204`) / quem está logado |
+| `PUT /api/v1/auth/eu` | `{nome?, login?, senha_atual?}`: o próprio nome e o próprio login (o que não vier fica). O login novo pede `senha_atual`, contada como tentativa de login (sem ela, `400`; errada, `400`); login repetido é `409`. As sessões continuam; entra na trilha como `usuario.alterado`. O papel não muda por aqui |
 | `PUT /api/v1/auth/senha` | `{senha_atual, senha_nova}` (mínimo 8): troca a própria senha e encerra as sessões dos outros aparelhos (`204`); senha atual errada é `400` |
 | `GET /api/v1/auth/sessoes` | As sessões ativas do próprio usuário, a usada por último primeiro: `id`, `dispositivo`, `ip` (do login), `criada_em`, `ultimo_uso_em` (de 5 em 5 minutos), `expira_em` e `atual` (a deste pedido). Nunca o token |
 | `DELETE /api/v1/auth/sessoes/{id}` | Encerra uma sessão sua, e só ela (`204`); a de outro usuário, a encerrada e a vencida são `404`, como a que não existe. A deste pedido é o mesmo que sair |
@@ -914,6 +923,7 @@ segurança, registro do pedido, limite de escritas por IP, limite do corpo. Deci
 | `GET /api/v1/categorias` · `POST /api/v1/categorias` | As categorias pelo nome, com quantos `insumos` cada uma tem / cadastra (`nome`). `409` para nome repetido |
 | `PUT /api/v1/categorias/{id}` · `DELETE /api/v1/categorias/{id}` | Renomeia / remove a categoria sem insumo; com algum, `409` dizendo quantos |
 | `GET /api/v1/relatorios/periodo` | Por `mes`, `semana` ou `dia`, de `desde` a `ate` (padrão: os últimos 12 meses), com filtros `categoria_id`, `insumo_id`, `talhao_id` e `fornecedor_id`: cada período (zerado se vazio) com o consumo por insumo, o gasto, as perdas e os totais por categoria e por fornecedor; o `total` e as `limitacoes`. `422` para período invertido, mais de 400 períodos ou data fora de 01/01/1900 a 31/12/2999 (nas pontas do ano 1 e do 9999, o mês, a semana ou o dia seguinte não existem) |
+| `GET /api/v1/relatorios/periodo.xlsx` · `.pdf` | O mesmo relatório, nos mesmos parâmetros, em Excel (uma aba por recorte, com o gráfico) ou em PDF A4 para imprimir. Do funcionário, como a tela |
 | `DELETE /api/v1/insumos/{id}` | Remove o insumo cadastrado por engano, com as movimentações dele. `409` se ele foi aplicado em algum talhão: a rastreabilidade e a carência não somem com ele (remova antes as aplicações) |
 | `GET /api/v1/movimentacoes` | Entradas e saídas, as mais recentes primeiro (no mesmo dia, pelo id). Filtros opcionais: `insumo_id`, `tipo`, `motivo` (`nenhum` = retirada para uso ou compra), `categoria_id`, `talhao_id`, `fornecedor_id`, `usuario_id`, `desde`/`ate` e `busca`; página com `limite` e `deslocamento`, e o total no cabeçalho `X-Total-Count`; cada uma com `usuario_id` e `lancado_por` (quem lançou; `null` sem login), `fornecedor_id` e `comprado_de` (de quem foi a compra) e `item_do_pedido_id` (o pedido que ela recebeu) |
 | `POST /api/v1/movimentacoes` | Lança entrada ou saída; saída com `motivo: "descarte"` não conta como consumo; entrada pode trazer `valor_unitario` (R$ por unidade); a compra pode trazer `fornecedor_id`; a retirada para uso pode trazer `talhao_id` (onde foi aplicada). `422` para data futura, validade ou preço em saída, preço zero ou negativo, descarte em entrada, talhão fora da retirada para uso, fornecedor fora da compra, insumo, talhão ou fornecedor inexistente. Com `uuid` (opcional, gerado pelo app), reenviar devolve o já gravado com `200`; o mesmo uuid com outro conteúdo é `409` |
@@ -948,9 +958,9 @@ segurança, registro do pedido, limite de escritas por IP, limite do corpo. Deci
 |---|---|
 | `src/main.ts` | Instala Pinia e Router, importa o CSS |
 | `src/router/` | Rotas. Páginas além do Painel entram por `import()` dinâmico. **O menu é derivado das rotas** (`meta.menu`): registrar uma tela é um lugar só. `menu.barra` põe a tela na barra de baixo do celular; `soDono` e `comLogin` a escondem do funcionário e do site sem login |
-| `src/layouts/` | `AppLayout`: no desktop, menu lateral fixo, que recolhe aos ícones (o navegador lembra), e a barra do topo (o botão de recolher, a seção e a página em que se está, o link do código no GitHub, quem está logado, que leva a Minha conta, e "Sair"); no celular e no tablet, a barra de baixo (as telas do dia a dia e o "Mais", com as outras e "Minha conta") |
-| `src/pages/` | Uma página por rota: Painel (alertas, talhões em carência à parte, estoque em reais do `GET /resumo`, reposição com o custo e a lista de compras para o WhatsApp, limitações), Insumos (cadastro, com embalagem, pedido mínimo, carência e categoria; busca e filtros; o que está a caminho; Categorias, do dono), página do insumo (`/insumos/:id`: resumo com custo médio e valor em estoque, gráfico, alertas, movimentações, remover), Movimentações (entradas, com o preço e o fornecedor da compra, e saídas, com o talhão onde foi aplicado; filtros na API, com o total e "Carregar mais"), Compras (sugestão por revenda que vira pedido, pedidos por situação, receber a carga, cancelar), Fornecedores (`/compras/fornecedores`) e a página de cada um (preço médio pago por insumo, últimas compras), Talhões (cadastro, carência e custo por hectare), página do talhão (`/talhoes/:id`: carência, consumo por insumo, aplicações, recorte por período), Relatórios (gasto, consumo e perdas em reais por mês, semana ou dia; por categoria e por fornecedor), Importar dados (Excel ou CSV, com prévia), Usuários e Auditoria (do dono, com login), Minha conta (`/conta`: trocar a senha, aparelhos conectados), Sistema |
-| `src/components/` | Reutilizáveis (o `BotaoDeDownload` recebe a função que baixa): `BotaoDeDownload`, `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `ConfirmarRemocao`, `EstadoVazio`, `FormularioDePedido` e `ReceberPedido` (de Compras), `GerenciarCategorias`, `GraficoDeEstoque`, `GraficoPorPeriodo`, `IconeSvg`, `IndicadorDeStatus`, `JanelaModal`, `ListaDeSessoes` (Minha conta e Usuários), `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
+| `src/layouts/` | `AppLayout`: no desktop, menu lateral fixo, que recolhe aos ícones (o navegador lembra), e a barra do topo (o botão de recolher, a seção e a página em que se está, com o título dela, que dentro da página não aparece; o link do código no GitHub; quem está logado, que leva a Configurações; e "Sair"); no celular e no tablet, o cabeçalho com o título da página e a barra de baixo (as telas do dia a dia e o "Mais", com as outras) |
+| `src/pages/` | Uma página por rota: Painel (alertas, talhões em carência à parte, estoque em reais do `GET /resumo`, reposição com o custo e a lista de compras para o WhatsApp, limitações), Insumos (cadastro, com embalagem, pedido mínimo, carência e categoria; busca e filtros; o que está a caminho; Categorias, do dono), página do insumo (`/insumos/:id`: resumo com custo médio e valor em estoque, gráfico, alertas, movimentações, remover), Movimentações (entradas, com o preço e o fornecedor da compra, e saídas, com o talhão onde foi aplicado; filtros na API, com o total e "Carregar mais"), Compras (sugestão por revenda que vira pedido, pedidos por situação, receber a carga, cancelar), Fornecedores (`/compras/fornecedores`) e a página de cada um (preço médio pago por insumo, últimas compras), Talhões (cadastro, carência e custo por hectare), página do talhão (`/talhoes/:id`: carência, consumo por insumo, aplicações, recorte por período), Relatórios (gasto, consumo e perdas em reais por mês, semana ou dia; por categoria e por fornecedor), Importar dados (Excel ou CSV, com prévia), Usuários e Auditoria (do dono, com login), Configurações (o tema, se a API e o banco estão no ar, o próprio perfil, a senha e os aparelhos conectados; `/conta` e `/sistema` levam até lá) |
+| `src/components/` | Reutilizáveis (o `BotaoDeDownload` recebe a função que baixa): `BotaoDeDownload`, `CabecalhoDePagina`, `CartaoDeAlerta`, `CoberturaDoEstoque` (quanto tempo cada insumo dura), `ConfirmarRemocao`, `EstadoVazio`, `FormularioDePedido` e `ReceberPedido` (de Compras), `GerenciarCategorias`, `GraficoDeEstoque`, `GraficoPorPeriodo`, `IconeSvg`, `IndicadorDeStatus`, `JanelaModal`, `ListaDeSessoes` (Configurações e Usuários), `LogoCampoCerto`, `NumeroRolante`, `SeloDeGravidade` |
 | `src/stores/` | Pinia: estado compartilhado e as ações que chamam os serviços. `estoque` guarda insumos (com a análise) e movimentações, e recarrega tudo a cada alteração; `sessao` guarda quem está logado e decide `podeGerir`; `talhoes`, `fornecedores` e `categorias` servem às escolhas de várias telas |
 | `src/services/http.ts` | **Cliente HTTP único** (Axios). Põe o token em todo pedido, avisa o App no `401` e normaliza erro em `ApiError` |
 | `src/services/token.ts` | O token da sessão no `localStorage` (na memória, se o navegador não deixar guardar) |
@@ -991,9 +1001,12 @@ leva ao Painel.
   desativar (com confirmação; a recusa do último dono vem da API), reativar, definir senha nova
   (derruba as sessões dele e desfaz o bloqueio) e os aparelhos de cada um, com "Encerrar" e
   "Encerrar todos", sem desativá-lo.
-- **Minha conta** (todos): trocar a senha (a repetição se confere no navegador; os outros
-  aparelhos saem) e "Onde você está conectado", com o aparelho, o último uso em palavras e o IP;
-  este aparelho vem marcado e sem "Encerrar" (para ele, é "Sair").
+- **Configurações** (todos): o tema (claro, escuro ou igual ao aparelho) e se a API e o banco
+  estão no ar valem também sem login. Com login: o próprio nome e o login (`PUT /auth/eu`; o
+  campo da senha atual só aparece quando o login mudou), trocar a senha (a repetição se confere
+  no navegador; os outros aparelhos saem) e "Onde você está conectado", com o aparelho, o
+  último uso em palavras e o IP; este aparelho vem marcado e sem "Encerrar" (para ele, é
+  "Sair").
 - **Auditoria** (só do dono): a lista de `GET /auditoria`, com a ação em palavras, sobre o quê,
   quem (ou "Comando no servidor", ou "Sem login" no login recusado), o aparelho e o IP, e, aberto,
   o que foi guardado em `dados`. Filtros por grupo de ação, por pessoa e por período, uma página
@@ -1005,7 +1018,17 @@ negócio: mostra o que a API calculou.
 ### Design e movimento
 
 Visual calmo e terroso: verde de lavoura (`campo`, de 50 a 950) como cor da marca, terra e
-palha (`terra`) como acento quente, fundo de pedra clara, cartões brancos. Fonte **Plus Jakarta
+palha (`terra`) como acento quente, fundo de pedra clara, cartões brancos.
+
+**Tema escuro** (Configurações > Aparência; `src/tema.ts`, aplicado pelo `index.html` antes de
+a página aparecer): em vez de um `dark:` em cada classe, as cores mudam de valor com
+`data-tema="escuro"`. Os cinzas (`stone`) se invertem; nas cores de destaque, o fundo clarinho
+(50 a 200) vira um tom escuro da mesma cor e a letra escura (700 a 950) vira o tom claro; os
+tons do meio (400 a 600: botões, pontos, barras) ficam. Por isso o fundo de bloco é
+`bg-superficie`, e não `bg-white` (o branco da letra do botão não escurece), e o fundo do menu,
+do cabeçalho do celular e da barra de baixo é a `mata`, com a paleta original dentro deles
+(classe `cromo`). Os gráficos trocam a cor da letra e da grade por código (o ECharts não lê
+CSS). Fonte **Plus Jakarta
 Sans** (`@fontsource-variable`), embutida no app: funciona sem internet, como numa apresentação.
 Tudo mora em `main.css`: as cores, a fonte, as curvas e durações de animação e os componentes
 base. Botão e cartão são classes (`.botao-primario`, `.cartao`...), não estilo repetido em cada
@@ -1046,7 +1069,7 @@ entrada (360 px de largura). Abaixo de 1024 px:
 
 - **Barra de baixo** no lugar do menu lateral: as telas do dia a dia (Painel, Insumos,
   Movimentações e Compras, `meta.menu.barra`) ao alcance do polegar, com o número de urgentes
-  no Painel, e o "Mais", que sobe do pé da tela com as outras e Minha conta, e acende quando se
+  no Painel, e o "Mais", que sobe do pé da tela com as outras (Configurações entre elas), e acende quando se
   está numa delas. O rótulo curto vem da rota (`meta.menu.curto`). Tocar de novo
   na aba da tela atual sobe para o topo; trocar de tela começa do topo, e o "voltar" do
   celular devolve a rolagem. Com o teclado aberto num campo de texto, a barra some para não
@@ -1199,7 +1222,7 @@ tecnologias que não se aplicam.
 
 ## 7. Próximas decisões (pendentes)
 
-1. **Login no app.** O site já tem o login com papéis, Usuários, Minha conta e Auditoria
+1. **Login no app.** O site já tem o login com papéis, Usuários, Configurações e Auditoria
    (seção 3); o app ainda não tem a tela de login nem manda o token (seção 4), por isso a
    autenticação fica desligada no desenvolvimento. Com ela desligada,
    qualquer um que alcance a tela lê e altera tudo (as portas da API e do banco ficam só em
@@ -1231,11 +1254,12 @@ tecnologias que não se aplicam.
    `429`, e as telas mostrarem o `id_da_requisicao` do `500` e do `503` ("informe ao suporte o
    código ..."). O app pode mandar o próprio `X-Request-ID` (o uuid do envio) para o mesmo
    código aparecer no celular e no log do servidor.
-9. **Sessões no app.** O site já tem "Onde você está conectado" em Minha conta e os aparelhos
+9. **Sessões no app.** O site já tem "Onde você está conectado" em Configurações e os aparelhos
    de cada um em Usuários (seção 3); o app, quando tiver login, precisa ao menos de "Sair" que
    encerre a sessão no servidor.
 
 Decididas desde a versão anterior deste documento: a autenticação existe (dono e funcionário,
 obrigatória em produção, seção 2); a importação de planilha existe (Excel e
 CSV, seção 2); o ECharts entrou com o gráfico do insumo; o Pandas não entrou, porque nem o motor de
-análise nem a importação precisaram; o `openpyxl` entrou para ler e gerar `.xlsx`.
+análise nem a importação precisaram; o `openpyxl` entrou para ler e gerar `.xlsx`, e o `fpdf2`
+para o relatório por período em PDF.

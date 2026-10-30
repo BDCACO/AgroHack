@@ -16,6 +16,17 @@
     <meta name="apple-mobile-web-app-title" content="CampoCerto" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>CampoCerto</title>
+    <!-- O tema escolhido em Configurações, antes de a página aparecer: sem ele aqui, o tema
+         escuro piscaria branco a cada recarga, até o Vue carregar (src/tema.ts). -->
+    <script>
+      try {
+        var tema = localStorage.getItem('campocerto.tema')
+        if (tema === 'sistema') tema = matchMedia('(prefers-color-scheme: dark)').matches ? 'escuro' : 'claro'
+        document.documentElement.dataset.tema = tema === 'escuro' ? 'escuro' : 'claro'
+      } catch (erro) {
+        document.documentElement.dataset.tema = 'claro'
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>

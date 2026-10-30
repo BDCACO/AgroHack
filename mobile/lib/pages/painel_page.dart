@@ -29,8 +29,21 @@ class PainelPage extends StatelessWidget {
             for (final alerta in insumo.analise.alertas) (insumo, alerta),
         ]..sort((a, b) => a.$2.gravidade.index.compareTo(b.$2.gravidade.index));
 
+        if (insumos.isEmpty) {
+          return const EstadoVazio(
+            icone: Icons.eco_outlined,
+            titulo: 'Nenhum insumo cadastrado ainda',
+            texto:
+                'Quando o dono da fazenda cadastrar os insumos pelo site, os '
+                'alertas aparecem aqui.',
+          );
+        }
         if (alertas.isEmpty) {
-          return const EstadoVazio('Nenhum alerta. O estoque está em dia.');
+          return const EstadoVazio(
+            icone: Icons.check_circle_outline,
+            titulo: 'Tudo em dia',
+            texto: 'Nenhum alerta agora. O estoque está dentro do esperado.',
+          );
         }
 
         final porGravidade = <Gravidade, int>{};
@@ -197,13 +210,18 @@ class _CartaoDeAlerta extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: alerta.gravidade.cor.withValues(alpha: 0.12),
+                            color: fundoDoCirculo(
+                              context,
+                              alerta.gravidade.cor,
+                            ),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
                             alerta.gravidade.texto,
                             style: TextStyle(
-                              color: alerta.gravidade.corTexto,
+                              color: solForte(context)
+                                  ? Colors.white
+                                  : alerta.gravidade.corTexto,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),

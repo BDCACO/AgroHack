@@ -23,7 +23,7 @@ const faixa = { alta: 'bg-red-500', media: 'bg-amber-400', baixa: 'bg-sky-400' }
 
 <template>
   <li
-    class="group relative flex flex-col gap-2 overflow-hidden rounded-xl border border-stone-200/80 bg-white p-4 pl-5 shadow-xs transition-[translate,box-shadow,border-color] duration-200 ease-chegada sm:flex-row sm:items-start sm:gap-4"
+    class="group relative flex flex-col gap-2 overflow-hidden rounded-xl border border-stone-200/80 bg-superficie p-4 pl-5 shadow-xs transition-[translate,box-shadow,border-color] duration-200 ease-chegada sm:flex-row sm:items-start sm:gap-4"
     :class="insumo ? 'hover:-translate-y-0.5 hover:border-stone-300 hover:shadow-md' : ''"
     data-teste="alerta"
   >

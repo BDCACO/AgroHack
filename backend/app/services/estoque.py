@@ -35,7 +35,7 @@ from app.schemas.estoque import (
     PrecoPago,
     como_o_banco,
 )
-from app.services import auditoria, pedidos
+from app.services import auditoria, configuracao, pedidos
 
 # Campos que vieram depois do site e do app: um PUT que não os manda (de uma versão que
 # não os conhece) mantém o que está gravado, em vez de apagá-los.
@@ -45,6 +45,7 @@ _CAMPOS_OPCIONAIS_NOVOS = {
     "carencia_dias",
     "categoria_id",
     "marcas_preferenciais",
+    "codigo_de_barras",
 }
 # O que faz dois envios com o mesmo uuid serem o mesmo lançamento. Com as casas que o banco
 # guarda: 2,0004 kg vira 2 kg na coluna, e o reenvio de 2,0004 ainda é o mesmo lançamento.
@@ -62,6 +63,10 @@ _CONTEUDO_DO_LANCAMENTO = {
 
 
 class NomeDuplicado(Exception):
+    pass
+
+
+class CodigoDeBarrasDuplicado(Exception):
     pass
 
 
@@ -128,8 +133,10 @@ def listar_insumos(
         consulta = consulta.where(Insumo.id.in_(ids_pelo_nome(db, busca)))
     referencia = hoje()
     pedidos = a_caminho(db)
+    meses_de_safra = configuracao.obter_meses_de_safra(db)
     respostas = [
-        _resposta(insumo, referencia, pedidos.get(insumo.id, [])) for insumo in db.scalars(consulta)
+        _resposta(insumo, referencia, pedidos.get(insumo.id, []), meses_de_safra)
+        for insumo in db.scalars(consulta)
     ]
     if gravidade is not None:
         respostas = [
@@ -160,7 +167,7 @@ def criar_insumo(db: Session, dados: InsumoCadastro) -> InsumoResposta:
     db.add(insumo)
     _salvar(db)
     _recarregar_categoria(db, insumo)
-    return _resposta(insumo, hoje())
+    return _resposta(insumo, hoje(), meses_de_safra=configuracao.obter_meses_de_safra(db))
 
 
 def atualizar_insumo(
@@ -181,7 +188,12 @@ def atualizar_insumo(
         )
     _salvar(db)
     _recarregar_categoria(db, insumo)
-    return _resposta(insumo, hoje(), a_caminho(db, insumo_id).get(insumo_id, []))
+    return _resposta(
+        insumo,
+        hoje(),
+        a_caminho(db, insumo_id).get(insumo_id, []),
+        configuracao.obter_meses_de_safra(db),
+    )
 
 
 def a_caminho(db: Session, insumo_id: int | None = None) -> dict[int, list[dominio.Encomenda]]:
@@ -211,7 +223,14 @@ def detalhar_insumo(db: Session, insumo_id: int) -> InsumoDetalhe:
         # Vários lançamentos no mesmo dia: vale o saldo depois do último.
         por_dia[m.data] = round(saldo, 3)
     return InsumoDetalhe(
-        **dict(_resposta(insumo, hoje(), a_caminho(db, insumo_id).get(insumo_id, []))),
+        **dict(
+            _resposta(
+                insumo,
+                hoje(),
+                a_caminho(db, insumo_id).get(insumo_id, []),
+                configuracao.obter_meses_de_safra(db),
+            )
+        ),
         historico=[PontoDeEstoque(data=dia, saldo=valor) for dia, valor in por_dia.items()],
         movimentacoes=[MovimentacaoResposta.model_validate(m) for m in reversed(movimentacoes)],
         precos_por_fornecedor=sorted(
@@ -536,6 +555,7 @@ def _cadastro(insumo: Insumo) -> dict[str, object]:
         "carencia_dias": insumo.carencia_dias,
         "categoria_id": insumo.categoria_id,
         "marcas_preferenciais": insumo.marcas_preferenciais,
+        "codigo_de_barras": insumo.codigo_de_barras,
     }
 
 
@@ -555,15 +575,20 @@ def _salvar(db: Session) -> None:
         db.commit()
     except IntegrityError as erro:
         db.rollback()
-        # Só o nome único vira "já existe": outra regra violada é defeito, não do usuário,
-        # e dizer "nome repetido" mandaria o produtor procurar o problema no lugar errado.
+        # Só o nome único e o código de barras único viram "já existe": outra regra violada
+        # é defeito, não do usuário, e um 409 genérico mandaria procurar o problema errado.
         if violou_nome_unico(erro, "insumos"):
             raise NomeDuplicado from erro
+        if violou_nome_unico(erro, "insumos", "codigo_de_barras"):
+            raise CodigoDeBarrasDuplicado from erro
         raise
 
 
 def _resposta(
-    insumo: Insumo, referencia: date, pedidos: list[dominio.Encomenda] = ()
+    insumo: Insumo,
+    referencia: date,
+    pedidos: list[dominio.Encomenda] = (),
+    meses_de_safra: list[int] = (),
 ) -> InsumoResposta:
     entradas = [
         dominio.Entrada(m.data, m.quantidade, m.validade, m.valor_unitario)
@@ -601,6 +626,7 @@ def _resposta(
         referencia=referencia,
         custo_medio=custo_medio,
         a_caminho=pedidos,
+        meses_de_safra=meses_de_safra,
     )
     compras = [m for m in insumo.movimentacoes if m.tipo == "entrada" and m.motivo is None]
     com_preco = sum(m.valor_unitario is not None for m in compras)
@@ -632,6 +658,7 @@ def _resposta(
         embalagem=insumo.embalagem,
         pedido_minimo=insumo.pedido_minimo,
         carencia_dias=insumo.carencia_dias,
+        codigo_de_barras=insumo.codigo_de_barras,
         categoria_id=insumo.categoria_id,
         categoria=None if insumo.categoria is None else insumo.categoria.nome,
         marcas_preferenciais=insumo.marcas_preferenciais,

@@ -38,6 +38,8 @@ class PedidoDeAnalise(BaseModel):
     # "não havia registro".
     registros_desde: date
     referencia: date
+    # 1 a 12; vazio (padrão) desliga a sazonalidade, como sempre foi.
+    meses_de_safra: list[int] = Field(default=[])
 
     @model_validator(mode="after")
     def _periodo_valido(self) -> Self:

@@ -32,6 +32,9 @@ campo = APIRouter(tags=["estoque"])
 gestao = APIRouter(tags=["estoque"])
 
 _NOME_DUPLICADO = HTTPException(status.HTTP_409_CONFLICT, "Já existe um insumo com esse nome.")
+_CODIGO_DE_BARRAS_DUPLICADO = HTTPException(
+    status.HTTP_409_CONFLICT, "Já existe um insumo com esse código de barras."
+)
 _INSUMO_INEXISTENTE = "Insumo não encontrado."
 # 422, e não 404: o insumo da URL existe; o que está errado é o corpo.
 _CATEGORIA_INEXISTENTE = HTTPException(
@@ -67,6 +70,8 @@ def criar_insumo(dados: InsumoCadastro, db: Session = Depends(get_db)) -> Insumo
         return servico.criar_insumo(db, dados)
     except servico.NomeDuplicado:
         raise _NOME_DUPLICADO from None
+    except servico.CodigoDeBarrasDuplicado:
+        raise _CODIGO_DE_BARRAS_DUPLICADO from None
     except servico.CategoriaInexistente:
         raise _CATEGORIA_INEXISTENTE from None
 
@@ -84,6 +89,8 @@ def atualizar_insumo(
         raise HTTPException(status.HTTP_404_NOT_FOUND, _INSUMO_INEXISTENTE) from None
     except servico.NomeDuplicado:
         raise _NOME_DUPLICADO from None
+    except servico.CodigoDeBarrasDuplicado:
+        raise _CODIGO_DE_BARRAS_DUPLICADO from None
     except servico.CategoriaInexistente:
         raise _CATEGORIA_INEXISTENTE from None
 

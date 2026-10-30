@@ -25,6 +25,15 @@
   --color-terra-700: #7a5a32;
   --color-terra-900: #4a371f;
 
+  /* O fundo dos blocos (cartão, campo, janela, a barra do topo): branco no tema claro. É um
+   * nome à parte de "white" porque o branco também é a letra dos botões, e no tema escuro
+   * só o fundo escurece. */
+  --color-superficie: #ffffff;
+  /* A mata: o fundo verde-escuro do menu, do cabeçalho do celular e da barra de baixo, igual
+   * nos dois temas. */
+  --color-mata-900: #1f3b17;
+  --color-mata-950: #0f210a;
+
   --font-sans: 'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
 
   /* Movimento. Curto: a animação mostra de onde algo veio ou o que mudou, e sai do
@@ -102,6 +111,11 @@
 @layer base {
   body {
     @apply bg-stone-100/60 text-stone-800 antialiased;
+    /* No escuro, o fundo da página fica mais escuro que os cartões, como no claro fica
+     * mais cinza que eles. */
+    :root[data-tema='escuro'] & {
+      background-color: #141311;
+    }
     font-feature-settings: 'ss01';
     /* No toque, o retorno é o estado :active de cada botão; o retângulo azul do navegador
      * por cima dele só suja. */
@@ -130,11 +144,76 @@
   }
 }
 
+/* Tema escuro (Configurações > Aparência; o index.html o aplica antes de a página aparecer,
+ * sem piscar branco). Em vez de um "dark:" em cada classe de cada tela, as cores mudam de
+ * valor: os cinzas se invertem (o fundo claro vira escuro, a letra escura vira clara), e nas
+ * cores de destaque o fundo clarinho (50 a 200) vira um tom escuro da mesma cor, e a letra
+ * escura (700 a 950) vira o tom claro. Os do meio (400 a 600: botões, pontos, barras) ficam:
+ * já se leem nos dois fundos. */
+:root[data-tema='escuro'] {
+  color-scheme: dark;
+  --color-superficie: #1f1d1b;
+
+  --color-stone-50: #262422;
+  --color-stone-100: #2d2a27;
+  --color-stone-200: #3a3633;
+  --color-stone-300: #4a4542;
+  --color-stone-400: #78716c;
+  --color-stone-500: #a19a94;
+  --color-stone-600: #b8b2ac;
+  --color-stone-700: #d0cbc6;
+  --color-stone-800: #e2ded9;
+  --color-stone-900: #efebe7;
+  --color-stone-950: #f7f5f3;
+
+  --color-campo-50: #1b2a16;
+  --color-campo-100: #22361b;
+  --color-campo-200: #2f4a25;
+  --color-campo-300: #3f6331;
+  --color-campo-700: #9cc887;
+  --color-campo-800: #b5d6a4;
+  --color-campo-900: #d6e9cc;
+  --color-campo-950: #eaf4e4;
+
+  --color-terra-50: #2a2219;
+  --color-terra-100: #33291d;
+  --color-terra-200: #4a3a26;
+  --color-terra-700: #d4b98f;
+  --color-terra-900: #f3ece2;
+
+  --color-red-50: #2c1714;
+  --color-red-100: #3a1c18;
+  --color-red-200: #5a2620;
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+  --color-red-900: #fee2e2;
+
+  --color-amber-50: #2a2112;
+  --color-amber-200: #5c4515;
+  --color-amber-800: #fcd34d;
+  --color-amber-900: #fde68a;
+
+  --color-sky-50: #0f2430;
+  --color-sky-800: #7dd3fc;
+}
+/* O menu, o cabeçalho do celular e a barra de baixo já são escuros nos dois temas: ali, a
+ * paleta continua a original (a letra clara do menu não pode virar escura). */
+:root[data-tema='escuro'] .cromo {
+  --color-campo-50: #f2f8ef;
+  --color-campo-100: #e0efd9;
+  --color-campo-200: #c3dfb5;
+  --color-campo-300: #9cc887;
+  --color-campo-700: #326223;
+  --color-campo-800: #29501e;
+  --color-campo-900: #1f3b17;
+  --color-campo-950: #0f210a;
+}
+
 @layer components {
   /* Campo de formulário: um estilo só para input e select de todas as telas. No celular,
    * letra de 16 px (abaixo disso o iPhone dá zoom ao tocar no campo) e altura para o dedo. */
   .campo {
-    @apply mt-1 block w-full rounded-lg border border-stone-300 bg-white px-3 py-2.5 text-base font-normal sm:py-2 sm:text-sm text-stone-800 shadow-xs transition-colors focus:border-campo-600 focus:ring-2 focus:ring-campo-600/20 focus:outline-none;
+    @apply mt-1 block w-full rounded-lg border border-stone-300 bg-superficie px-3 py-2.5 text-base font-normal sm:py-2 sm:text-sm text-stone-800 shadow-xs transition-colors focus:border-campo-600 focus:ring-2 focus:ring-campo-600/20 focus:outline-none;
   }
 
   /* Rótulo flutuante: o nome do campo fica dentro dele, onde se vai digitar, e sobe para a
@@ -173,7 +252,7 @@
 
   /* Cartão: a superfície de tudo que é bloco de conteúdo. */
   .cartao {
-    @apply rounded-xl border border-stone-200/80 bg-white shadow-xs;
+    @apply rounded-xl border border-stone-200/80 bg-superficie shadow-xs;
   }
 
   /* Botões. O "afundar" ao clicar confirma o toque — no celular, sem cursor, é o que
@@ -187,9 +266,14 @@
   }
   .botao-primario {
     @apply bg-campo-600 text-white shadow-sm shadow-campo-900/10 hover:bg-campo-700;
+    /* No escuro o 700 é claro (é letra): o botão escurece para o 600 de sempre e clareia
+     * para o 500 ao passar o mouse. */
+    :root[data-tema='escuro'] &:hover {
+      background-color: var(--color-campo-500);
+    }
   }
   .botao-secundario {
-    @apply border border-campo-600/40 bg-white text-campo-700 hover:border-campo-600 hover:bg-campo-50;
+    @apply border border-campo-600/40 bg-superficie text-campo-700 hover:border-campo-600 hover:bg-campo-50;
   }
   .botao-texto {
     @apply text-campo-700 hover:bg-campo-50;

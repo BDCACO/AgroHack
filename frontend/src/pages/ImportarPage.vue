@@ -156,7 +156,6 @@ const quantidade = (valor: number, unidade: string) =>
 <template>
   <CabecalhoDePagina
     titulo="Importar dados"
-    descricao="Carregar de uma vez o histórico de compras e retiradas que já está numa planilha."
   />
 
   <div class="mt-6 grid gap-6 lg:grid-cols-5">
@@ -234,7 +233,7 @@ const quantidade = (valor: number, unidade: string) =>
         :class="[
           arrastando
             ? 'scale-[1.01] border-campo-600 bg-campo-50 [&_*]:pointer-events-none'
-            : 'border-stone-300 bg-white hover:border-campo-500 hover:bg-campo-50/50',
+            : 'border-stone-300 bg-superficie hover:border-campo-500 hover:bg-campo-50/50',
           ocupado ? 'pointer-events-none' : '',
         ]"
         data-teste="area-de-soltar"

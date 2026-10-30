@@ -144,7 +144,6 @@ async function cancelar() {
 <template>
   <CabecalhoDePagina
     titulo="Compras"
-    descricao="Do que pedir à revenda até a carga chegar: o pedido feito já entra na conta da reposição, e o recebimento vira entrada no estoque."
   >
     <template #acoes>
       <RouterLink
@@ -298,7 +297,7 @@ async function cancelar() {
       :key="opcao.valor"
       type="button"
       class="rounded-full px-3 py-1.5 text-sm font-medium transition-colors pointer-coarse:min-h-11"
-      :class="filtro === opcao.valor ? 'bg-campo-600 text-white' : 'bg-white text-stone-700 ring-1 ring-stone-200 hover:bg-stone-50'"
+      :class="filtro === opcao.valor ? 'bg-campo-600 text-white' : 'bg-superficie text-stone-700 ring-1 ring-stone-200 hover:bg-stone-50'"
       :aria-pressed="filtro === opcao.valor"
       @click="filtro = opcao.valor"
     >

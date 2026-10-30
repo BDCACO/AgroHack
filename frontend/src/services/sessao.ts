@@ -23,6 +23,12 @@ export async function sair(): Promise<void> {
   await http.post('/auth/sair')
 }
 
+/** O próprio nome e o próprio login. O login novo pede a senha atual; os aparelhos continuam. */
+export async function alterarMeuPerfil(dados: { nome?: string; login?: string; senha_atual?: string }): Promise<Usuario> {
+  const { data } = await http.put<Usuario>('/auth/eu', dados)
+  return data
+}
+
 /** Troca a própria senha; os outros aparelhos saem, este continua. */
 export async function trocarSenha(senhaAtual: string, senhaNova: string): Promise<void> {
   await http.put('/auth/senha', { senha_atual: senhaAtual, senha_nova: senhaNova })

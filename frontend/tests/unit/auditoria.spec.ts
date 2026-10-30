@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 import App from '@/App.vue'
+import { dadosLegiveis } from '@/auditoriaLegivel'
 import { routes } from '@/router'
 import { listarEventos } from '@/services/auditoria'
 import { useSessaoStore } from '@/stores/sessao'
@@ -55,6 +56,7 @@ async function montarEm(caminho: string, usuario: Usuario | null = dono) {
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
+  localStorage.clear()
   vi.mocked(listarEventos).mockResolvedValue({
     eventos: [
       evento(3, {
@@ -90,12 +92,33 @@ describe('Auditoria', () => {
     const registros = wrapper.findAll('[data-teste="evento"]')
     expect(registros[0]!.text()).toContain('Login recusado · usuário nº 1')
     expect(registros[0]!.text()).toContain('Por Sem login · Navegador · IP 10.0.0.5')
-    expect(registros[0]!.find('dl').text()).toMatch(/login\s*maria\s*motivo\s*senha_incorreta/)
+    // Em palavras, por padrão: o motivo traduzido, e não o código.
+    expect(registros[0]!.find('[data-teste="dados-legiveis"]').text()).toMatch(/Login\s*maria\s*Motivo\s*Senha incorreta/)
     expect(registros[1]!.text()).toContain('Usuário criado · usuário nº 2')
     expect(registros[1]!.text()).toContain('Por Dona Maria')
     // O comando rodado no servidor (make demo) não tem login nem IP.
     expect(registros[2]!.text()).toContain('Por Comando no servidor')
-    expect(registros[2]!.find('dl').text()).toContain('{"insumos":7}')
+    expect(registros[2]!.find('[data-teste="dados-legiveis"]').text()).toMatch(/Criados\s*Insumos\s*7/)
+  })
+
+  it('"Original" mostra os dados como a API guardou, e o navegador lembra a escolha', async () => {
+    const { wrapper } = await montarEm('/auditoria')
+    expect(wrapper.find('[data-teste="formato-legivel"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[data-teste="formato-legivel"]').text()).toBe('Formatado')
+    expect(wrapper.find('[data-teste="formato-tecnico"]').text()).toBe('Original')
+
+    await wrapper.find('[data-teste="formato-tecnico"]').trigger('click')
+
+    const registros = wrapper.findAll('[data-teste="evento"]')
+    expect(registros[0]!.find('[data-teste="dados-tecnicos"]').text()).toMatch(/login\s*maria\s*motivo\s*senha_incorreta/)
+    expect(registros[2]!.find('[data-teste="dados-tecnicos"]').text()).toContain('{"insumos":7}')
+    expect(wrapper.find('[data-teste="dados-legiveis"]').exists()).toBe(false)
+    expect(localStorage.getItem('campocerto.auditoria-formato')).toBe('tecnico')
+    wrapper.unmount()
+
+    setActivePinia(createPinia())
+    const outra = await montarEm('/auditoria')
+    expect(outra.wrapper.find('[data-teste="formato-tecnico"]').attributes('aria-checked')).toBe('true')
   })
 
   it('o filtro por grupo vai para a API, e "Carregar mais" pede a próxima página', async () => {
@@ -127,5 +150,52 @@ describe('Auditoria', () => {
     const semLogin = await montarEm('/auditoria', null)
     expect(semLogin.router.currentRoute.value.name).toBe('painel')
     expect(listarEventos).not.toHaveBeenCalled()
+  })
+})
+
+describe('Os dados em palavras', () => {
+  it('o pedido cancelado: a situação traduzida, as datas e cada item pelo insumo, com o preço em reais', () => {
+    const linhas = dadosLegiveis({
+      itens: [
+        { insumo: 'Sal mineral 80P', insumo_id: 5, quantidade: 500, falta_receber: 500, valor_unitario: 4.8, quantidade_recebida: 0 },
+      ],
+      feito_em: '2026-10-26',
+      fornecedor: 'AgroVet Pioneiro',
+      fornecedor_id: 3,
+      previsto_para: '2026-11-01',
+      situacao_antes: 'aberto',
+    })
+
+    expect(linhas.map((l) => l.rotulo)).toEqual(['Itens', 'Pedido em', 'Fornecedor', 'Previsão de chegada', 'Situação antes'])
+    expect(linhas.slice(1).map((l) => l.valor)).toEqual(['26/10/2026', 'AgroVet Pioneiro', '01/11/2026', 'A caminho'])
+    const item = linhas[0]!.filhos![0]!
+    expect(item.rotulo).toBe('Sal mineral 80P')
+    expect(item.filhos!.map((l) => `${l.rotulo}: ${l.valor}`)).toEqual([
+      'Quantidade: 500',
+      'Faltava chegar: 500',
+      expect.stringMatching(/^Preço unitário: R\$\s4,80$/),
+      'Já tinha chegado: 0',
+    ])
+  })
+
+  it('a alteração diz só o que mudou, de quanto para quanto; campo desconhecido vem com o nome arrumado', () => {
+    const linhas = dadosLegiveis({
+      nome: 'Ureia agrícola',
+      antes: { estoque_minimo: 100, carencia_dias: null },
+      depois: { estoque_minimo: 150, carencia_dias: 0 },
+      prazo_novo: true,
+    })
+
+    expect(linhas[0]).toEqual({
+      rotulo: 'O que mudou',
+      filhos: [
+        { rotulo: 'Estoque mínimo', valor: '100 → 150' },
+        { rotulo: 'Carência (dias)', valor: '— → 0' },
+      ],
+    })
+    expect(linhas.slice(1)).toEqual([
+      { rotulo: 'Nome', valor: 'Ureia agrícola' },
+      { rotulo: 'Prazo novo', valor: 'Sim' },
+    ])
   })
 })

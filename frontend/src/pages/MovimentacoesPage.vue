@@ -188,7 +188,6 @@ const porDia = computed(() => {
 <template>
   <CabecalhoDePagina
     titulo="Movimentações"
-    descricao="Compras que chegaram (entradas) e retiradas do galpão (saídas). É daqui que sai o estoque e a análise de consumo."
   />
 
   <p
@@ -215,10 +214,10 @@ const porDia = computed(() => {
 
   <template v-else-if="estoque.insumos.length">
     <form
-      class="cartao mt-2 grid animate-surgir items-end gap-4 p-5 sm:grid-cols-2 lg:grid-cols-6"
+      class="cartao mt-2 grid animate-surgir items-end gap-4 p-5 sm:grid-cols-2 xl:grid-cols-6"
       @submit.prevent="lancar"
     >
-      <fieldset class="sm:col-span-2 lg:col-span-6">
+      <fieldset class="sm:col-span-2 xl:col-span-6">
         <legend class="text-sm font-medium text-stone-700">
           Tipo
         </legend>
@@ -246,7 +245,7 @@ const porDia = computed(() => {
           </label>
         </div>
       </fieldset>
-      <label class="flutuante lg:col-span-2">
+      <label class="flutuante xl:col-span-2">
         <select
           v-model.number="form.insumoId"
           required
@@ -319,7 +318,7 @@ const porDia = computed(() => {
       </label>
       <label
         v-if="form.tipo === 'entrada' && fornecedores.ativos.length"
-        class="flutuante lg:col-span-2"
+        class="flutuante xl:col-span-2"
       >
         <select
           v-model.number="form.fornecedorId"
@@ -341,7 +340,7 @@ const porDia = computed(() => {
       </label>
       <label
         v-if="form.tipo === 'saida' && talhoes.talhoes.length"
-        class="flutuante lg:col-span-2"
+        class="flutuante xl:col-span-2"
       >
         <select
           v-model.number="form.talhaoId"
@@ -364,11 +363,11 @@ const porDia = computed(() => {
       <p
         v-if="erroDoForm"
         role="alert"
-        class="text-sm text-red-700 sm:col-span-2 lg:col-span-6"
+        class="text-sm text-red-700 sm:col-span-2 xl:col-span-6"
       >
         {{ erroDoForm }}
       </p>
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-3 sm:col-span-2 lg:col-span-6">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-3 sm:col-span-2 xl:col-span-6">
         <button
           type="submit"
           class="botao-primario max-sm:w-full"
@@ -401,7 +400,7 @@ const porDia = computed(() => {
     </p>
     <template v-else>
       <div
-        class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]"
+        class="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr]"
         role="search"
         aria-label="Filtrar movimentações"
       >

@@ -94,11 +94,11 @@ def get_sessionmaker() -> sessionmaker[Session]:
     return sessionmaker(bind=get_engine(), autoflush=False, expire_on_commit=False)
 
 
-def violou_nome_unico(erro: IntegrityError, tabela: str) -> bool:
-    """Se a violação foi a do nome único da tabela, e não outra regra do banco. O
-    PostgreSQL diz o nome da constraint; o SQLite dos testes, a coluna."""
+def violou_nome_unico(erro: IntegrityError, tabela: str, coluna: str = "nome") -> bool:
+    """Se a violação foi a da coluna única informada (nome, por padrão), e não outra regra
+    do banco. O PostgreSQL diz o nome da constraint; o SQLite dos testes, a coluna."""
     mensagem = str(erro.orig)
-    return f"uq_{tabela}_nome" in mensagem or f"{tabela}.nome" in mensagem
+    return f"uq_{tabela}_{coluna}" in mensagem or f"{tabela}.{coluna}" in mensagem
 
 
 def get_db() -> Iterator[Session]:

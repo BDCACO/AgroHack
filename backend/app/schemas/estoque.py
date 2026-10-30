@@ -79,6 +79,9 @@ class InsumoCadastro(DadosDoInsumo):
     # Texto livre ("Yara, Heringer"), para a mensagem de cotação. Como a categoria: o PUT
     # sem ele mantém o gravado.
     marcas_preferenciais: str | None = Field(default=None, min_length=1, max_length=2000)
+    # O código de barras de fábrica, ensinado pelo app na primeira leitura. Como a
+    # categoria: o PUT sem ele mantém o gravado.
+    codigo_de_barras: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class InsumoResposta(_Insumo):
@@ -88,6 +91,7 @@ class InsumoResposta(_Insumo):
     categoria_id: int | None = None
     categoria: str | None = None  # o nome, para a tela não precisar de outra consulta
     marcas_preferenciais: str | None = None
+    codigo_de_barras: str | None = None
     estoque_atual: float
     # R$ por unidade, média das compras com preço ponderada pela quantidade. None sem
     # nenhuma compra com preço.

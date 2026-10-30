@@ -154,6 +154,52 @@ def test_estoque_minimo() -> None:
     assert alerta_estoque_minimo(Insumo("Ureia", "kg", estoque_atual=0)) is None
 
 
+def test_estoque_minimo_na_entressafra_fica_gravidade_baixa() -> None:
+    insumo = Insumo("Ureia", "kg", estoque_atual=5, estoque_minimo=10)
+
+    normal = alerta_estoque_minimo(insumo)
+    na_entressafra = alerta_estoque_minimo(insumo, entressafra=True)
+
+    assert normal is not None
+    assert normal.gravidade == "media"
+    assert na_entressafra is not None
+    assert na_entressafra.gravidade == "baixa"
+    assert "entressafra" in na_entressafra.justificativa.lower()
+
+
+def test_consumo_na_entressafra_ignora_o_consumo_alto_da_safra_no_mesmo_historico() -> None:
+    # Setembro a março é safra; abril é entressafra. A janela de 90 dias antes de
+    # 15/abr vai de 16/jan a 15/abr: 75 dias de safra (com retirada pesada) e 15 dias
+    # de entressafra (sem nenhuma). Sem separar por período, a média dos 90 dias
+    # diria ~8,3 kg/dia; separando, só entra a entressafra: zero.
+    ref = date(2026, 4, 15)
+    insumo = Insumo("Ureia", "kg", estoque_atual=50, estoque_minimo=5, prazo_reposicao_dias=15)
+    retiradas = [Retirada(date(2026, 1, 16) + timedelta(days=i), 10) for i in range(75)]
+
+    analise = analisar(
+        insumo,
+        retiradas,
+        registros_desde=ref - timedelta(days=119),
+        referencia=ref,
+        meses_de_safra=[9, 10, 11, 12, 1, 2, 3],
+    )
+
+    assert analise.consumo_diario == 0.0
+    assert analise.reposicao is None
+    assert "risco_de_falta" not in [a.tipo for a in analise.alertas]
+
+
+def test_sem_meses_de_safra_consumo_usa_a_janela_inteira_como_antes() -> None:
+    ref = date(2026, 4, 15)
+    insumo = Insumo("Ureia", "kg", estoque_atual=50, estoque_minimo=5, prazo_reposicao_dias=15)
+    retiradas = [date(2026, 1, 16) + timedelta(days=i) for i in range(75)]
+    retiradas = [Retirada(d, 10) for d in retiradas]
+
+    analise = analisar(insumo, retiradas, registros_desde=ref - timedelta(days=119), referencia=ref)
+
+    assert analise.consumo_diario == pytest.approx(750 / 90)
+
+
 def test_validade() -> None:
     lotes = [
         Lote(30, REF + timedelta(days=100)),

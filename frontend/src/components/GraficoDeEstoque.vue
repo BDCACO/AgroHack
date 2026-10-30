@@ -5,6 +5,7 @@ import { type ECharts, type EChartsCoreOption, format, init, use } from 'echarts
 import { SVGRenderer } from 'echarts/renderers'
 import { computed, onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 
+import { coresDoGrafico, temaAplicado } from '@/tema'
 import type { InsumoDetalhe } from '@/types/api'
 
 // Só as peças que este gráfico usa: o ECharts inteiro passa de 1 MB.
@@ -14,9 +15,6 @@ const props = defineProps<{ insumo: InsumoDetalhe; hoje: string }>()
 
 // Tokens do main.css (campo-600 e os cinzas stone): as opções do ECharts não leem CSS.
 const COR = '#3f7a2c'
-const TINTA = '#57534e'
-const TINTA_SUAVE = '#78716c'
-const GRADE = '#e7e5e4'
 // Projetar além disso só esticaria o eixo: estoque para meses já é alerta de excesso.
 const HORIZONTE_DIAS = 90
 
@@ -55,6 +53,7 @@ const descricao = computed(() => {
 })
 
 function opcoes(): EChartsCoreOption {
+  const cores = coresDoGrafico.value
   const { unidade, estoque_atual, estoque_minimo, historico } = props.insumo
   const real: Ponto[] = historico.map((ponto) => [ponto.data, ponto.saldo])
   // Sem movimentação recente, o saldo se mantém até hoje.
@@ -84,21 +83,21 @@ function opcoes(): EChartsCoreOption {
     grid: { left: 8, right: 24, top: 24, bottom: 8, containLabel: true },
     xAxis: {
       type: 'time',
-      axisLine: { lineStyle: { color: GRADE } },
+      axisLine: { lineStyle: { color: cores.grade } },
       axisTick: { show: false },
-      axisLabel: { color: TINTA_SUAVE, formatter: '{dd}/{MM}', hideOverlap: true },
+      axisLabel: { color: cores.tintaSuave, formatter: '{dd}/{MM}', hideOverlap: true },
       splitLine: { show: false },
     },
     yAxis: {
       type: 'value',
       // Saldo negativo (lançamento faltando) aparece, em vez de ser cortado no zero.
       min: (extremos: { min: number }) => Math.min(0, extremos.min),
-      axisLabel: { color: TINTA_SUAVE, formatter: (valor: number) => valor.toLocaleString('pt-BR') },
-      splitLine: { lineStyle: { color: GRADE } },
+      axisLabel: { color: cores.tintaSuave, formatter: (valor: number) => valor.toLocaleString('pt-BR') },
+      splitLine: { lineStyle: { color: cores.grade } },
     },
     tooltip: {
       trigger: 'axis',
-      axisPointer: { type: 'line', lineStyle: { color: TINTA_SUAVE, width: 1 } },
+      axisPointer: { type: 'line', lineStyle: { color: cores.tintaSuave, width: 1 } },
       formatter: (itens: unknown) => {
         const lista = itens as { seriesName: string; value: Ponto }[]
         const linhas = lista.map(
@@ -123,8 +122,8 @@ function opcoes(): EChartsCoreOption {
         markLine: {
           symbol: 'none',
           silent: true,
-          lineStyle: { color: TINTA_SUAVE, type: 'dashed', width: 1 },
-          label: { color: TINTA },
+          lineStyle: { color: cores.tintaSuave, type: 'dashed', width: 1 },
+          label: { color: cores.tinta },
           data: referencias,
         },
       },
@@ -151,7 +150,7 @@ onMounted(() => {
   observador.observe(alvo.value!)
 })
 watch(
-  () => [props.insumo, props.hoje],
+  () => [props.insumo, props.hoje, temaAplicado.value],
   () => grafico?.setOption(opcoes(), true),
 )
 onBeforeUnmount(() => {

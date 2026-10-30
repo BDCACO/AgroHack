@@ -17,7 +17,7 @@ defineProps<{
     >
       <span class="absolute inset-0 rounded-full bg-campo-50" />
       <span class="absolute inset-3 rounded-full bg-campo-100" />
-      <span class="relative rounded-full bg-white p-3 text-campo-600 shadow-sm">
+      <span class="relative rounded-full bg-superficie p-3 text-campo-600 shadow-sm">
         <IconeSvg
           :nome="icone"
           class="h-8 w-8"

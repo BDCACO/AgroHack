@@ -10,6 +10,7 @@ from app.core.limite_de_taxa import LimiteDeTaxa
 from app.core.relogio import agora
 from app.models import Sessao
 from app.schemas.usuario import (
+    AlteracaoDoPerfil,
     Entrada,
     PedidoDeEntrada,
     SessaoResposta,
@@ -101,6 +102,33 @@ def sair(sessao: Sessao = Depends(exigir_sessao), db: Session = Depends(get_db))
 @router.get("/eu", response_model=UsuarioResumo)
 def quem_sou_eu(sessao: Sessao = Depends(exigir_sessao)) -> UsuarioResumo:
     return UsuarioResumo.model_validate(sessao.usuario)
+
+
+@router.put("/eu", response_model=UsuarioResumo)
+def alterar_meu_perfil(
+    dados: AlteracaoDoPerfil,
+    sessao: Sessao = Depends(exigir_sessao),
+    db: Session = Depends(get_db),
+    origem: Origem = Depends(origem_do_pedido),
+) -> UsuarioResumo:
+    """O próprio nome e o próprio login; o que não vier fica como está. O login novo pede
+    `senha_atual` (errar conta como tentativa de login). O papel não muda por aqui: só o
+    dono, em Usuários."""
+    try:
+        usuario = servico.alterar_perfil(
+            db, sessao, dados.nome, dados.login, dados.senha_atual, origem
+        )
+    except servico.SenhaAtualFaltando:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Para trocar o login, confirme com a senha atual."
+        ) from None
+    except servico.SenhaAtualIncorreta:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A senha atual não confere.") from None
+    except servico.LoginEmUso:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Já existe um usuário com esse login."
+        ) from None
+    return UsuarioResumo.model_validate(usuario)
 
 
 @router.put("/senha", status_code=status.HTTP_204_NO_CONTENT)
