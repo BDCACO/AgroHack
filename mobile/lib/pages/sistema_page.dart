@@ -53,6 +53,13 @@ class SistemaPage extends StatelessWidget {
             ),
             ApareceEmCascata(
               indice: 4,
+              child: const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: _BotaoSair(),
+              ),
+            ),
+            ApareceEmCascata(
+              indice: 5,
               child: Padding(
                 padding: const EdgeInsets.only(top: 16),
                 child: Row(
@@ -78,6 +85,36 @@ class SistemaPage extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Encerra a sessão: tenta avisar o servidor, mas sai do app de qualquer
+/// jeito (sem internet, por exemplo) — quem ficou logado no aparelho é quem
+/// decide se quer continuar.
+class _BotaoSair extends StatelessWidget {
+  const _BotaoSair();
+
+  Future<void> _sair(BuildContext context) async {
+    final servicos = Servicos.of(context);
+    try {
+      await servicos.auth.sair();
+    } catch (_) {
+      // Sem resposta do servidor ou sessão já perdida: sai do app mesmo assim.
+    }
+    // Mesma troca de tela de quando a API devolve 401: limpa o token e volta
+    // para o login.
+    servicos.api.aoPerderSessao?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.logout),
+        title: const Text('Sair'),
+        onTap: () => _sair(context),
+      ),
     );
   }
 }

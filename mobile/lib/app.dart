@@ -5,11 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/api/cliente_api.dart';
 import 'core/servicos.dart';
 import 'core/tema.dart';
+import 'models/api.dart';
+import 'pages/entrar_page.dart';
 import 'pages/importar_page.dart';
 import 'pages/insumos_page.dart';
 import 'pages/movimentacoes_page.dart';
 import 'pages/painel_page.dart';
 import 'pages/sistema_page.dart';
+import 'services/auth.dart';
 
 const _chaveSolForte = 'modo.sol_forte';
 
@@ -24,6 +27,14 @@ class CampoCertoApp extends StatefulWidget {
 
 class _CampoCertoAppState extends State<CampoCertoApp> {
   final _solForte = ValueNotifier(false);
+  // Só pra exibir quem entrou (SistemaPage, por exemplo); não decide a
+  // navegação — quem decide é `_mostrarLogin`, abaixo.
+  final _usuario = ValueNotifier<Usuario?>(null);
+  late final _auth = AuthService(widget.api);
+  // Sem autenticação ligada na API (padrão em desenvolvimento), o app abre
+  // direto, sem pedir login: a tela só aparece se uma chamada de verdade
+  // devolver 401, exatamente como o site faz.
+  var _mostrarLogin = false;
 
   @override
   void initState() {
@@ -32,6 +43,33 @@ class _CampoCertoAppState extends State<CampoCertoApp> {
       _solForte.value = prefs.getBool(_chaveSolForte) ?? false;
     });
     _solForte.addListener(_salvarPreferencia);
+    widget.api.aoPerderSessao = _aoPerderSessao;
+    // Token veio de main.dart (carregado antes do 1º frame); só falta saber
+    // quem é, pra mostrar na tela de Sistema.
+    if (widget.api.token != null) _confirmarSessao();
+  }
+
+  Future<void> _confirmarSessao() async {
+    try {
+      _usuario.value = await _auth.quemSouEu();
+    } catch (_) {
+      // Token guardado não vale mais: `aoPerderSessao` cuida de limpar e
+      // mostrar o login quando alguma chamada de verdade confirmar o 401.
+    }
+  }
+
+  Future<void> _aoEntrar(Entrada entrada) async {
+    widget.api.token = entrada.token;
+    await _auth.salvarToken(entrada.token);
+    _usuario.value = entrada.usuario;
+    if (mounted) setState(() => _mostrarLogin = false);
+  }
+
+  void _aoPerderSessao() {
+    widget.api.token = null;
+    _usuario.value = null;
+    _auth.limparToken();
+    if (mounted) setState(() => _mostrarLogin = true);
   }
 
   Future<void> _salvarPreferencia() async {
@@ -43,6 +81,7 @@ class _CampoCertoAppState extends State<CampoCertoApp> {
   void dispose() {
     _solForte.removeListener(_salvarPreferencia);
     _solForte.dispose();
+    _usuario.dispose();
     super.dispose();
   }
 
@@ -51,12 +90,15 @@ class _CampoCertoAppState extends State<CampoCertoApp> {
     return Servicos(
       api: widget.api,
       solForte: _solForte,
+      usuario: _usuario,
       child: ValueListenableBuilder(
         valueListenable: _solForte,
         builder: (context, solForte, _) => MaterialApp(
           title: 'CampoCerto',
           theme: temaDoApp(solForte: solForte),
-          home: const Estrutura(),
+          home: _mostrarLogin
+              ? EntrarPage(aoEntrar: _aoEntrar)
+              : const Estrutura(),
         ),
       ),
     );
