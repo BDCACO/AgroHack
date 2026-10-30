@@ -60,6 +60,9 @@ export interface InsumoCadastro {
   // Texto livre ("Yara, Heringer"), para a mensagem de cotação. Fora do envio, a API
   // mantém o gravado.
   marcas_preferenciais?: string | null
+  // Ensinado pelo app na primeira leitura do leitor de código de barras. Fora do
+  // envio, a API mantém o gravado.
+  codigo_de_barras?: string | null
 }
 
 export interface Insumo extends InsumoCadastro {
