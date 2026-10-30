@@ -55,6 +55,7 @@ const vazio = {
   carencia: '' as number | '',
   categoria: '' as number | '',
   marcas: '',
+  codigoDeBarras: '',
 }
 const form = reactive({ ...vazio })
 const aberto = ref(false)
@@ -76,6 +77,7 @@ function abrir(insumo?: Insumo) {
           carencia: insumo.carencia_dias ?? '',
           categoria: insumo.categoria_id ?? '',
           marcas: insumo.marcas_preferenciais ?? '',
+          codigoDeBarras: insumo.codigo_de_barras ?? '',
         }
       : vazio,
   )
@@ -101,6 +103,7 @@ async function salvar() {
         carencia_dias: form.carencia === '' ? null : form.carencia,
         categoria_id: form.categoria === '' ? null : form.categoria,
         marcas_preferenciais: form.marcas.trim() === '' ? null : form.marcas.trim(),
+        codigo_de_barras: form.codigoDeBarras.trim() === '' ? null : form.codigoDeBarras.trim(),
       },
       editandoId.value,
     )
@@ -265,6 +268,16 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
           class="campo"
         >
         <span class="rotulo">Marcas ou especificações de preferência <span class="font-normal text-stone-500">(opcional)</span></span>
+      </label>
+      <label class="flutuante sm:col-span-2">
+        <input
+          v-model="form.codigoDeBarras"
+          type="text"
+          maxlength="64"
+          placeholder=" "
+          class="campo"
+        >
+        <span class="rotulo">Código de barras ou QR Code <span class="font-normal text-stone-500">(lido pelo app; apague o campo e salve para remover)</span></span>
       </label>
       <p class="text-xs text-stone-500 sm:col-span-2">
         O mínimo dispara o alerta de estoque baixo e vira margem de segurança na reposição. O prazo

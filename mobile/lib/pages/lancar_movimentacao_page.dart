@@ -8,6 +8,11 @@ import '../widgets/carregar_dados.dart';
 import '../widgets/formato.dart';
 import 'leitor_de_codigo_de_barras_page.dart';
 
+// Mesma unidade que entra em toda conta do insumo (estoque, consumo, reposição):
+// uma lista fechada evita medidas confusas como "395g" (peso da embalagem, não
+// uma unidade) digitadas por engano no cadastro pelo celular.
+const _unidadesDeMedida = ['kg', 'g', 't', 'L', 'mL', 'un', 'sc', 'cx', 'lata', 'pct'];
+
 /// Formulário de uma movimentação nova: tipo, insumo, quantidade e, se houver,
 /// a validade do lote. Mesmos campos do POST /movimentacoes do site.
 class LancarMovimentacaoPage extends StatelessWidget {
@@ -38,6 +43,7 @@ class _Formulario extends StatefulWidget {
 class _FormularioState extends State<_Formulario> {
   final _formKey = GlobalKey<FormState>();
   final _quantidadeController = TextEditingController();
+  late final _insumos = List<Insumo>.of(widget.insumos);
   var _tipo = TipoMovimentacao.entrada;
   Insumo? _insumo;
   var _data = DateTime.now();
@@ -89,7 +95,7 @@ class _FormularioState extends State<_Formulario> {
     );
     if (codigo == null || !mounted) return;
 
-    final encontrado = insumoPeloCodigoDeBarras(widget.insumos, codigo);
+    final encontrado = insumoPeloCodigoDeBarras(_insumos, codigo);
     if (encontrado != null) {
       final confirmado = await showDialog<bool>(
         context: context,
@@ -113,6 +119,7 @@ class _FormularioState extends State<_Formulario> {
     }
 
     if (!mounted) return;
+    var novo = false;
     final escolhido = await showModalBottomSheet<Insumo>(
       context: context,
       builder: (_) => SafeArea(
@@ -123,32 +130,125 @@ class _FormularioState extends State<_Formulario> {
               padding: EdgeInsets.all(16),
               child: Text('Código não reconhecido. De qual insumo ele é?'),
             ),
-            for (final insumo in widget.insumos)
+            for (final insumo in _insumos)
               ListTile(
                 title: Text(insumo.nome),
                 onTap: () => Navigator.pop(context, insumo),
               ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.add_circle_outline),
+              title: const Text('É um insumo novo'),
+              onTap: () {
+                novo = true;
+                Navigator.pop(context);
+              },
+            ),
           ],
         ),
       ),
     );
-    if (escolhido == null || !mounted) return;
-    setState(() => _insumo = escolhido);
+    if (!mounted) return;
+    if (escolhido != null) {
+      setState(() => _insumo = escolhido);
+      try {
+        // Ensina o vínculo para a próxima leitura reconhecer sozinha; o
+        // lançamento de agora não depende disso ter sucesso.
+        await Servicos.of(context).estoque.atualizarInsumo(
+          escolhido.id,
+          InsumoCadastro(
+            nome: escolhido.nome,
+            unidade: escolhido.unidade,
+            estoqueMinimo: escolhido.estoqueMinimo,
+            prazoReposicaoDias: escolhido.prazoReposicaoDias,
+            codigoDeBarras: codigo,
+          ),
+        );
+      } catch (_) {
+        // Sem internet ou API fora: tenta de novo na próxima leitura.
+      }
+      return;
+    }
+    if (novo) await _cadastrarInsumoNovo(codigo);
+  }
+
+  Future<void> _cadastrarInsumoNovo(String codigo) async {
+    final nomeController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    String? unidade;
     try {
-      // Ensina o vínculo para a próxima leitura reconhecer sozinha; o
-      // lançamento de agora não depende disso ter sucesso.
-      await Servicos.of(context).estoque.atualizarInsumo(
-        escolhido.id,
+      final confirmado = await showDialog<bool>(
+        context: context,
+        builder: (_) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Insumo novo'),
+            content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: nomeController,
+                    decoration: const InputDecoration(labelText: 'Nome'),
+                    validator: (texto) =>
+                        (texto ?? '').trim().isEmpty ? 'Informe o nome' : null,
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue: unidade,
+                    decoration: const InputDecoration(labelText: 'Unidade'),
+                    items: [
+                      for (final u in _unidadesDeMedida)
+                        DropdownMenuItem(value: u, child: Text(u)),
+                    ],
+                    onChanged: (valor) =>
+                        setDialogState(() => unidade = valor),
+                    validator: (valor) =>
+                        valor == null ? 'Escolha a unidade' : null,
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  if (formKey.currentState!.validate()) {
+                    Navigator.pop(context, true);
+                  }
+                },
+                child: const Text('Cadastrar'),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (confirmado != true || !mounted) return;
+      final criado = await Servicos.of(context).estoque.criarInsumo(
         InsumoCadastro(
-          nome: escolhido.nome,
-          unidade: escolhido.unidade,
-          estoqueMinimo: escolhido.estoqueMinimo,
-          prazoReposicaoDias: escolhido.prazoReposicaoDias,
+          nome: nomeController.text.trim(),
+          unidade: unidade!,
           codigoDeBarras: codigo,
         ),
       );
-    } catch (_) {
-      // Sem internet ou API fora: tenta de novo na próxima leitura.
+      if (!mounted) return;
+      setState(() {
+        _insumos.add(criado);
+        _insumo = criado;
+      });
+    } catch (erro) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            erro is ApiError ? erro.mensagem : 'Não deu pra cadastrar o insumo.',
+          ),
+        ),
+      );
+    } finally {
+      nomeController.dispose();
     }
   }
 
@@ -188,18 +288,17 @@ class _FormularioState extends State<_Formulario> {
                 setState(() => _tipo = selecao.first),
           ),
           const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: _lerCodigoDeBarras,
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('Ler código de barras ou QR Code'),
+          ),
+          const SizedBox(height: 16),
           DropdownButtonFormField<Insumo>(
             initialValue: _insumo,
-            decoration: InputDecoration(
-              labelText: 'Insumo',
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.qr_code_scanner),
-                tooltip: 'Ler código de barras',
-                onPressed: _lerCodigoDeBarras,
-              ),
-            ),
+            decoration: const InputDecoration(labelText: 'Insumo'),
             items: [
-              for (final insumo in widget.insumos)
+              for (final insumo in _insumos)
                 DropdownMenuItem(value: insumo, child: Text(insumo.nome)),
             ],
             onChanged: (insumo) => setState(() => _insumo = insumo),
