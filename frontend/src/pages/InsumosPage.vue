@@ -260,6 +260,7 @@ const numero = (valor: number) => valor.toLocaleString('pt-BR', { maximumFractio
         <input
           v-model="form.marcas"
           type="text"
+          maxlength="200"
           placeholder=" "
           class="campo"
         >

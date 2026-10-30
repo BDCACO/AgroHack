@@ -393,6 +393,25 @@ def test_reposicao_arredonda_para_cima_em_embalagens_fechadas() -> None:
     )
 
 
+def test_reposicao_diz_quantas_embalagens_pedir() -> None:
+    # A mensagem de cotação usa o número daqui, e não refaz a divisão com o resíduo do
+    # float: 70 kg em frascos de 0,1 kg são 700, não 701.
+    assert repor(ureia(embalagem=50)).reposicao.embalagens == 2
+    assert repor(ureia(embalagem=0.1)).reposicao.embalagens == 700
+    assert repor(ureia()).reposicao.embalagens is None
+
+
+def test_reposicao_diz_ate_quando_entregar() -> None:
+    # 20 kg a 2 kg/dia acabam em 10 dias.
+    assert repor(ureia()).reposicao.entregar_ate == REF + timedelta(days=10)
+    # 21 kg duram 10,5 dias: o último dia com estoque é o 10º, não o 11º.
+    com_21 = Insumo("Ureia", "kg", 21, estoque_minimo=10, prazo_reposicao_dias=15)
+    assert repor(com_21).reposicao.entregar_ate == REF + timedelta(days=10)
+    # O que está a caminho conta, como na quantidade: 20 + 70 kg duram 45 dias.
+    a_caminho = [Encomenda(70, REF + timedelta(days=5))]
+    assert repor(ureia(), a_caminho=a_caminho).reposicao.entregar_ate == REF + timedelta(days=45)
+
+
 def test_reposicao_respeita_o_pedido_minimo_antes_de_arredondar() -> None:
     so_minimo = repor(ureia(pedido_minimo=200, embalagem=50)).reposicao
     os_dois = repor(ureia(pedido_minimo=210, embalagem=50)).reposicao

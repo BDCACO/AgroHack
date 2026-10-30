@@ -35,6 +35,8 @@ export interface Reposicao {
   quantidade: number
   justificativa: string
   custo_estimado: number | null // quantidade × custo médio; null sem preço nas compras
+  embalagens: number | null // quantas embalagens fechadas; null sem embalagem cadastrada
+  entregar_ate: string // AAAA-MM-DD, último dia com estoque (contando o que está a caminho)
 }
 
 export interface Analise {

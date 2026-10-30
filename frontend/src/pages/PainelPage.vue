@@ -9,7 +9,7 @@ import EstadoVazio from '@/components/EstadoVazio.vue'
 import IconeSvg, { type NomeIcone } from '@/components/IconeSvg.vue'
 import BotaoDeDownload from '@/components/BotaoDeDownload.vue'
 import { mensagemDeCotacao } from '@/cotacao'
-import { reais } from '@/formatos'
+import { dataBr, reais } from '@/formatos'
 import { baixarRelatorio } from '@/services/estoque'
 import { useEstoqueStore } from '@/stores/estoque'
 import { useSessaoStore } from '@/stores/sessao'
@@ -131,7 +131,6 @@ const cartoesEmReais = computed(() => {
   ]
 })
 
-const dataBr = (data: string) => data.split('-').reverse().join('/')
 const quando = (r: Reposicao) => (r.pedir_hoje ? 'pedir hoje' : `pedir até ${dataBr(r.pedir_em)}`)
 
 // O pedido à revenda costuma sair pelo WhatsApp: a lista vai pronta, em texto, com a

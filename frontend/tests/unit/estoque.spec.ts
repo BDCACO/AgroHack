@@ -131,6 +131,8 @@ describe('PainelPage', () => {
       quantidade: 70,
       justificativa: 'Pedir hoje 70 kg: cobre 30 dias de consumo.',
       custo_estimado: null,
+      embalagens: null,
+      entregar_ate: '2000-01-01',
     }
     vi.mocked(api.listarInsumos).mockResolvedValue([insumo(1, 'Calcário', [excesso]), ureia])
 
@@ -174,7 +176,7 @@ describe('PainelPage', () => {
     ureia.analise.cobertura_dias = 3
     const sal = insumo(2, 'Sal', [])
     sal.analise.cobertura_dias = 20
-    sal.analise.reposicao = { pedir_em: '2000-01-01', pedir_hoje: true, quantidade: 5, justificativa: '', custo_estimado: null }
+    sal.analise.reposicao = { pedir_em: '2000-01-01', pedir_hoje: true, quantidade: 5, justificativa: '', custo_estimado: null, embalagens: null, entregar_ate: '2000-01-01' }
     const calcario = insumo(3, 'Calcário', [excesso])
     calcario.analise.cobertura_dias = 400
     vi.mocked(api.listarInsumos).mockResolvedValue([calcario, sal, ureia])
@@ -241,6 +243,8 @@ describe('PainelPage', () => {
       quantidade: 100,
       justificativa: 'Pedir hoje 2 sacos de 50 kg.',
       custo_estimado: 320,
+      embalagens: null,
+      entregar_ate: '2000-01-01',
     }
     vi.mocked(api.listarInsumos).mockResolvedValue([ureia])
 

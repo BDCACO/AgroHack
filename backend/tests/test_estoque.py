@@ -386,6 +386,15 @@ def test_alterar_insumo_sem_codigo_de_barras_mantem_o_gravado(client: TestClient
     assert sem.json()["codigo_de_barras"] == "7891234567890"
 
 
+@pytest.mark.parametrize("marcas", ["Yara\nHeringer", "   ", "x" * 201])
+def test_marcas_preferenciais_cabem_numa_linha_da_mensagem(client: TestClient, marcas: str) -> None:
+    resposta = client.post(
+        "/api/v1/insumos", json={"nome": "Ureia", "unidade": "kg", "marcas_preferenciais": marcas}
+    )
+
+    assert resposta.status_code == 422
+
+
 def test_preco_em_saida_explica_o_porque(client: TestClient) -> None:
     insumo = criar(client)
     corpo = {"insumo_id": insumo["id"], "tipo": "saida", "data": dia(0), "quantidade": 1}

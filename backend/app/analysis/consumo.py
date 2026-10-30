@@ -51,6 +51,11 @@ class Reposicao:
     pedir_hoje: bool
     # Quantidade × custo médio; None sem preço nas compras.
     custo_estimado: float | None = None
+    # Quantas embalagens fechadas são a quantidade; None sem embalagem cadastrada.
+    embalagens: int | None = None
+    # O último dia com estoque, contando o que está a caminho como a quantidade conta: o
+    # prazo de entrega da mensagem de cotação, para a tela não refazer a conta.
+    entregar_ate: date | None = None
 
 
 @dataclass(frozen=True)
@@ -348,9 +353,12 @@ def _reposicao(
     pela_conta = math.ceil(round(minimo + consumo * HORIZONTE_COMPRA_DIAS - na_chegada, 3))
     pedir_em = referencia + timedelta(days=dias_ate_pedir)
 
+    entregar_ate = referencia + timedelta(days=math.floor(round(posicao / consumo, 6)))
+
     unidade = insumo.unidade
     ajustes = []
     quantidade = pela_conta
+    embalagens = None
     if insumo.pedido_minimo and insumo.pedido_minimo > quantidade:
         quantidade = insumo.pedido_minimo
         ajustes.append(f"subiu para o pedido mínimo de {quantidade_legivel(quantidade, unidade)}")
@@ -398,4 +406,6 @@ def _reposicao(
         pedir_hoje=dias_ate_pedir == 0,
         justificativa=justificativa,
         custo_estimado=custo,
+        embalagens=embalagens,
+        entregar_ate=entregar_ate,
     )

@@ -114,7 +114,10 @@ preço zero ou negativo. Sem preço nenhum, tudo funciona como antes; com ele:
   `custo_estimado`. A limitação sobre o que a sugestão não considera diz só o que falta
   (embalagem, preço) e some com os dois cadastrados; pedido mínimo vazio é fornecedor sem
   mínimo, não falta de dado. `Reposicao.quantidade` virou número com casas, porque a
-  embalagem pode ser fracionada (frasco de 0,5 L).
+  embalagem pode ser fracionada (frasco de 0,5 L). `embalagens` (quantas fechadas, ou
+  `null` sem embalagem) e `entregar_ate` (o último dia com estoque, contando o que está a
+  caminho) vão prontos para a mensagem de cotação do Painel, que não refaz essas contas com
+  o float e o relógio do navegador.
 - **Compatibilidade.** Tudo é aditivo: campos novos nas respostas, opcionais nos pedidos.
   `PUT /insumos/{id}` sem `embalagem` ou `pedido_minimo` mantém o que está gravado (o site e o
   app de antes não conhecem esses campos e apagariam o que outro cadastrou); mandar `null` de

@@ -77,8 +77,10 @@ class InsumoCadastro(DadosDoInsumo):
     # embalagem: o PUT sem ela mantém a gravada.
     categoria_id: int | None = None
     # Texto livre ("Yara, Heringer"), para a mensagem de cotação. Como a categoria: o PUT
-    # sem ele mantém o gravado.
-    marcas_preferenciais: str | None = Field(default=None, min_length=1, max_length=2000)
+    # sem ele mantém o gravado. Uma linha só: vai num item da mensagem do WhatsApp.
+    marcas_preferenciais: str | None = Field(
+        default=None, min_length=1, max_length=200, pattern=SEM_CARACTERE_DE_CONTROLE
+    )
     # O código de barras de fábrica, ensinado pelo app na primeira leitura. Como a
     # categoria: o PUT sem ele mantém o gravado.
     codigo_de_barras: str | None = Field(default=None, min_length=1, max_length=64)
